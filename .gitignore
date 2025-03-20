@@ -1,8 +1,5 @@
 libs/
 build/
 
-include/*
-!include/cppfun/
 .cache
-
-compile_commands.json
+run-notes.txt

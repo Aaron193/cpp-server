@@ -1,25 +1,24 @@
-cmake_minimum_required(VERSION 3.14)
-
-project(server VERSION 0.1.0 LANGUAGES CXX C)
+cmake_minimum_required(VERSION 3.10)
+project(server VERSION 1.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(ZLIB REQUIRED)
+find_package(box2d CONFIG REQUIRED)
+find_package(unofficial-uwebsockets CONFIG REQUIRED)
 
-include_directories(include)
-include_directories(include/uwebsockets/uSockets)
-
-file(GLOB USOCKETS_SOURCES
-    include/uwebsockets/uSockets/*.c
-    include/uwebsockets/uSockets/crypto/*.c
-    include/uwebsockets/uSockets/eventing/*.c
+file(GLOB_RECURSE SOURCES
+    "src/*.cpp"
 )
 
-file(GLOB_RECURSE SOURCES "src/*.cpp")
+add_executable(server ${SOURCES})
 
-add_executable(${PROJECT_NAME} src/main.cpp ${SOURCES} ${USOCKETS_SOURCES})
+target_link_libraries(server PRIVATE
+    box2d::box2d
+    unofficial::uwebsockets::uwebsockets
+)
 
-target_compile_definitions(${PROJECT_NAME} PRIVATE LIBUS_NO_SSL)
-
-target_link_libraries(${PROJECT_NAME} PRIVATE pthread ${ZLIB_LIBRARIES})
+target_include_directories(server PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
