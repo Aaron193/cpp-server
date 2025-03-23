@@ -42,6 +42,8 @@ void GameServer::run() {
 }
 
 void GameServer::tick(double delta) {
+    m_physicsWorld.tick(delta);
+
     std::lock_guard<std::mutex> lock(clientsMutex);
 
     for (auto& c : clients) {
