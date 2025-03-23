@@ -6,11 +6,16 @@
 
 using namespace Components;
 
-entt::entity EntityManager::createSpectator(entt::entity folowee) {
+entt::entity EntityManager::createSpectator(entt::entity followee) {
     entt::entity entity = m_registry.create();
 
     m_registry.emplace<Type>(entity, EntityTypes::SPECTATOR);
-    m_registry.emplace<Camera>(entity, folowee);
+
+    if (followee == entt::null) {
+        followee = getFollowEntity();
+    }
+
+    m_registry.emplace<Camera>(entity, followee);
 
     return entity;
 }
@@ -39,4 +44,15 @@ void EntityManager::scheduleForRemoval(entt::entity entity) {
 void EntityManager::removeEntities() {
     m_registry.view<Removal>().each(
         [this](auto entity) { m_registry.destroy(entity); });
+}
+
+entt::entity EntityManager::getFollowEntity() {
+    auto view = m_registry.view<Body, Dynamic, Networked>();
+
+    // random entity for now
+    for (auto entity : view) {
+        return entity;
+    }
+
+    return entt::null;
 }

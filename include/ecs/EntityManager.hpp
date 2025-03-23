@@ -21,4 +21,5 @@ class EntityManager {
 
     void scheduleForRemoval(entt::entity entity);
     void removeEntities();
+    entt::entity getFollowEntity();
 };

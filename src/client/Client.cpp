@@ -1,12 +1,17 @@
 #include "client/Client.hpp"
 
+#include "Systems.hpp"
+#include "ecs/EntityManager.hpp"
+#include "ecs/components.hpp"
 #include "packet/buffer/PacketReader.hpp"
 
 std::unordered_map<uint32_t, Client*> clients;
 std::mutex clientsMutex;
 
 Client::Client(uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id)
-    : m_ws(ws), m_id(id) {}
+    : m_ws(ws), m_id(id) {
+    changeBody(Systems::entityManager().createSpectator(entt::null));
+}
 
 Client::~Client() {
     std::cout << "User " << m_name << " has disconnected" << std::endl;
@@ -53,23 +58,28 @@ void Client::onMouse() {
 void Client::onMovement() {
     const uint8_t direction = m_reader.readU8();
 
-    uint8_t x = 0;
-    uint8_t y = 0;
-
-    if (direction & 1) y--;
-    if (direction & 2) x--;
-    if (direction & 4) y++;
-    if (direction & 8) x++;
-
-    m_velocity.x = x;
-    m_velocity.y = y;
+    entt::registry& reg = Systems::entityManager().getRegistry();
+    Components::Input& input = reg.get<Components::Input>(m_entity);
+    input.direction = direction;
 }
 
 void Client::sendBytes() {
     if (!m_active) return;
-
     if (!m_writer.hasData()) return;
 
     m_ws->send(m_writer.getMessage(), uWS::OpCode::BINARY);
     m_writer.clear();
+}
+
+void Client::changeBody(entt::entity entity) {
+    m_entity = entity;
+
+    // link client to entity
+    entt::registry& reg = Systems::entityManager().getRegistry();
+    reg.emplace<Components::Client>(entity, m_id);
+
+    // write set-camera packet with cam target entity
+    m_writer.writeU8(ServerHeader::SET_CAMERA);
+    Components::Camera& cam = reg.get<Components::Camera>(entity);
+    m_writer.writeU32(static_cast<uint32_t>(cam.target));
 }

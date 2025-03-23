@@ -4,6 +4,7 @@
 #include <uwebsockets/WebSocketData.h>
 
 #include <cstdint>
+#include <entt/entt.hpp>
 #include <unordered_map>
 
 #include "packet/buffer/PacketReader.hpp"
@@ -17,6 +18,8 @@ struct WebSocketData {
 class Client {
    public:
     uint32_t m_id;
+    entt::entity m_entity;
+
     uWS::WebSocket<false, true, WebSocketData>* m_ws;
     PacketReader m_reader;
     PacketWriter m_writer;
@@ -29,6 +32,8 @@ class Client {
 
     Client(uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id);
     ~Client();
+
+    void changeBody(entt::entity entity);
 
     void onMessage(const std::string_view& message);
 
@@ -45,4 +50,9 @@ extern std::unordered_map<uint32_t, Client*> clients;
 extern std::mutex clientsMutex;
 
 enum ClientHeader { SPAWN, MOUSE, MOVEMENT };
-enum ServerHeader { SPAWN_SUCCESS, CLIENT_CONNECT, CLIENT_DISCONNECT };
+enum ServerHeader {
+    SPAWN_SUCCESS,
+    CLIENT_CONNECT,
+    CLIENT_DISCONNECT,
+    SET_CAMERA
+};

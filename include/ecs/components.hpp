@@ -10,6 +10,10 @@ struct Type {
     EntityTypes type;
 };
 
+struct Client {
+    uint32_t id;
+};
+
 struct Body {
     b2Body* body;
 };

@@ -1,3 +1,13 @@
 #include "Game.hpp"
 
-Game::Game(uint16_t port) : m_game(), m_network(port) {}
+#include "Systems.hpp"
+
+Game::Game(uint16_t port) {
+    Systems::initialize(port);
+    Systems::gameServer().start();
+}
+
+Game::~Game() {
+    Systems::gameServer().stop();
+    Systems::shutdown();
+}

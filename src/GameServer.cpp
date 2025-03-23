@@ -1,11 +1,17 @@
 
 #include "GameServer.hpp"
 
+#include <box2d/b2_math.h>
+
 #include <chrono>
 #include <iostream>
 #include <thread>
 
+#include "Systems.hpp"
 #include "client/Client.hpp"
+#include "ecs/EntityManager.hpp"
+#include "ecs/components.hpp"
+#include "physics/PhysicsWorld.hpp"
 
 GameServer::GameServer() noexcept : m_running(false) { start(); }
 
@@ -42,24 +48,73 @@ void GameServer::run() {
 }
 
 void GameServer::tick(double delta) {
-    m_physicsWorld.tick(delta);
+    Systems::physicsWorld().tick(delta);
 
+    clientInput();
+
+    Systems::entityManager().removeEntities();
+
+    updateClientCameras();
+
+    syncClients();
+}
+
+void GameServer::updateClientCameras() {
+    std::lock_guard<std::mutex> lock(clientsMutex);
+
+    auto& registry = Systems::entityManager().getRegistry();
+
+    for (auto& c : clients) {
+        Client& client = *c.second;
+    }
+}
+
+void GameServer::syncClients() {
     std::lock_guard<std::mutex> lock(clientsMutex);
 
     for (auto& c : clients) {
         Client& client = *c.second;
 
-        client.m_position.x += client.m_velocity.x;
-        client.m_position.y += client.m_velocity.y;
-
-        // std::cout << "User " << client.m_name << " is at " <<
-        // client.m_position.x
-        //           << ", " << client.m_position.y << std::endl;
-    }
-
-    for (auto& c : clients) {
-        Client& client = *c.second;
-
         client.sendBytes();
+    }
+}
+
+void GameServer::clientInput() {
+    auto view = Systems::entityManager()
+                    .getRegistry()
+                    .view<Components::Input, Components::Body>();
+
+    for (auto entity : view) {
+        uint8_t direction = Systems::entityManager()
+                                .getRegistry()
+                                .get<Components::Input>(entity)
+                                .direction;
+
+        uint8_t x = 0;
+        uint8_t y = 0;
+
+        if (direction & 1) y = -1;
+        if (direction & 2) x = -1;
+        if (direction & 4) y = 1;
+        if (direction & 8) x = 1;
+
+        // normalize input vector
+        int length = std::sqrt(x * x + y * y);
+        if (length != 0) {
+            x /= length;
+            y /= length;
+        }
+
+        const int speed = 5;
+
+        b2Vec2 inputVector = b2Vec2(x, y);
+        b2Vec2 velocity = b2Vec2(inputVector.x * speed, inputVector.y * speed);
+
+        b2Body* body = Systems::entityManager()
+                           .getRegistry()
+                           .get<Components::Body>(entity)
+                           .body;
+
+        body->SetLinearVelocity(velocity);
     }
 }
