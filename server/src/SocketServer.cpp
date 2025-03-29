@@ -2,6 +2,8 @@
 
 #include <uwebsockets/App.h>
 
+#include <cstdint>
+
 #include "client/Client.hpp"
 
 uint32_t id = 0;
