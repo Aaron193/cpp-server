@@ -17,7 +17,9 @@ struct WebSocketData {
 
 class Client {
    public:
+    // unique id for each client
     uint32_t m_id;
+    // entity may change throughout the lifetime of the client
     entt::entity m_entity;
 
     uWS::WebSocket<false, true, WebSocketData>* m_ws;
@@ -41,6 +43,7 @@ class Client {
     void onMovement();
     void onMouse();
 
+    void syncGameState();
     void sendBytes();
 
    private:

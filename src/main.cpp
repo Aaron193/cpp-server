@@ -6,7 +6,7 @@
 #include "Game.hpp"
 
 int main() {
-    std::cout << "WebSocket Server has Started!" << std::endl;
+    std::cout << "Game has Started!" << std::endl;
 
     new Game(9001);
 }

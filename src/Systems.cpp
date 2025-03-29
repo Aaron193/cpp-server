@@ -11,10 +11,10 @@ std::unique_ptr<PhysicsWorld> Systems::s_physicsWorld = nullptr;
 std::unique_ptr<SocketServer> Systems::s_socketServer = nullptr;
 
 void Systems::initialize(uint16_t port) {
-    s_entityManager = std::make_unique<EntityManager>();
-    s_physicsWorld = std::make_unique<PhysicsWorld>();
-    s_gameServer = std::make_unique<GameServer>();
     s_socketServer = std::make_unique<SocketServer>(port);
+    s_gameServer = std::make_unique<GameServer>();
+    s_physicsWorld = std::make_unique<PhysicsWorld>();
+    s_entityManager = std::make_unique<EntityManager>();
 }
 
 EntityManager& Systems::entityManager() {

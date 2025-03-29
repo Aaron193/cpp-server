@@ -32,8 +32,7 @@ SocketServer::SocketServer(uint16_t port) : m_port(port) {
                      auto it = clients.find(id);
 
                      if (it != clients.end()) {
-                         Client* client = it->second;
-                         client->onMessage(message);
+                         m_messages.emplace_back(id, message);
                      } else {
                          std::cout << "Client with ID " << id << " not found"
                                    << std::endl;

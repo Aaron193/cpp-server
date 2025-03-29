@@ -8,6 +8,7 @@ class PhysicsWorld {
 
     void tick(double delta);
 
-   private:
     std::unique_ptr<b2World> m_world;
+
+   private:
 };

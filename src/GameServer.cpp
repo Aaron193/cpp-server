@@ -7,6 +7,7 @@
 #include <iostream>
 #include <thread>
 
+#include "SocketServer.hpp"
 #include "Systems.hpp"
 #include "client/Client.hpp"
 #include "ecs/EntityManager.hpp"
@@ -47,7 +48,30 @@ void GameServer::run() {
     }
 }
 
+void GameServer::processMessages() {
+    SocketServer& socketServer = Systems::socketServer();
+
+    std::lock_guard<std::mutex> lock(clientsMutex);
+
+    for (auto& message : socketServer.m_messages) {
+        uint32_t id = message.first;
+        std::string_view data = message.second;
+
+        auto it = clients.find(id);
+        if (it != clients.end()) {
+            Client* client = it->second;
+            client->onMessage(data);
+        } else {
+            std::cout << "Client with ID " << id << " not found" << std::endl;
+        }
+    }
+
+    socketServer.m_messages.clear();
+}
+
 void GameServer::tick(double delta) {
+    processMessages();
+
     Systems::physicsWorld().tick(delta);
 
     clientInput();
