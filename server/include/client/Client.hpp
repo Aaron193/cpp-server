@@ -52,6 +52,7 @@ class Client {
 extern std::unordered_map<uint32_t, Client*> clients;
 extern std::mutex clientsMutex;
 
+// TODO: put this somewhere else
 enum ClientHeader { SPAWN, MOUSE, MOVEMENT };
 enum ServerHeader {
     SPAWN_SUCCESS,
