@@ -47,11 +47,7 @@ export class Socket {
 
         while (this.streamReader.getOffset() < this.streamReader.byteLength()) {
             const message: IMessage = MessageFactory.createMessage(this.streamReader);
-            try {
-                message.process();
-            } catch(error) {
-                throw new Error(`Error processing websocket message: ${error}`);
-            }
+            message.process();
         }
     }
 

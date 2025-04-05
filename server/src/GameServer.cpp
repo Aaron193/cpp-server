@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <iostream>
+#include <stdexcept>
 #include <thread>
 
 #include "SocketServer.hpp"
@@ -60,7 +61,12 @@ void GameServer::processMessages() {
         auto it = clients.find(id);
         if (it != clients.end()) {
             Client* client = it->second;
-            client->onMessage(data);
+            try {  // TODO: I dont really like try-catch. Maybe lets just not
+                   // read outside buffer and set outside bytes to zero
+                client->onMessage(data);
+            } catch (std::runtime_error error) {
+                // Reading outside buffer view..
+            }
         } else {
             std::cout << "Client with ID " << id << " not found" << std::endl;
         }
@@ -74,7 +80,9 @@ void GameServer::tick(double delta) {
 
     Systems::physicsWorld().tick(delta);
 
-    clientInput();
+    // TODO: we may want to handle input before physics tick.. or else input is
+    // delayed 1 tick???
+    handleClientInput();
 
     Systems::entityManager().removeEntities();
 
@@ -103,16 +111,18 @@ void GameServer::syncClients() {
     }
 }
 
-void GameServer::clientInput() {
+void GameServer::handleClientInput() {
     auto view = Systems::entityManager()
                     .getRegistry()
                     .view<Components::Input, Components::Body>();
 
     for (auto entity : view) {
-        uint8_t direction = Systems::entityManager()
-                                .getRegistry()
-                                .get<Components::Input>(entity)
-                                .direction;
+        auto input =
+            Systems::entityManager().getRegistry().get<Components::Input>(
+                entity);
+
+        uint8_t direction = input.direction;
+        float angle = input.angle;
 
         uint8_t x = 0;
         uint8_t y = 0;
@@ -140,5 +150,6 @@ void GameServer::clientInput() {
                            .body;
 
         body->SetLinearVelocity(velocity);
+        body->SetTransform(body->GetTransform().p, angle);
     }
 }

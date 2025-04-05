@@ -28,9 +28,6 @@ class Client {
 
     std::string m_name;
     bool m_active = false;
-    float m_angle;
-    Vec2<uint32_t> m_position = Vec2<uint32_t>(0, 0);
-    Vec2<uint32_t> m_velocity = Vec2<uint32_t>(0, 0);
 
     Client(uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id);
     ~Client();

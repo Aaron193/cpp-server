@@ -59,8 +59,10 @@ void Client::onSpawn() {
 
 void Client::onMouse() {
     const float angle = m_reader.readFloat();
-    m_angle = angle;
-    std::cout << "User " << m_name << " has moved their mouse" << std::endl;
+
+    entt::registry& reg = Systems::entityManager().getRegistry();
+    Components::Input& input = reg.get<Components::Input>(m_entity);
+    input.angle = angle;
 }
 
 void Client::onMovement() {

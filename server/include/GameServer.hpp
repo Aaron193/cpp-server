@@ -20,5 +20,5 @@ class GameServer {
     void tick(double delta);
     void updateClientCameras();
     void syncClients();
-    void clientInput();
+    void handleClientInput();
 };

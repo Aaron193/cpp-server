@@ -31,6 +31,7 @@ struct Camera {
 
 struct Input {
     uint8_t direction;
+    float angle;
 };
 
 struct Removal {};
