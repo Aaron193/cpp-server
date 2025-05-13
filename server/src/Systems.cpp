@@ -5,6 +5,10 @@
 #include "ecs/EntityManager.hpp"
 #include "physics/PhysicsWorld.hpp"
 
+/**
+ Service Locator Pattern
+*/
+
 std::unique_ptr<EntityManager> Systems::s_entityManager = nullptr;
 std::unique_ptr<GameServer> Systems::s_gameServer = nullptr;
 std::unique_ptr<PhysicsWorld> Systems::s_physicsWorld = nullptr;

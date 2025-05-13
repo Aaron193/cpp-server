@@ -23,3 +23,7 @@ class EntityManager {
     void removeEntities();
     entt::entity getFollowEntity();
 };
+
+struct EntityBodyUserData {
+    entt::entity entity;
+};

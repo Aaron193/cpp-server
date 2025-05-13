@@ -81,15 +81,23 @@ void Client::syncGameState() {
 
     const b2Vec2& pos = body->GetPosition();
 
-    float viewX = meters(cam.width);
-    float viewY = meters(cam.height);
+    float halfViewX = meters(cam.width) * 0.5;
+    float halfViewY = meters(cam.height) * 0.5;
 
     // TODO: avoid stack object allocation
     b2AABB aabb;
-    aabb.lowerBound = b2Vec2(pos.x - viewX / 2, pos.y - viewY / 2);
-    aabb.upperBound = b2Vec2(pos.x + viewX / 2, pos.y + viewY / 2);
+    aabb.lowerBound = b2Vec2(pos.x - halfViewX, pos.y - halfViewY);
+    aabb.upperBound = b2Vec2(pos.x + halfViewX, pos.y + halfViewY);
 
     b2World* world = Systems::physicsWorld().m_world.get();
+
+    PhysicsWorld& physicsWorld = Systems::physicsWorld();
+    physicsWorld.m_queryCallback->bodies.clear();
+    world->QueryAABB(physicsWorld.m_queryCallback, aabb);
+
+    for (b2Body* body : physicsWorld.m_queryCallback->bodies) {
+        // do something
+    }
 }
 
 void Client::sendBytes() {

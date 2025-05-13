@@ -1,9 +1,13 @@
 
 #include "GameServer.hpp"
 
+#include <box2d/b2_fixture.h>
 #include <box2d/b2_math.h>
+#include <box2d/b2_world.h>
 
 #include <chrono>
+#include <cstdint>
+#include <entt/entity/fwd.hpp>
 #include <iostream>
 #include <stdexcept>
 #include <thread>
@@ -77,12 +81,9 @@ void GameServer::processMessages() {
 
 void GameServer::tick(double delta) {
     processMessages();
+    handleClientInput();
 
     Systems::physicsWorld().tick(delta);
-
-    // TODO: we may want to handle input before physics tick.. or else input is
-    // delayed 1 tick???
-    handleClientInput();
 
     Systems::entityManager().removeEntities();
 
@@ -94,10 +95,19 @@ void GameServer::tick(double delta) {
 void GameServer::updateClientCameras() {
     std::lock_guard<std::mutex> lock(clientsMutex);
 
-    auto& registry = Systems::entityManager().getRegistry();
+    entt::registry& reg = Systems::entityManager().getRegistry();
 
     for (auto& c : clients) {
         Client& client = *c.second;
+        entt::entity entity = client.m_entity;
+
+        Components::Camera& cam = reg.get<Components::Camera>(entity);
+
+        // If our camera target is dead, we update who we follow
+        if (!reg.valid(cam.target)) {
+            client.changeBody(
+                Systems::entityManager().createSpectator(entt::null));
+        }
     }
 }
 
