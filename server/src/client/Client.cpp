@@ -73,7 +73,20 @@ void Client::onMovement() {
     input.direction = direction;
 }
 
-void Client::syncGameState() {
+// TODO: idk if i want this behavior. Maybe if the player dies, we spectate the
+// killer, if the killer dies, we just spectate where we died at
+void Client::updateCamera() {
+    entt::registry& reg = Systems::entityManager().getRegistry();
+
+    Components::Camera& cam = reg.get<Components::Camera>(m_entity);
+
+    // If our camera target is dead, we update who we follow
+    if (!reg.valid(cam.target)) {
+        changeBody(Systems::entityManager().createSpectator(entt::null));
+    }
+}
+
+void Client::writeGameState() {
     entt::registry& reg = Systems::entityManager().getRegistry();
     Components::Camera& cam = reg.get<Components::Camera>(m_entity);
 
@@ -84,20 +97,83 @@ void Client::syncGameState() {
     float halfViewX = meters(cam.width) * 0.5;
     float halfViewY = meters(cam.height) * 0.5;
 
-    // TODO: avoid stack object allocation
-    b2AABB aabb;
-    aabb.lowerBound = b2Vec2(pos.x - halfViewX, pos.y - halfViewY);
-    aabb.upperBound = b2Vec2(pos.x + halfViewX, pos.y + halfViewY);
+    // TODO: avoid stack object allocation?
+    b2AABB queryAABB;
+    queryAABB.lowerBound = b2Vec2(pos.x - halfViewX, pos.y - halfViewY);
+    queryAABB.upperBound = b2Vec2(pos.x + halfViewX, pos.y + halfViewY);
 
     b2World* world = Systems::physicsWorld().m_world.get();
 
     PhysicsWorld& physicsWorld = Systems::physicsWorld();
-    physicsWorld.m_queryCallback->bodies.clear();
-    world->QueryAABB(physicsWorld.m_queryCallback, aabb);
+    physicsWorld.m_queryCallback->entities.clear();
+    world->QueryAABB(physicsWorld.m_queryCallback, queryAABB);
 
-    for (b2Body* body : physicsWorld.m_queryCallback->bodies) {
-        // do something
+    std::unordered_set<entt::entity> currentlyVisibleEntities;
+    for (entt::entity entity : physicsWorld.m_queryCallback->entities) {
+        currentlyVisibleEntities.insert(entity);
     }
+
+    std::vector<entt::entity> create;
+    std::vector<entt::entity> update;
+    std::vector<entt::entity> remove;
+
+    for (entt::entity entity : currentlyVisibleEntities) {
+        if (m_previousVisibleEntities.find(entity) ==
+            m_previousVisibleEntities.end()) {
+            create.push_back(entity);
+        } else {
+            update.push_back(entity);
+        }
+    }
+
+    for (entt::entity entity : m_previousVisibleEntities) {
+        if (currentlyVisibleEntities.find(entity) ==
+            currentlyVisibleEntities.end()) {
+            remove.push_back(entity);
+        }
+    }
+
+    // Entity creation serialization (entity has entered the client's view)
+    if (!create.empty()) {
+        m_writer.writeU8(ServerHeader::ENTITY_CREATE);
+        m_writer.writeU32(static_cast<uint32_t>(create.size()));
+
+        for (entt::entity entity : create) {
+            b2Body* body = reg.get<Components::Body>(entity).body;
+            uint8_t type = reg.get<Components::Type>(entity).type;
+
+            m_writer.writeU32(static_cast<uint32_t>(entity));
+            m_writer.writeU8(type);
+            m_writer.writeFloat(body->GetPosition().x);
+            m_writer.writeFloat(body->GetPosition().y);
+            m_writer.writeFloat(body->GetAngle());
+        }
+    }
+
+    // Entity update serialization (entity is still in the client's view)
+    if (!update.empty()) {
+        m_writer.writeU8(ServerHeader::ENTITY_CREATE);
+        m_writer.writeU32(static_cast<uint32_t>(update.size()));
+        for (entt::entity entity : update) {
+            Components::Body& body = reg.get<Components::Body>(entity);
+
+            m_writer.writeU32(static_cast<uint32_t>(entity));
+            m_writer.writeFloat(body.body->GetPosition().x);
+            m_writer.writeFloat(body.body->GetPosition().y);
+            m_writer.writeFloat(body.body->GetAngle());
+        }
+    }
+
+    // Entity removal serialization (entity has left the client's view)
+    if (!remove.empty()) {
+        m_writer.writeU8(ServerHeader::ENTITY_CREATE);
+        m_writer.writeU32(static_cast<uint32_t>(remove.size()));
+        for (entt::entity entity : remove) {
+            m_writer.writeU32(static_cast<uint32_t>(entity));
+        }
+    }
+
+    m_previousVisibleEntities.swap(currentlyVisibleEntities);
 }
 
 void Client::sendBytes() {

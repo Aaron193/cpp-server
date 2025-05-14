@@ -1,11 +1,13 @@
 #include <box2d/b2_world.h>
 
+#include <entt/entity/fwd.hpp>
 #include <memory>
 #include <vector>
 
 class QueryNetworkedEntities : public b2QueryCallback {
    public:
-    std::vector<b2Body*> bodies;
+    std::vector<entt::entity> entities;
+    void Clear();
     bool ReportFixture(b2Fixture* fixture) override;
 };
 

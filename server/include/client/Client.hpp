@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <entt/entt.hpp>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "packet/buffer/PacketReader.hpp"
 #include "packet/buffer/PacketWriter.hpp"
@@ -40,10 +41,13 @@ class Client {
     void onMovement();
     void onMouse();
 
-    void syncGameState();
+    void updateCamera();
+
+    void writeGameState();
     void sendBytes();
 
    private:
+    std::unordered_set<entt::entity> m_previousVisibleEntities;
 };
 
 extern std::unordered_map<uint32_t, Client*> clients;
@@ -55,5 +59,8 @@ enum ServerHeader {
     SPAWN_SUCCESS,
     CLIENT_CONNECT,
     CLIENT_DISCONNECT,
-    SET_CAMERA
+    SET_CAMERA,
+    ENTITY_CREATE,
+    ENTITY_UPDATE,
+    ENTITY_REMOVE,
 };

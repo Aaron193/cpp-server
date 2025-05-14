@@ -1,8 +1,9 @@
 #pragma once
 
+#include <cstdint>
 #include <entt/entt.hpp>
 
-enum EntityTypes { SPECTATOR, PLAYER };
+enum EntityTypes : uint8_t { SPECTATOR, PLAYER };
 
 class EntityManager {
    private:

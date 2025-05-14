@@ -87,7 +87,9 @@ void GameServer::tick(double delta) {
 
     Systems::entityManager().removeEntities();
 
+    // TODO: rethink these calls.. currently a bit inconsistent/ugly
     updateClientCameras();
+    for (auto& c : clients) (*c.second).writeGameState();
 
     syncClients();
 }
@@ -95,19 +97,10 @@ void GameServer::tick(double delta) {
 void GameServer::updateClientCameras() {
     std::lock_guard<std::mutex> lock(clientsMutex);
 
-    entt::registry& reg = Systems::entityManager().getRegistry();
-
     for (auto& c : clients) {
         Client& client = *c.second;
-        entt::entity entity = client.m_entity;
 
-        Components::Camera& cam = reg.get<Components::Camera>(entity);
-
-        // If our camera target is dead, we update who we follow
-        if (!reg.valid(cam.target)) {
-            client.changeBody(
-                Systems::entityManager().createSpectator(entt::null));
-        }
+        client.updateCamera();
     }
 }
 

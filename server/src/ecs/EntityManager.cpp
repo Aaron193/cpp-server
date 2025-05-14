@@ -82,7 +82,7 @@ void EntityManager::removeEntities() {
                 reinterpret_cast<EntityBodyUserData*>(
                     bodyComponent.body->GetUserData().pointer);
             delete userData;
-            bodyComponent.body->SetUserData(nullptr);
+            bodyComponent.body->GetUserData().pointer = 0;
             Systems::physicsWorld().m_world->DestroyBody(bodyComponent.body);
         }
         bodyComponent.body = nullptr;
