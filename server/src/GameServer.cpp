@@ -53,7 +53,7 @@ void GameServer::run() {
     }
 }
 
-void GameServer::processMessages() {
+void GameServer::processClientMessages() {
     SocketServer& socketServer = Systems::socketServer();
 
     std::lock_guard<std::mutex> lock(clientsMutex);
@@ -80,41 +80,41 @@ void GameServer::processMessages() {
 }
 
 void GameServer::tick(double delta) {
-    processMessages();
-    handleClientInput();
+    processClientMessages();
 
-    Systems::physicsWorld().tick(delta);
+    {  // game world update
 
-    Systems::entityManager().removeEntities();
+        /* Pre physics systems */
+        prePhysicsSystemUpdate();
 
-    // TODO: rethink these calls.. currently a bit inconsistent/ugly
-    updateClientCameras();
-    for (auto& c : clients) (*c.second).writeGameState();
+        /* Physics update */
+        Systems::physicsWorld().tick(delta);
 
-    syncClients();
-}
+        /* Post physics systems */
 
-void GameServer::updateClientCameras() {
-    std::lock_guard<std::mutex> lock(clientsMutex);
+        Systems::entityManager().removeEntities();
+    }
 
-    for (auto& c : clients) {
-        Client& client = *c.second;
+    {  // server update
+        std::lock_guard<std::mutex> lock(clientsMutex);
 
-        client.updateCamera();
+        for (auto& c : clients) {
+            Client& client = *c.second;
+            client.writeGameState();
+            client.sendBytes();
+        }
     }
 }
 
-void GameServer::syncClients() {
-    std::lock_guard<std::mutex> lock(clientsMutex);
-
-    for (auto& c : clients) {
-        Client& client = *c.second;
-
-        client.sendBytes();
-    }
+/**
+    Set forces and movement of entities based on input
+*/
+void GameServer::prePhysicsSystemUpdate() {
+    inputSystem();
+    cameraSystem();
 }
 
-void GameServer::handleClientInput() {
+void GameServer::inputSystem() {
     auto view = Systems::entityManager()
                     .getRegistry()
                     .view<Components::Input, Components::Body>();
@@ -154,5 +154,26 @@ void GameServer::handleClientInput() {
 
         body->SetLinearVelocity(velocity);
         body->SetTransform(body->GetTransform().p, angle);
+    }
+}
+
+// TODO: i dont really like how this iterates over the clients and not the
+// camera components. but we need the client in order to call changeBody, which
+// notifies their socket with the new client and stuff...
+void GameServer::cameraSystem() {
+    std::lock_guard<std::mutex> lock(clientsMutex);
+
+    for (auto& c : clients) {
+        Client& client = *c.second;
+
+        entt::registry& reg = Systems::entityManager().getRegistry();
+
+        Components::Camera& cam = reg.get<Components::Camera>(client.m_entity);
+
+        // If our camera target is dead, we update who we follow
+        if (!reg.valid(cam.target)) {
+            client.changeBody(
+                Systems::entityManager().createSpectator(entt::null));
+        }
     }
 }

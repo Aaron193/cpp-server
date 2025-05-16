@@ -16,9 +16,9 @@ class GameServer {
     std::atomic<bool> m_running;
 
     void run();
-    void processMessages();
+    void processClientMessages();
     void tick(double delta);
-    void updateClientCameras();
-    void syncClients();
-    void handleClientInput();
+    void prePhysicsSystemUpdate();
+    void inputSystem();
+    void cameraSystem();
 };

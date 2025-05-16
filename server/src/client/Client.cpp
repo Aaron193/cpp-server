@@ -75,16 +75,16 @@ void Client::onMovement() {
 
 // TODO: idk if i want this behavior. Maybe if the player dies, we spectate the
 // killer, if the killer dies, we just spectate where we died at
-void Client::updateCamera() {
-    entt::registry& reg = Systems::entityManager().getRegistry();
+// void Client::updateCamera() {
+//     entt::registry& reg = Systems::entityManager().getRegistry();
 
-    Components::Camera& cam = reg.get<Components::Camera>(m_entity);
+//     Components::Camera& cam = reg.get<Components::Camera>(m_entity);
 
-    // If our camera target is dead, we update who we follow
-    if (!reg.valid(cam.target)) {
-        changeBody(Systems::entityManager().createSpectator(entt::null));
-    }
-}
+//     // If our camera target is dead, we update who we follow
+//     if (!reg.valid(cam.target)) {
+//         changeBody(Systems::entityManager().createSpectator(entt::null));
+//     }
+// }
 
 void Client::writeGameState() {
     entt::registry& reg = Systems::entityManager().getRegistry();
