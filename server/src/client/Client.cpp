@@ -5,7 +5,6 @@
 #include <box2d/b2_math.h>
 #include <box2d/b2_world.h>
 
-#include "Systems.hpp"
 #include "ecs/EntityManager.hpp"
 #include "ecs/components.hpp"
 #include "packet/buffer/PacketReader.hpp"
@@ -15,9 +14,10 @@
 std::unordered_map<uint32_t, Client*> clients;
 std::mutex clientsMutex;
 
-Client::Client(uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id)
-    : m_ws(ws), m_id(id) {
-    changeBody(Systems::entityManager().createSpectator(entt::null));
+Client::Client(GameServer& gameServer,
+               uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id)
+    : m_gameServer(gameServer), m_ws(ws), m_id(id) {
+    changeBody(m_gameServer.m_entityManager.createSpectator(entt::null));
 }
 
 Client::~Client() {
@@ -60,7 +60,7 @@ void Client::onSpawn() {
 void Client::onMouse() {
     const float angle = m_reader.readFloat();
 
-    entt::registry& reg = Systems::entityManager().getRegistry();
+    entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
     Components::Input& input = reg.get<Components::Input>(m_entity);
     input.angle = angle;
 }
@@ -68,31 +68,21 @@ void Client::onMouse() {
 void Client::onMovement() {
     const uint8_t direction = m_reader.readU8();
 
-    entt::registry& reg = Systems::entityManager().getRegistry();
+    entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
     Components::Input& input = reg.get<Components::Input>(m_entity);
     input.direction = direction;
 }
 
-// TODO: idk if i want this behavior. Maybe if the player dies, we spectate the
-// killer, if the killer dies, we just spectate where we died at
-// void Client::updateCamera() {
-//     entt::registry& reg = Systems::entityManager().getRegistry();
-
-//     Components::Camera& cam = reg.get<Components::Camera>(m_entity);
-
-//     // If our camera target is dead, we update who we follow
-//     if (!reg.valid(cam.target)) {
-//         changeBody(Systems::entityManager().createSpectator(entt::null));
-//     }
-// }
-
 void Client::writeGameState() {
-    entt::registry& reg = Systems::entityManager().getRegistry();
+    entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
+
     Components::Camera& cam = reg.get<Components::Camera>(m_entity);
 
-    b2Body* body = reg.get<Components::Body>(cam.target).body;
-
-    const b2Vec2& pos = body->GetPosition();
+    // pos is last camera position if target is invalid
+    b2Vec2 pos =
+        cam.target == entt::null
+            ? cam.position
+            : reg.get<Components::Body>(cam.target).body->GetPosition();
 
     float halfViewX = meters(cam.width) * 0.5;
     float halfViewY = meters(cam.height) * 0.5;
@@ -102,9 +92,9 @@ void Client::writeGameState() {
     queryAABB.lowerBound = b2Vec2(pos.x - halfViewX, pos.y - halfViewY);
     queryAABB.upperBound = b2Vec2(pos.x + halfViewX, pos.y + halfViewY);
 
-    b2World* world = Systems::physicsWorld().m_world.get();
+    b2World* world = m_gameServer.m_physicsWorld.m_world.get();
 
-    PhysicsWorld& physicsWorld = Systems::physicsWorld();
+    PhysicsWorld& physicsWorld = m_gameServer.m_physicsWorld;
     physicsWorld.m_queryCallback->entities.clear();
     world->QueryAABB(physicsWorld.m_queryCallback, queryAABB);
 
@@ -144,8 +134,8 @@ void Client::writeGameState() {
 
             m_writer.writeU32(static_cast<uint32_t>(entity));
             m_writer.writeU8(type);
-            m_writer.writeFloat(body->GetPosition().x);
-            m_writer.writeFloat(body->GetPosition().y);
+            m_writer.writeFloat(pixels(body->GetPosition().x));
+            m_writer.writeFloat(pixels(body->GetPosition().y));
             m_writer.writeFloat(body->GetAngle());
         }
     }
@@ -158,8 +148,8 @@ void Client::writeGameState() {
             Components::Body& body = reg.get<Components::Body>(entity);
 
             m_writer.writeU32(static_cast<uint32_t>(entity));
-            m_writer.writeFloat(body.body->GetPosition().x);
-            m_writer.writeFloat(body.body->GetPosition().y);
+            m_writer.writeFloat(pixels(body.body->GetPosition().x));
+            m_writer.writeFloat(pixels(body.body->GetPosition().y));
             m_writer.writeFloat(body.body->GetAngle());
         }
     }
@@ -187,7 +177,7 @@ void Client::changeBody(entt::entity entity) {
     m_entity = entity;
 
     // link client to entity
-    entt::registry& reg = Systems::entityManager().getRegistry();
+    entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
     reg.emplace<Components::Client>(entity, m_id);
 
     // write set-camera packet with cam target entity

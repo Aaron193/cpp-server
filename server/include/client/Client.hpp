@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "GameServer.hpp"
 #include "packet/buffer/PacketReader.hpp"
 #include "packet/buffer/PacketWriter.hpp"
 #include "util/Vec2.hpp"
@@ -30,7 +31,8 @@ class Client {
     std::string m_name;
     bool m_active = false;
 
-    Client(uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id);
+    Client(GameServer& gameServer,
+           uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id);
     ~Client();
 
     void changeBody(entt::entity entity);
@@ -48,10 +50,11 @@ class Client {
 
    private:
     std::unordered_set<entt::entity> m_previousVisibleEntities;
+    GameServer& m_gameServer;
 };
 
-extern std::unordered_map<uint32_t, Client*> clients;
-extern std::mutex clientsMutex;
+// extern std::unordered_map<uint32_t, Client*> clients;
+// extern std::mutex clientsMutex;
 
 // TODO: put this somewhere else
 enum ClientHeader { SPAWN, MOUSE, MOVEMENT };

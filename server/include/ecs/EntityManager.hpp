@@ -5,12 +5,15 @@
 
 enum EntityTypes : uint8_t { SPECTATOR, PLAYER };
 
+class GameServer;
+
 class EntityManager {
    private:
     entt::registry m_registry;
+    GameServer& m_gameServer;
 
    public:
-    EntityManager() = default;
+    EntityManager(GameServer& gameServer);
 
     EntityManager(const EntityManager&) = delete;
     EntityManager& operator=(const EntityManager&) = delete;

@@ -1,4 +1,3 @@
-
 #include "GameServer.hpp"
 
 #include <box2d/b2_fixture.h>
@@ -12,28 +11,12 @@
 #include <stdexcept>
 #include <thread>
 
-#include "SocketServer.hpp"
-#include "Systems.hpp"
 #include "client/Client.hpp"
 #include "ecs/EntityManager.hpp"
 #include "ecs/components.hpp"
 #include "physics/PhysicsWorld.hpp"
 
-GameServer::GameServer() noexcept : m_running(false) { start(); }
-
-GameServer::~GameServer() {
-    stop();
-    if (m_serverThread.joinable()) {
-        m_serverThread.join();
-    }
-}
-
-void GameServer::start() {
-    m_running = true;
-    m_serverThread = std::thread(&GameServer::run, this);
-}
-
-void GameServer::stop() { m_running = false; }
+GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {}
 
 void GameServer::run() {
     std::cout << "starting game server!" << std::endl;
@@ -42,7 +25,7 @@ void GameServer::run() {
 
     auto lastTime = std::chrono::steady_clock::now();
 
-    while (m_running) {
+    while (1) {
         auto currentTime = std::chrono::steady_clock::now();
         std::chrono::duration<double> deltaTime = currentTime - lastTime;
         lastTime = currentTime;
@@ -54,16 +37,14 @@ void GameServer::run() {
 }
 
 void GameServer::processClientMessages() {
-    SocketServer& socketServer = Systems::socketServer();
+    std::lock_guard<std::mutex> lock(m_clientsMutex);
 
-    std::lock_guard<std::mutex> lock(clientsMutex);
-
-    for (auto& message : socketServer.m_messages) {
+    for (auto& message : m_messages) {
         uint32_t id = message.first;
         std::string_view data = message.second;
 
-        auto it = clients.find(id);
-        if (it != clients.end()) {
+        auto it = m_clients.find(id);
+        if (it != m_clients.end()) {
             Client* client = it->second;
             try {  // TODO: I dont really like try-catch. Maybe lets just not
                    // read outside buffer and set outside bytes to zero
@@ -76,7 +57,7 @@ void GameServer::processClientMessages() {
         }
     }
 
-    socketServer.m_messages.clear();
+    m_messages.clear();
 }
 
 void GameServer::tick(double delta) {
@@ -88,17 +69,17 @@ void GameServer::tick(double delta) {
         prePhysicsSystemUpdate();
 
         /* Physics update */
-        Systems::physicsWorld().tick(delta);
+        m_physicsWorld.tick(delta);
 
         /* Post physics systems */
 
-        Systems::entityManager().removeEntities();
+        m_entityManager.removeEntities();
     }
 
     {  // server update
-        std::lock_guard<std::mutex> lock(clientsMutex);
+        std::lock_guard<std::mutex> lock(m_clientsMutex);
 
-        for (auto& c : clients) {
+        for (auto& c : m_clients) {
             Client& client = *c.second;
             client.writeGameState();
             client.sendBytes();
@@ -115,14 +96,12 @@ void GameServer::prePhysicsSystemUpdate() {
 }
 
 void GameServer::inputSystem() {
-    auto view = Systems::entityManager()
-                    .getRegistry()
+    auto view = m_entityManager.getRegistry()
                     .view<Components::Input, Components::Body>();
 
     for (auto entity : view) {
         auto input =
-            Systems::entityManager().getRegistry().get<Components::Input>(
-                entity);
+            m_entityManager.getRegistry().get<Components::Input>(entity);
 
         uint8_t direction = input.direction;
         float angle = input.angle;
@@ -147,10 +126,8 @@ void GameServer::inputSystem() {
         b2Vec2 inputVector = b2Vec2(x, y);
         b2Vec2 velocity = b2Vec2(inputVector.x * speed, inputVector.y * speed);
 
-        b2Body* body = Systems::entityManager()
-                           .getRegistry()
-                           .get<Components::Body>(entity)
-                           .body;
+        b2Body* body =
+            m_entityManager.getRegistry().get<Components::Body>(entity).body;
 
         body->SetLinearVelocity(velocity);
         body->SetTransform(body->GetTransform().p, angle);
@@ -158,22 +135,21 @@ void GameServer::inputSystem() {
 }
 
 // TODO: i dont really like how this iterates over the clients and not the
-// camera components. but we need the client in order to call changeBody, which
-// notifies their socket with the new client and stuff...
+// camera components.
 void GameServer::cameraSystem() {
-    std::lock_guard<std::mutex> lock(clientsMutex);
+    std::lock_guard<std::mutex> lock(m_clientsMutex);
 
-    for (auto& c : clients) {
+    for (auto& c : m_clients) {
         Client& client = *c.second;
 
-        entt::registry& reg = Systems::entityManager().getRegistry();
+        entt::registry& reg = m_entityManager.getRegistry();
 
         Components::Camera& cam = reg.get<Components::Camera>(client.m_entity);
 
-        // If our camera target is dead, we update who we follow
-        if (!reg.valid(cam.target)) {
-            client.changeBody(
-                Systems::entityManager().createSpectator(entt::null));
+        // set cam.position to target position
+        if (reg.valid(cam.target)) {
+            b2Body* body = reg.get<Components::Body>(cam.target).body;
+            cam.position = body->GetPosition();
         }
     }
 }

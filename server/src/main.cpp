@@ -3,10 +3,14 @@
 
 #include <iostream>
 
-#include "Game.hpp"
+#include "GameServer.hpp"
+#include "SocketServer.hpp"
 
 int main() {
     std::cout << "Game has Started!" << std::endl;
 
-    new Game(9001);
+    GameServer gameServer;
+    SocketServer socketServer(gameServer, 9001);
+
+    gameServer.run();
 }

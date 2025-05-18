@@ -1,4 +1,7 @@
+#pragma once
+
 #include <box2d/b2_body.h>
+#include <box2d/b2_math.h>
 
 #include <entt/entt.hpp>
 
@@ -25,6 +28,7 @@ struct Networked {};
 
 struct Camera {
     entt::entity target;
+    b2Vec2 position;
     int width = 1920;
     int height = 1080;
 };

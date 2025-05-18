@@ -1,21 +1,27 @@
 #pragma once
 
-#include <atomic>
-#include <thread>
+#include <mutex>
 
+#include "ecs/EntityManager.hpp"
+#include "physics/PhysicsWorld.hpp"
+
+class Client;
 class GameServer {
    public:
-    GameServer() noexcept;
-    ~GameServer();
+    GameServer();
+    ~GameServer() = default;
 
-    void start();
-    void stop();
+    EntityManager m_entityManager;
+    PhysicsWorld m_physicsWorld;
+    std::unordered_map<uint32_t, Client*> m_clients;
+    std::mutex m_clientsMutex;
 
-   private:
-    std::thread m_serverThread;
-    std::atomic<bool> m_running;
+    // incoming network messages
+    std::vector<std::pair<uint32_t, std::string>> m_messages;
 
     void run();
+
+   private:
     void processClientMessages();
     void tick(double delta);
     void prePhysicsSystemUpdate();
