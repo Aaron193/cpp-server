@@ -20,7 +20,8 @@ GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {}
 
 void GameServer::run() {
     std::cout << "starting game server!" << std::endl;
-    const double tickRate = 10.0;
+
+    const double tickRate = 30.0;
     const std::chrono::duration<double> tickInterval(1.0 / tickRate);
 
     auto lastTime = std::chrono::steady_clock::now();
@@ -30,7 +31,10 @@ void GameServer::run() {
         std::chrono::duration<double> deltaTime = currentTime - lastTime;
         lastTime = currentTime;
 
-        tick(deltaTime.count());
+        // socket server is ready
+        if (m_socketLoop) {
+            tick(deltaTime.count());
+        }
 
         std::this_thread::sleep_for(tickInterval);
     }
@@ -77,12 +81,23 @@ void GameServer::tick(double delta) {
     }
 
     {  // server update
-        std::lock_guard<std::mutex> lock(m_clientsMutex);
+        {
+            std::lock_guard<std::mutex> lock(m_clientsMutex);
 
-        for (auto& c : m_clients) {
-            Client& client = *c.second;
-            client.writeGameState();
-            client.sendBytes();
+            for (auto& c : m_clients) {
+                Client& client = *c.second;
+                client.writeGameState();
+            }
+        }
+        {
+            m_socketLoop->defer([&]() {
+                std::lock_guard<std::mutex> lock(m_clientsMutex);
+
+                for (auto& c : m_clients) {
+                    Client& client = *c.second;
+                    client.sendBytes();
+                }
+            });
         }
     }
 }
@@ -106,22 +121,22 @@ void GameServer::inputSystem() {
         uint8_t direction = input.direction;
         float angle = input.angle;
 
-        uint8_t x = 0;
-        uint8_t y = 0;
+        float x = 0;
+        float y = 0;
 
-        if (direction & 1) y = -1;
-        if (direction & 2) x = -1;
-        if (direction & 4) y = 1;
-        if (direction & 8) x = 1;
+        if (direction & 1) y = -1.0f;
+        if (direction & 2) x = -1.0f;
+        if (direction & 4) y = 1.0f;
+        if (direction & 8) x = 1.0f;
 
         // normalize input vector
-        int length = std::sqrt(x * x + y * y);
-        if (length != 0) {
+        float length = std::sqrt(x * x + y * y);
+        if (length != 0.0f) {
             x /= length;
             y /= length;
         }
 
-        const int speed = 5;
+        const float speed = 5.0f;
 
         b2Vec2 inputVector = b2Vec2(x, y);
         b2Vec2 velocity = b2Vec2(inputVector.x * speed, inputVector.y * speed);
@@ -129,8 +144,10 @@ void GameServer::inputSystem() {
         b2Body* body =
             m_entityManager.getRegistry().get<Components::Body>(entity).body;
 
+        assert(body != nullptr);
+
         body->SetLinearVelocity(velocity);
-        body->SetTransform(body->GetTransform().p, angle);
+        body->SetTransform(body->GetPosition(), angle);
     }
 }
 

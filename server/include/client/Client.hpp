@@ -11,7 +11,6 @@
 #include "GameServer.hpp"
 #include "packet/buffer/PacketReader.hpp"
 #include "packet/buffer/PacketWriter.hpp"
-#include "util/Vec2.hpp"
 
 struct WebSocketData {
     uint32_t id;

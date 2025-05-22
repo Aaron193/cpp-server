@@ -1,64 +1,89 @@
-import { PacketReader, PacketWriter } from "../packet";
-import { isDevelopment } from "../utils/environment";
-import { IMessage } from "./messages/IMessage";
-import { MessageFactory } from "./messages/MessageFactory";
-
+import { GameClient } from '../GameClient'
+import { ClientHeader, PacketReader, PacketWriter } from '../packet'
+import { isDevelopment } from '../utils/environment'
+import { IMessage } from './messages/IMessage'
+import { MessageFactory } from './messages/MessageFactory'
 
 export class Socket {
-    private ws: WebSocket | null = null;
-    private streamReader: PacketReader = new PacketReader();
-    private streamWriter: PacketWriter = new PacketWriter();
+    private ws: WebSocket | null = null
+    public streamReader: PacketReader = new PacketReader()
+    public streamWriter: PacketWriter = new PacketWriter()
+    private messages: IMessage[] = []
+    private client: GameClient
 
+    constructor(client: GameClient) {
+        this.client = client
+    }
 
     public connect(): void {
         if (this.isOpen()) {
             throw new Error(
                 'SOCKET::CONNECT - Attempting to connect to the server while a connection has already been established'
-            );
+            )
         }
 
         if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
-            throw new Error('SOCKET::CONNECT - Attempting to connect to the server while a connection is in progress');
+            throw new Error(
+                'SOCKET::CONNECT - Attempting to connect to the server while a connection is in progress'
+            )
         }
 
-        const url = isDevelopment() ? 'ws://localhost:3000' : location.href.replace('https', 'wss');
-        this.ws = new WebSocket(url);
-        this.ws.binaryType = 'arraybuffer';
-        this.ws.onopen = this.onOpen.bind(this);
-        this.ws.onclose = this.onClose.bind(this);
-        this.ws.onmessage = this.onMessage.bind(this);
+        const url = isDevelopment()
+            ? 'ws://localhost:9001'
+            : location.href.replace('https', 'wss')
+        this.ws = new WebSocket(url)
+        this.ws.binaryType = 'arraybuffer'
+        this.ws.onopen = this.onOpen.bind(this)
+        this.ws.onclose = this.onClose.bind(this)
+        this.ws.onmessage = this.onMessage.bind(this)
     }
 
     private onOpen(): void {
-        console.log('Socket opened');
+        this.streamWriter.writeU8(ClientHeader.SPAWN)
+        this.streamWriter.writeString('Player')
+        this.flush()
     }
 
     private onClose(): void {
-        console.log('Socket closed');
+        console.log('Socket closed')
     }
 
     private onMessage(msg: MessageEvent): void {
-        const data = msg.data;
+        const data = msg.data
         if (typeof data === 'string') {
-            throw new Error("Received string data from server, shouldn't happen");
+            throw new Error(
+                "Received string data from server, shouldn't happen"
+            )
         }
 
-        this.streamReader.loadBuffer(data);
+        this.streamReader.loadBuffer(data)
 
         while (this.streamReader.getOffset() < this.streamReader.byteLength()) {
-            const message: IMessage = MessageFactory.createMessage(this.streamReader);
-            message.process();
+            const message: IMessage = MessageFactory.createMessage(
+                this.streamReader
+            )
+            this.messages.push(message)
         }
+    }
+
+    public *[Symbol.iterator](): IterableIterator<IMessage> {
+        let i = 0
+
+        while (i < this.messages.length) {
+            yield this.messages[i++]
+        }
+
+        this.messages.length = 0
     }
 
     public isOpen(): boolean {
-        return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+        return this.ws !== null && this.ws.readyState === WebSocket.OPEN
     }
 
     public flush(): void {
-        if (this.isOpen()) {
-            this.ws!.send(this.streamWriter.getMessage());
-            this.streamWriter.clear();
+        if (this.isOpen() && this.streamWriter.hasData()) {
+            this.ws!.send(this.streamWriter.getMessage())
+            this.streamWriter.clear()
         }
     }
 }

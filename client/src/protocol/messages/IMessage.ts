@@ -1,3 +1,5 @@
+import { GameClient } from '../../GameClient'
+
 export interface IMessage {
-    process(): void;
+    process(client: GameClient): void
 }

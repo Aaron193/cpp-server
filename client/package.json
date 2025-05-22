@@ -26,6 +26,6 @@
         "webpack-dev-server": "^5.1.0"
     },
     "dependencies": {
-        "bitecs": "^0.3.40"
+        "pixi.js": "^8.9.2"
     }
 }

@@ -5,12 +5,15 @@
 
 #include <entt/entt.hpp>
 
-#include "Systems.hpp"
+#include "GameServer.hpp"
 #include "ecs/components.hpp"
 #include "physics/PhysicsWorld.hpp"
 #include "util/units.hpp"
 
 using namespace Components;
+
+EntityManager::EntityManager(GameServer& gameServer)
+    : m_gameServer(gameServer) {}
 
 entt::entity EntityManager::createSpectator(entt::entity followee) {
     entt::entity entity = m_registry.create();
@@ -36,7 +39,7 @@ entt::entity EntityManager::createPlayer() {
     m_registry.emplace<Camera>(entity, entity);
     m_registry.emplace<Input>(entity);
 
-    b2World* world = Systems::physicsWorld().m_world.get();
+    b2World* world = m_gameServer.m_physicsWorld.m_world.get();
 
     // Define the body
     b2BodyDef bodyDef;
@@ -75,20 +78,24 @@ void EntityManager::scheduleForRemoval(entt::entity entity) {
 }
 
 void EntityManager::removeEntities() {
-    m_registry.view<Removal>().each([this](auto entity) {
-        Components::Body& bodyComponent = m_registry.get<Body>(entity);
-        if (bodyComponent.body) {
-            EntityBodyUserData* userData =
-                reinterpret_cast<EntityBodyUserData*>(
-                    bodyComponent.body->GetUserData().pointer);
-            delete userData;
-            bodyComponent.body->GetUserData().pointer = 0;
-            Systems::physicsWorld().m_world->DestroyBody(bodyComponent.body);
+    m_registry.view<Removal>().each([this](entt::entity entity) {
+        if (auto* bodyComponent =
+                m_registry.try_get<Components::Body>(entity)) {
+            if (bodyComponent->body) {
+                if (bodyComponent->body->GetUserData().pointer) {
+                    delete reinterpret_cast<EntityBodyUserData*>(
+                        bodyComponent->body->GetUserData().pointer);
+                    bodyComponent->body->GetUserData().pointer = 0;
+                }
+                m_gameServer.m_physicsWorld.m_world->DestroyBody(
+                    bodyComponent->body);
+                bodyComponent->body = nullptr;
+            }
         }
-        bodyComponent.body = nullptr;
-
-        m_registry.destroy(entity);
     });
+
+    auto view = m_registry.view<Removal>();
+    m_registry.destroy(view.begin(), view.end());
 }
 
 entt::entity EntityManager::getFollowEntity() {

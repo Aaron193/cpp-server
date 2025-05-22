@@ -1,23 +1,21 @@
-import { Renderer } from "./renderer/Renderer";
+import { GameClient } from './GameClient'
 
-const renderer = new Renderer(
-    document.querySelector("#canvas") as HTMLCanvasElement,
-    (document.querySelector("#canvas") as HTMLCanvasElement).getContext("2d") as CanvasRenderingContext2D
-);
+window.onload = async function () {
+    console.log('window loaded')
 
-function loop(timestamp: number = 0) {
+    const client = await GameClient.create()
 
-    const now = Date.now();
-    const delta = (now - timestamp) / 1000;
+    let tick = 0
+    let previous = performance.now()
+    const loop = function () {
+        window.requestAnimationFrame(loop)
+        let now = performance.now()
+        let delta = (now - previous) / 1000
+        previous = now
+        tick++
 
-    renderer.render(delta);
-    
-    requestAnimationFrame(loop);
+        client.update(delta, tick, now)
+    }
 
+    loop()
 }
-
-function main() {
-    loop();
-}
-
-main();

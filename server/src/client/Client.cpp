@@ -52,8 +52,10 @@ void Client::onSpawn() {
     m_name = name;
     m_active = true;
 
+    m_gameServer.m_entityManager.scheduleForRemoval(m_entity);
+    changeBody(m_gameServer.m_entityManager.createPlayer());
+
     m_writer.writeU8(ServerHeader::SPAWN_SUCCESS);
-    // entt::entity is a uint32_t
     m_writer.writeU32(static_cast<uint32_t>(m_entity));
 }
 
@@ -142,7 +144,7 @@ void Client::writeGameState() {
 
     // Entity update serialization (entity is still in the client's view)
     if (!update.empty()) {
-        m_writer.writeU8(ServerHeader::ENTITY_CREATE);
+        m_writer.writeU8(ServerHeader::ENTITY_UPDATE);
         m_writer.writeU32(static_cast<uint32_t>(update.size()));
         for (entt::entity entity : update) {
             Components::Body& body = reg.get<Components::Body>(entity);
@@ -156,7 +158,8 @@ void Client::writeGameState() {
 
     // Entity removal serialization (entity has left the client's view)
     if (!remove.empty()) {
-        m_writer.writeU8(ServerHeader::ENTITY_CREATE);
+        std::cout << "removing an entity!" << std::endl;
+        m_writer.writeU8(ServerHeader::ENTITY_REMOVE);
         m_writer.writeU32(static_cast<uint32_t>(remove.size()));
         for (entt::entity entity : remove) {
             m_writer.writeU32(static_cast<uint32_t>(entity));

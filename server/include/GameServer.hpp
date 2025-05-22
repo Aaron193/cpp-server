@@ -1,5 +1,7 @@
 #pragma once
 
+#include <uwebsockets/Loop.h>
+
 #include <mutex>
 
 #include "ecs/EntityManager.hpp"
@@ -10,6 +12,8 @@ class GameServer {
    public:
     GameServer();
     ~GameServer() = default;
+
+    uWS::Loop* m_socketLoop = nullptr;
 
     EntityManager m_entityManager;
     PhysicsWorld m_physicsWorld;

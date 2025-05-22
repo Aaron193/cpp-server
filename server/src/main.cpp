@@ -11,6 +11,5 @@ int main() {
 
     GameServer gameServer;
     SocketServer socketServer(gameServer, 9001);
-
     gameServer.run();
 }
