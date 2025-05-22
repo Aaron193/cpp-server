@@ -1,14 +1,12 @@
 import * as PIXI from 'pixi.js'
 import { NameTag } from './NameTag'
 import { GameClient } from '../GameClient'
-import { IEntity } from './Entity'
+import { Entity } from './Entity'
 
-export class Player extends PIXI.Container implements IEntity {
+export class Player extends Entity {
     nameTag: NameTag
     body: PIXI.Graphics
     name: string = 'Player'
-    id: number = -1
-    type: number = -1
     client: GameClient
 
     constructor(client: GameClient) {

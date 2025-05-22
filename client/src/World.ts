@@ -1,9 +1,10 @@
+import { Entity } from './graphics/Entity'
 import { Player } from './graphics/Player'
 import { Renderer } from './Renderer'
-
+import * as PIXI from 'pixi.js'
 export class World {
     renderer: Renderer
-    entities: Map<number, Player> = new Map()
+    entities: Map<number, Entity> = new Map()
     myEntityId: number = -1
 
     private constructor(renderer: Renderer) {
