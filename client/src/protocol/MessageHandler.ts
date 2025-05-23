@@ -109,7 +109,7 @@ export class MessageHandler {
                 break
             }
             case ServerHeader.PLAYER_LEAVE: {
-                console.log('Player join')
+                console.log('Player leave')
                 const id = reader.readU32()
 
                 Nicknames.delete(id)
