@@ -1,14 +1,12 @@
 import { GameClient } from '../GameClient'
 import { ClientHeader, PacketReader, PacketWriter } from '../packet'
 import { isDevelopment } from '../utils/environment'
-import { IMessage } from './messages/IMessage'
-import { MessageFactory } from './messages/MessageFactory'
+import { MessageHandler } from './MessageHandler'
 
 export class Socket {
     private ws: WebSocket | null = null
     public streamReader: PacketReader = new PacketReader()
     public streamWriter: PacketWriter = new PacketWriter()
-    private messages: IMessage[] = []
     private client: GameClient
 
     constructor(client: GameClient) {
@@ -59,21 +57,8 @@ export class Socket {
         this.streamReader.loadBuffer(data)
 
         while (this.streamReader.getOffset() < this.streamReader.byteLength()) {
-            const message: IMessage = MessageFactory.createMessage(
-                this.streamReader
-            )
-            this.messages.push(message)
+            MessageHandler.handle(this.streamReader, this.client)
         }
-    }
-
-    public *[Symbol.iterator](): IterableIterator<IMessage> {
-        let i = 0
-
-        while (i < this.messages.length) {
-            yield this.messages[i++]
-        }
-
-        this.messages.length = 0
     }
 
     public isOpen(): boolean {

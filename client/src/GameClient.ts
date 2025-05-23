@@ -23,16 +23,9 @@ export class GameClient {
     }
 
     update(delta: number, tick: number, now: number) {
-        for (const message of this.socket) {
-            message.process(this)
-        }
-
-        this.socket.flush()
-
         this.world.update(delta)
 
         // socket event-triggered messages or whatever
-
         if (this.lastSendDirection !== this.currentDirection) {
             this.lastSendDirection = this.currentDirection
             this.socket.streamWriter.writeU8(ClientHeader.MOVEMENT)
