@@ -6,10 +6,10 @@ export const enum ClientHeader {
 
 export const enum ServerHeader {
     SPAWN_SUCCESS,
-    CLIENT_CONNECT,
-    CLIENT_DISCONNECT,
     SET_CAMERA,
     ENTITY_CREATE,
     ENTITY_UPDATE,
     ENTITY_REMOVE,
+    PLAYER_JOIN,
+    PLAYER_LEAVE,
 }

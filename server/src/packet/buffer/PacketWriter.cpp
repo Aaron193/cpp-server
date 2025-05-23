@@ -15,6 +15,8 @@ void PacketWriter::writeFloat(float x) {
 }
 
 void PacketWriter::writeString(const std::string& x) {
+    uint16_t len = static_cast<uint16_t>(x.length());
+    writeU16(len);
     for (const unsigned char& c : x) {
         writeU8(c);
     }

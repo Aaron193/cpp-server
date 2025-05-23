@@ -39,6 +39,7 @@ class Client {
     void onMessage(const std::string_view& message);
 
     void onSpawn();
+    void onClose();
     void onMovement();
     void onMouse();
 
@@ -52,17 +53,14 @@ class Client {
     GameServer& m_gameServer;
 };
 
-// extern std::unordered_map<uint32_t, Client*> clients;
-// extern std::mutex clientsMutex;
-
 // TODO: put this somewhere else
 enum ClientHeader { SPAWN, MOUSE, MOVEMENT };
 enum ServerHeader {
     SPAWN_SUCCESS,
-    CLIENT_CONNECT,
-    CLIENT_DISCONNECT,
     SET_CAMERA,
     ENTITY_CREATE,
     ENTITY_UPDATE,
     ENTITY_REMOVE,
+    PLAYER_JOIN,
+    PLAYER_LEAVE,
 };

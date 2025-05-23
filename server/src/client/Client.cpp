@@ -5,14 +5,13 @@
 #include <box2d/b2_math.h>
 #include <box2d/b2_world.h>
 
+#include <iostream>
+
 #include "ecs/EntityManager.hpp"
 #include "ecs/components.hpp"
 #include "packet/buffer/PacketReader.hpp"
 #include "physics/PhysicsWorld.hpp"
 #include "util/units.hpp"
-
-std::unordered_map<uint32_t, Client*> clients;
-std::mutex clientsMutex;
 
 Client::Client(GameServer& gameServer,
                uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id)
@@ -52,11 +51,38 @@ void Client::onSpawn() {
     m_name = name;
     m_active = true;
 
+    // TODO: maybe add this scheduleForRemoval to the changeBody method...
     m_gameServer.m_entityManager.scheduleForRemoval(m_entity);
     changeBody(m_gameServer.m_entityManager.createPlayer());
 
     m_writer.writeU8(ServerHeader::SPAWN_SUCCESS);
     m_writer.writeU32(static_cast<uint32_t>(m_entity));
+    std::cout << "User " << m_name << " has connected" << std::endl;
+
+    // notify clients about our new player
+    // the caller holds the lock, we are safe to access m_clients... (Maybe use
+    // recursive mutex to avoid deadlocks?)
+    for (auto& [id, client] : m_gameServer.m_clients) {
+        if (client != this) {
+            client->m_writer.writeU8(ServerHeader::PLAYER_JOIN);
+            client->m_writer.writeU32(static_cast<uint32_t>(m_entity));
+            client->m_writer.writeString(m_name);
+        }
+        m_writer.writeU8(ServerHeader::PLAYER_JOIN);
+        m_writer.writeU32(static_cast<uint32_t>(client->m_entity));
+        m_writer.writeString(client->m_name);
+    }
+}
+
+void Client::onClose() {
+    // the caller holds the lock, we are safe to access m_clients... (Maybe use
+    // recursive mutex to avoid deadlocks?)
+    for (auto& [id, client] : m_gameServer.m_clients) {
+        if (client != this) {
+            client->m_writer.writeU8(ServerHeader::PLAYER_LEAVE);
+            client->m_writer.writeU32(static_cast<uint32_t>(m_entity));
+        }
+    }
 }
 
 void Client::onMouse() {

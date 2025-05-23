@@ -18,6 +18,7 @@ class GameServer {
     EntityManager m_entityManager;
     PhysicsWorld m_physicsWorld;
     std::unordered_map<uint32_t, Client*> m_clients;
+    // TODO: use a recursive mutex to avoid deadlocks??
     std::mutex m_clientsMutex;
 
     // incoming network messages

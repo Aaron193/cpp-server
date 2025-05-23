@@ -3,17 +3,20 @@ import { NameTag } from './NameTag'
 import { GameClient } from '../GameClient'
 import { Entity } from './Entity'
 
+export const Nicknames = new Map<number, string>()
+
 export class Player extends Entity {
     nameTag: NameTag
     body: PIXI.Graphics
-    name: string = 'Player'
     client: GameClient
 
-    constructor(client: GameClient) {
+    constructor(client: GameClient, { id }: { id: number }) {
         super()
 
+        this.id = id
+
         this.client = client
-        this.nameTag = new NameTag(this.name)
+        this.nameTag = new NameTag(Nicknames.get(this.id) || 'Player')
         this.nameTag.position.set(0, -50)
 
         this.body = new PIXI.Graphics()

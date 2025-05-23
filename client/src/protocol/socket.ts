@@ -38,7 +38,7 @@ export class Socket {
 
     private onOpen(): void {
         this.streamWriter.writeU8(ClientHeader.SPAWN)
-        this.streamWriter.writeString('Player')
+        this.streamWriter.writeString('my name!')
         this.flush()
     }
 

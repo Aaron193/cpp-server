@@ -1,6 +1,6 @@
 import { PacketReader, ServerHeader } from '../packet'
 import { GameClient } from '../GameClient'
-import { Player } from '../graphics/Player'
+import { Nicknames, Player } from '../graphics/Player'
 import { assert } from '../utils/assert'
 import { Entity } from '../graphics/Entity'
 import { EntityTypes } from '../EntityTypes'
@@ -38,7 +38,7 @@ export class MessageHandler {
 
                     switch (type) {
                         case EntityTypes.PLAYER: {
-                            entity = new Player(client)
+                            entity = new Player(client, { id })
                             break
                         }
                         case EntityTypes.CRATE: {
@@ -50,12 +50,12 @@ export class MessageHandler {
                         }
                     }
 
+                    // todo: don't do this here...
                     entity.position.x = x
                     entity.position.y = y
                     entity.angle = angle
                     entity.id = id
                     entity.type = type
-                    entity.name = `Player ${id}`
 
                     client.world.entities.set(id, entity)
                 }
@@ -98,6 +98,21 @@ export class MessageHandler {
                     entity.destroy()
                     client.world.entities.delete(id)
                 }
+                break
+            }
+            case ServerHeader.PLAYER_JOIN: {
+                console.log('Player join')
+                const id = reader.readU32()
+                const name = reader.readString()
+
+                Nicknames.set(id, name)
+                break
+            }
+            case ServerHeader.PLAYER_LEAVE: {
+                console.log('Player join')
+                const id = reader.readU32()
+
+                Nicknames.delete(id)
                 break
             }
             default:

@@ -73,6 +73,10 @@ void SocketServer::run() {
                                             }),
                              m_gameServer.m_messages.end());
 
+                         // todo: setup all client logic on disconnect to be in
+                         // this method.. also do same with onopen, etc (if
+                         // needed).
+                         client->onClose();
                          delete client;
                          m_gameServer.m_clients.erase(it);
                      }
