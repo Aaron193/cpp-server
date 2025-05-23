@@ -21,6 +21,8 @@ GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {}
 void GameServer::run() {
     std::cout << "starting game server!" << std::endl;
 
+    m_entityManager.createCrate();
+
     const double tickRate = 30.0;
     const std::chrono::duration<double> tickInterval(1.0 / tickRate);
 
@@ -136,7 +138,7 @@ void GameServer::inputSystem() {
             y /= length;
         }
 
-        const float speed = 5.0f;
+        const float speed = 2.5f;
 
         b2Vec2 inputVector = b2Vec2(x, y);
         b2Vec2 velocity = b2Vec2(inputVector.x * speed, inputVector.y * speed);

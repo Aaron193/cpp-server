@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <entt/entt.hpp>
 
-enum EntityTypes : uint8_t { SPECTATOR, PLAYER };
+enum EntityTypes : uint8_t { SPECTATOR, PLAYER, CRATE };
 
 class GameServer;
 
@@ -22,6 +22,7 @@ class EntityManager {
 
     entt::entity createSpectator(entt::entity folowee);
     entt::entity createPlayer();
+    entt::entity createCrate();
 
     void scheduleForRemoval(entt::entity entity);
     void removeEntities();

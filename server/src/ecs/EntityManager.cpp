@@ -2,6 +2,7 @@
 
 #include <box2d/b2_circle_shape.h>
 #include <box2d/b2_fixture.h>
+#include <box2d/b2_polygon_shape.h>
 
 #include <entt/entt.hpp>
 
@@ -56,7 +57,7 @@ entt::entity EntityManager::createPlayer() {
 
     // Create circular shape
     b2CircleShape circle;
-    circle.m_radius = meters(25.0 / 2.0);
+    circle.m_radius = meters(25.0f);
 
     // Add shape to a fixture
     b2FixtureDef fixtureDef;
@@ -67,6 +68,48 @@ entt::entity EntityManager::createPlayer() {
     fixtureDef.isSensor = false;
 
     // TODO: setup filter collision bitmasks
+
+    bodyComponent.body->CreateFixture(&fixtureDef);
+
+    return entity;
+}
+
+entt::entity EntityManager::createCrate() {
+    entt::entity entity = m_registry.create();
+
+    m_registry.emplace<Type>(entity, EntityTypes::CRATE);
+    auto& bodyComponent = m_registry.emplace<Body>(entity);
+    m_registry.emplace<Static>(entity);
+    m_registry.emplace<Networked>(entity);
+
+    b2World* world = m_gameServer.m_physicsWorld.m_world.get();
+
+    // Define the body
+    b2BodyDef bodyDef;
+    bodyDef.type = b2_staticBody;
+    bodyDef.position.Set(meters(0.0), meters(0.0));
+    bodyDef.fixedRotation = true;
+
+    // Assign User Data to point to our entity
+    EntityBodyUserData* userData = new EntityBodyUserData{entity};
+    bodyDef.userData.pointer = reinterpret_cast<uintptr_t>(userData);
+
+    // Create the b2Body and assign it to our component's 'body' member
+    bodyComponent.body = world->CreateBody(&bodyDef);
+
+    // Create box shape
+    b2PolygonShape box;
+    float halfWidth = meters(50.0f);
+    float halfHeight = meters(50.0f);
+    box.SetAsBox(halfWidth, halfHeight);
+
+    // Add shape to a fixture
+    b2FixtureDef fixtureDef;
+    fixtureDef.shape = &box;
+    fixtureDef.density = 1.0f;
+    fixtureDef.friction = 0.0f;
+    fixtureDef.restitution = 0.0f;
+    fixtureDef.isSensor = false;
 
     bodyComponent.body->CreateFixture(&fixtureDef);
 

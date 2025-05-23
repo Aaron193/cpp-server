@@ -2,6 +2,9 @@ import { PacketReader, ServerHeader } from '../packet'
 import { GameClient } from '../GameClient'
 import { Player } from '../graphics/Player'
 import { assert } from '../utils/assert'
+import { Entity } from '../graphics/Entity'
+import { EntityTypes } from '../EntityTypes'
+import { Crate } from '../graphics/Crate'
 
 export class MessageHandler {
     static handle(reader: PacketReader, client: GameClient): void {
@@ -31,15 +34,30 @@ export class MessageHandler {
                     const y = reader.readFloat()
                     const angle = reader.readFloat()
 
-                    const player = new Player(client)
-                    player.position.x = x
-                    player.position.y = y
-                    player.angle = angle
-                    player.id = id
-                    player.type = type
-                    player.name = `Player ${id}`
+                    let entity: Entity
 
-                    client.world.entities.set(id, player)
+                    switch (type) {
+                        case EntityTypes.PLAYER: {
+                            entity = new Player(client)
+                            break
+                        }
+                        case EntityTypes.CRATE: {
+                            entity = new Crate(client)
+                            break
+                        }
+                        default: {
+                            throw new Error(`Unknown entity type: ${type}`)
+                        }
+                    }
+
+                    entity.position.x = x
+                    entity.position.y = y
+                    entity.angle = angle
+                    entity.id = id
+                    entity.type = type
+                    entity.name = `Player ${id}`
+
+                    client.world.entities.set(id, entity)
                 }
                 break
             }
