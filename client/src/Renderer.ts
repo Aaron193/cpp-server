@@ -45,7 +45,7 @@ export class Renderer {
             canvas: this.canvas,
             antialias: false,
             resolution: 1,
-            backgroundColor: 0x333333,
+            backgroundColor: 0x378047,
         })
 
         this.resize()

@@ -11,6 +11,8 @@ interface SnapShop {
 const TPS = 10
 const TIMESTEP = 1000 / TPS
 
+const PI2 = Math.PI * 2
+
 export class Interpolator {
     world: World
 
@@ -67,7 +69,7 @@ export class Interpolator {
                     if (snapshotB.timestamp === snapshotA.timestamp) {
                         // (we should never get here)
                         entity.position.set(snapshotA.x, snapshotA.y)
-                        entity.rotation = snapshotA.angle
+                        entity.setRot(snapshotA.angle)
                     } else {
                         const t =
                             (renderTime - snapshotA.timestamp) /
@@ -75,22 +77,25 @@ export class Interpolator {
                         const x = snapshotA.x + (snapshotB.x - snapshotA.x) * t
                         const y = snapshotA.y + (snapshotB.y - snapshotA.y) * t
 
-                        const angleDiff = snapshotB.angle - snapshotA.angle
-                        const angle = snapshotA.angle + angleDiff * t
+                        let angleA = snapshotA.angle
+                        let angleB = snapshotB.angle
+
+                        const delta = (angleB - angleA) % PI2
+                        const angle = angleA + (((2 * delta) % PI2) - delta) * t
 
                         entity.position.set(x, y)
-                        entity.rotation = angle
+                        entity.setRot(angle)
                     }
                 } else if (snapshotA && !snapshotB) {
                     entity.position.set(snapshotA.x, snapshotA.y)
-                    entity.rotation = snapshotA.angle
+                    entity.setRot(snapshotA.angle)
                 } else if (!snapshotA && snapshotB) {
                     entity.position.set(snapshotB.x, snapshotB.y)
-                    entity.rotation = snapshotB.angle
+                    entity.setRot(snapshotB.angle)
                 } else if (snapshots.length > 0) {
                     const mostRecent = snapshots[snapshots.length - 1]
                     entity.position.set(mostRecent.x, mostRecent.y)
-                    entity.rotation = mostRecent.angle
+                    entity.setRot(mostRecent.angle)
                 }
             }
         })

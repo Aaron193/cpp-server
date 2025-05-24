@@ -12,7 +12,7 @@ export class Crate extends Entity {
         this.client = client
 
         const crate = new PIXI.Sprite(PIXI.Texture.WHITE)
-        crate.tint = 0x8b4513
+        crate.tint = 0x5e4e2a
         crate.width = 100
         crate.height = 100
         crate.anchor.set(0.5)
@@ -24,5 +24,9 @@ export class Crate extends Entity {
 
     update(delta: number) {
         // do some update stuff or whatever
+    }
+
+    setRot(angle: number) {
+        this.rotation = angle
     }
 }

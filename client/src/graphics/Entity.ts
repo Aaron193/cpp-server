@@ -11,5 +11,7 @@ export abstract class Entity extends PIXI.Container {
     interpolate: boolean = false
     snapshots: { x: number; y: number; angle: number; timestamp: number }[] = []
 
-    abstract update(delta: number): void
+    abstract update(delta: number, tick: number, now: number): void
+
+    abstract setRot(angle: number): void
 }

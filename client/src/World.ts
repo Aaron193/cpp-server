@@ -19,11 +19,11 @@ export class World {
     }
 
     update(delta: number, tick: number, now: number) {
-        this.entities.forEach((entity) => {
-            entity.update(delta)
-        })
-
         this.interpolator.update(delta, tick, now)
+
+        this.entities.forEach((entity) => {
+            entity.update(delta, tick, now)
+        })
 
         const myEntity = this.entities.get(this.myEntityId)
 

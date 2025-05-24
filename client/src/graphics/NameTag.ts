@@ -11,7 +11,7 @@ export class NameTag extends PIXI.Container {
             text: this.name,
             style: new PIXI.TextStyle({
                 fontFamily: 'Arial',
-                fontSize: 24,
+                fontSize: 18,
                 fill: 0xffffff,
                 align: 'center',
             }),

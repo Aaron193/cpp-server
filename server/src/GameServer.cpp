@@ -167,13 +167,17 @@ void GameServer::cameraSystem() {
 
     for (auto& c : m_clients) {
         Client& client = *c.second;
-
         entt::registry& reg = m_entityManager.getRegistry();
+
+        assert(reg.valid(client.m_entity));
+        assert(reg.all_of<Components::Camera>(client.m_entity));
 
         Components::Camera& cam = reg.get<Components::Camera>(client.m_entity);
 
         // set cam.position to target position
         if (reg.valid(cam.target)) {
+            assert(reg.all_of<Components::Body>(cam.target));
+
             b2Body* body = reg.get<Components::Body>(cam.target).body;
             cam.position = body->GetPosition();
         }

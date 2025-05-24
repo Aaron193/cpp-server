@@ -1,3 +1,4 @@
+import { Player } from './graphics/Player'
 import { ClientHeader } from './packet'
 import { Socket } from './protocol/socket'
 import { World } from './World'
@@ -8,6 +9,10 @@ export class GameClient {
     lastSendDirection: number = 0
     currentDirection: number = 0
 
+    mouseX: number = 0
+    mouseY: number = 0
+    lastSendAngle: number = 0
+
     private constructor(world: World) {
         this.world = world
         this.socket.connect()
@@ -15,6 +20,10 @@ export class GameClient {
         // keyboard
         window.addEventListener('keydown', (event) => this.onKeyDown(event))
         window.addEventListener('keyup', (event) => this.onKeyUp(event))
+        // mouse
+        this.world.renderer.canvas.addEventListener('mousemove', (event) =>
+            this.onMouseMove(event)
+        )
     }
 
     public static async create(): Promise<GameClient> {
@@ -30,8 +39,23 @@ export class GameClient {
             this.lastSendDirection = this.currentDirection
             this.socket.streamWriter.writeU8(ClientHeader.MOVEMENT)
             this.socket.streamWriter.writeU8(this.currentDirection)
-            this.socket.flush()
         }
+
+        // get my player
+        if (this.world.entities.has(this.world.myEntityId)) {
+            const myEntity = this.world.entities.get(
+                this.world.myEntityId
+            )! as Player
+
+            const angle = myEntity.body.rotation
+            if (angle !== this.lastSendAngle) {
+                this.lastSendAngle = angle
+                this.socket.streamWriter.writeU8(ClientHeader.MOUSE)
+                this.socket.streamWriter.writeFloat(angle)
+            }
+        }
+
+        this.socket.flush()
     }
 
     private onKeyDown(event: KeyboardEvent) {
@@ -74,5 +98,15 @@ export class GameClient {
                 this.currentDirection &= ~8
                 break
         }
+    }
+
+    private onMouseMove(event: MouseEvent) {
+        const canvas = this.world.renderer.canvas
+        const rect = canvas.getBoundingClientRect()
+        const x = event.clientX - rect.left
+        const y = event.clientY - rect.top
+
+        this.mouseX = x
+        this.mouseY = y
     }
 }
