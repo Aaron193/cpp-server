@@ -50,19 +50,21 @@ export class MessageHandler {
                         }
                     }
 
-                    // todo: don't do this here...
-                    entity.position.x = x
-                    entity.position.y = y
-                    entity.angle = angle
-                    entity.id = id
-                    entity.type = type
+                    const interpolator = client.world.interpolator
+                    interpolator.addSnapshot(entity, x, y, angle)
+
+                    // todo: do this in the class or something
+                    entity._id = id
+                    entity._type = type
+                    entity._x = x
+                    entity._y = y
+                    entity._angle = angle
 
                     client.world.entities.set(id, entity)
                 }
                 break
             }
             case ServerHeader.ENTITY_UPDATE: {
-                console.log('Entity update')
                 const count = reader.readU32()
 
                 for (let i = 0; i < count; i++) {
@@ -70,16 +72,20 @@ export class MessageHandler {
                     const x = reader.readFloat()
                     const y = reader.readFloat()
                     const angle = reader.readFloat()
-                    const player = client.world.entities.get(id)!
+                    const entity = client.world.entities.get(id)!
 
                     assert(
-                        player != undefined,
+                        entity != undefined,
                         `Entity with ID: ${id} not found`
                     )
 
-                    player.position.x = x
-                    player.position.y = y
-                    player.angle = angle
+                    const interpolator = client.world.interpolator
+                    interpolator.addSnapshot(entity, x, y, angle)
+
+                    // todo: do this in the class or some crap
+                    entity._x = x
+                    entity._y = y
+                    entity._angle = angle
                 }
                 break
             }

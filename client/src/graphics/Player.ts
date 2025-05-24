@@ -13,10 +13,11 @@ export class Player extends Entity {
     constructor(client: GameClient, { id }: { id: number }) {
         super()
 
-        this.id = id
+        this.interpolate = true
+        this._id = id
 
         this.client = client
-        this.nameTag = new NameTag(Nicknames.get(this.id) || 'Player')
+        this.nameTag = new NameTag(Nicknames.get(this._id) || '')
         this.nameTag.position.set(0, -50)
 
         this.body = new PIXI.Graphics()

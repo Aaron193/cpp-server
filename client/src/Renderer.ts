@@ -1,10 +1,12 @@
 import * as PIXI from 'pixi.js'
+import { Hud } from './graphics/hud/Hud'
 
 export class Renderer {
     canvas: HTMLCanvasElement
     scale: number
     stage: PIXI.Container
     camera: PIXI.Container
+    hud: Hud
     background: PIXI.Container
     foreground: PIXI.Container
     renderer!: PIXI.Renderer
@@ -16,13 +18,17 @@ export class Renderer {
 
         this.scale = 1
 
-        this.stage = new PIXI.Container()
         this.camera = new PIXI.Container()
         this.background = new PIXI.Container()
         this.foreground = new PIXI.Container()
 
         this.camera.addChild(this.background)
         this.camera.addChild(this.foreground)
+
+        this.hud = new Hud()
+        this.stage = new PIXI.Container()
+
+        this.stage.addChild(this.hud)
         this.stage.addChild(this.camera)
 
         window.addEventListener('resize', () => {
@@ -53,6 +59,8 @@ export class Renderer {
 
     resize() {
         this.renderer.resize(window.innerWidth, window.innerHeight)
+
+        this.hud.resize()
     }
 
     centerCamera(x: number, y: number) {

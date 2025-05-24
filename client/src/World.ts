@@ -1,9 +1,11 @@
 import { Entity } from './graphics/Entity'
 import { Player } from './graphics/Player'
+import { Interpolator } from './Interpolator'
 import { Renderer } from './Renderer'
 import * as PIXI from 'pixi.js'
 export class World {
     renderer: Renderer
+    interpolator: Interpolator = new Interpolator(this)
     entities: Map<number, Entity> = new Map()
     myEntityId: number = -1
 
@@ -16,10 +18,12 @@ export class World {
         return new World(renderer)
     }
 
-    update(delta: number) {
-        this.entities.forEach((player) => {
-            player.update(delta)
+    update(delta: number, tick: number, now: number) {
+        this.entities.forEach((entity) => {
+            entity.update(delta)
         })
+
+        this.interpolator.update(delta, tick, now)
 
         const myEntity = this.entities.get(this.myEntityId)
 

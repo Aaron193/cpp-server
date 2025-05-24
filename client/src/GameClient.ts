@@ -23,7 +23,7 @@ export class GameClient {
     }
 
     update(delta: number, tick: number, now: number) {
-        this.world.update(delta)
+        this.world.update(delta, tick, now)
 
         // socket event-triggered messages or whatever
         if (this.lastSendDirection !== this.currentDirection) {

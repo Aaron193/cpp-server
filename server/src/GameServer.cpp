@@ -23,7 +23,8 @@ void GameServer::run() {
 
     m_entityManager.createCrate();
 
-    const double tickRate = 30.0;
+    const double tickRate = 10.0;  // TODO: send this tickRate to the client so
+                                   // that their interpolation works correctly
     const std::chrono::duration<double> tickInterval(1.0 / tickRate);
 
     auto lastTime = std::chrono::steady_clock::now();
@@ -38,7 +39,13 @@ void GameServer::run() {
             tick(deltaTime.count());
         }
 
-        std::this_thread::sleep_for(tickInterval);
+        auto tickTime = std::chrono::steady_clock::now() - currentTime;
+
+        auto sleepTime = tickInterval - tickTime;
+
+        if (sleepTime > std::chrono::duration<double>::zero()) {
+            std::this_thread::sleep_for(sleepTime);
+        }
     }
 }
 

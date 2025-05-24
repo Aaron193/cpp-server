@@ -17,6 +17,16 @@ Client::Client(GameServer& gameServer,
                uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id)
     : m_gameServer(gameServer), m_ws(ws), m_id(id) {
     changeBody(m_gameServer.m_entityManager.createSpectator(entt::null));
+
+    // the caller holds the lock, we are safe to access m_clients... (Maybe use
+    // recursive mutex to avoid deadlocks?)
+    for (auto& [id, client] : m_gameServer.m_clients) {
+        if (client->m_active) {
+            m_writer.writeU8(ServerHeader::PLAYER_JOIN);
+            m_writer.writeU32(static_cast<uint32_t>(client->m_entity));
+            m_writer.writeString(client->m_name);
+        }
+    }
 }
 
 Client::~Client() {
@@ -63,14 +73,9 @@ void Client::onSpawn() {
     // the caller holds the lock, we are safe to access m_clients... (Maybe use
     // recursive mutex to avoid deadlocks?)
     for (auto& [id, client] : m_gameServer.m_clients) {
-        if (client != this) {
-            client->m_writer.writeU8(ServerHeader::PLAYER_JOIN);
-            client->m_writer.writeU32(static_cast<uint32_t>(m_entity));
-            client->m_writer.writeString(m_name);
-        }
-        m_writer.writeU8(ServerHeader::PLAYER_JOIN);
-        m_writer.writeU32(static_cast<uint32_t>(client->m_entity));
-        m_writer.writeString(client->m_name);
+        client->m_writer.writeU8(ServerHeader::PLAYER_JOIN);
+        client->m_writer.writeU32(static_cast<uint32_t>(m_entity));
+        client->m_writer.writeString(m_name);
     }
 }
 
@@ -88,6 +93,10 @@ void Client::onClose() {
 void Client::onMouse() {
     const float angle = m_reader.readFloat();
 
+    if (!m_active) {
+        return;
+    }
+
     entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
     Components::Input& input = reg.get<Components::Input>(m_entity);
     input.angle = angle;
@@ -95,6 +104,10 @@ void Client::onMouse() {
 
 void Client::onMovement() {
     const uint8_t direction = m_reader.readU8();
+
+    if (!m_active) {
+        return;
+    }
 
     entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
     Components::Input& input = reg.get<Components::Input>(m_entity);
