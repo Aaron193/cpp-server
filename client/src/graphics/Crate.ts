@@ -19,7 +19,7 @@ export class Crate extends Entity {
 
         this.addChild(crate)
 
-        this.client.world.renderer.foreground.addChild(this)
+        this.client.world.renderer.background.addChild(this)
     }
 
     update(delta: number) {
