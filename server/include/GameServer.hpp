@@ -15,6 +15,8 @@ class GameServer {
 
     uWS::Loop* m_socketLoop = nullptr;
 
+    const uint8_t m_tps = 10;
+
     EntityManager m_entityManager;
     PhysicsWorld m_physicsWorld;
     std::unordered_map<uint32_t, Client*> m_clients;
@@ -29,7 +31,7 @@ class GameServer {
    private:
     void processClientMessages();
     void tick(double delta);
-    void prePhysicsSystemUpdate();
-    void inputSystem();
+    void prePhysicsSystemUpdate(double delta);
+    void inputSystem(double delta);
     void cameraSystem();
 };

@@ -20,9 +20,15 @@ export class GameClient {
         // keyboard
         window.addEventListener('keydown', (event) => this.onKeyDown(event))
         window.addEventListener('keyup', (event) => this.onKeyUp(event))
+
         // mouse
-        this.world.renderer.canvas.addEventListener('mousemove', (event) =>
-            this.onMouseMove(event)
+        const canvas = this.world.renderer.canvas
+        canvas.addEventListener('mousemove', (event) => this.onMouseMove(event))
+        canvas.addEventListener('mousedown', (event) =>
+            this.onMouseClick(event, true)
+        )
+        canvas.addEventListener('mouseup', (event) =>
+            this.onMouseClick(event, false)
         )
     }
 
@@ -35,11 +41,7 @@ export class GameClient {
         this.world.update(delta, tick, now)
 
         // socket event-triggered messages or whatever
-        if (this.lastSendDirection !== this.currentDirection) {
-            this.lastSendDirection = this.currentDirection
-            this.socket.streamWriter.writeU8(ClientHeader.MOVEMENT)
-            this.socket.streamWriter.writeU8(this.currentDirection)
-        }
+        this.sendInputDirection(this.currentDirection)
 
         // get my player
         if (this.world.entities.has(this.world.myEntityId)) {
@@ -47,15 +49,26 @@ export class GameClient {
                 this.world.myEntityId
             )! as Player
 
-            const angle = myEntity.body.rotation
-            if (angle !== this.lastSendAngle) {
-                this.lastSendAngle = angle
-                this.socket.streamWriter.writeU8(ClientHeader.MOUSE)
-                this.socket.streamWriter.writeFloat(angle)
-            }
+            this.sendInputAngle(myEntity.body.rotation)
         }
 
         this.socket.flush()
+    }
+
+    private sendInputDirection(direction: number) {
+        if (this.lastSendDirection !== direction) {
+            this.lastSendDirection = direction
+            this.socket.streamWriter.writeU8(ClientHeader.MOVEMENT)
+            this.socket.streamWriter.writeU8(direction)
+        }
+    }
+
+    private sendInputAngle(angle: number) {
+        if (this.lastSendAngle !== angle) {
+            this.lastSendAngle = angle
+            this.socket.streamWriter.writeU8(ClientHeader.MOUSE)
+            this.socket.streamWriter.writeFloat(angle)
+        }
     }
 
     private onKeyDown(event: KeyboardEvent) {
@@ -108,5 +121,26 @@ export class GameClient {
 
         this.mouseX = x
         this.mouseY = y
+    }
+
+    private onMouseClick(event: MouseEvent, isDown: boolean) {
+        if (!this.world.entities.has(this.world.myEntityId)) return
+
+        // update mouse position to be instantaneous when we click
+        this.onMouseMove(event)
+
+        const myEntity = this.world.entities.get(
+            this.world.myEntityId
+        )! as Player
+
+        const angle = myEntity.getAngleToMouse()
+
+        this.sendInputAngle(angle)
+
+        this.socket.streamWriter.writeU8(
+            isDown ? ClientHeader.MOUSE_DOWN : ClientHeader.MOUSE_UP
+        )
+
+        this.socket.flush()
     }
 }

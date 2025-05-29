@@ -36,8 +36,25 @@ struct Camera {
 struct Input {
     uint8_t direction;
     float angle;
+    bool mouseIsDown = false;
+};
+
+struct AttackCooldown {
+    float duration;
+    float current;
+
+    bool update(float delta) {
+        current -= delta;
+        if (current < 0.0f) {
+            current = 0.0f;
+            return true;
+        }
+        return false;
+    }
+
+    void reset() { current = duration; }
 };
 
 struct Removal {};
 
-}  // namespace Components
+};  // namespace Components

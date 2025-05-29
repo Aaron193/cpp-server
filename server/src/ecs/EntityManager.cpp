@@ -39,6 +39,8 @@ entt::entity EntityManager::createPlayer() {
     m_registry.emplace<Networked>(entity);
     m_registry.emplace<Camera>(entity, entity);
     m_registry.emplace<Input>(entity);
+    m_registry.emplace<AttackCooldown>(entity,
+                                       1.0f / 3.0f);  // 333ms attack cooldown
 
     b2World* world = m_gameServer.m_physicsWorld.m_world.get();
 

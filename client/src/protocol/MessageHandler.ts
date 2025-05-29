@@ -14,6 +14,8 @@ export class MessageHandler {
             case ServerHeader.SPAWN_SUCCESS: {
                 console.log('Spawn success')
                 const entity = reader.readU32()
+                const tickrate = reader.readU8()
+                client.world.interpolator.setTickrate(tickrate)
                 client.world.myEntityId = entity
                 break
             }
@@ -104,6 +106,16 @@ export class MessageHandler {
                     entity.destroy()
                     client.world.entities.delete(id)
                 }
+                break
+            }
+            case ServerHeader.ENTITY_STATE: {
+                console.log('Entity state')
+                const id = reader.readU32()
+                const state = reader.readU8()
+                const entity = client.world.entities.get(id)!
+                assert(entity != undefined, `Entity with ID: ${id} not found`)
+
+                entity._state |= state
                 break
             }
             case ServerHeader.PLAYER_JOIN: {

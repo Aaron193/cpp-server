@@ -23,9 +23,7 @@ void GameServer::run() {
 
     m_entityManager.createCrate();
 
-    const double tickRate = 10.0;  // TODO: send this tickRate to the client so
-                                   // that their interpolation works correctly
-    const std::chrono::duration<double> tickInterval(1.0 / tickRate);
+    const std::chrono::duration<double> tickInterval(1.0 / m_tps);
 
     auto lastTime = std::chrono::steady_clock::now();
 
@@ -79,7 +77,7 @@ void GameServer::tick(double delta) {
     {  // game world update
 
         /* Pre physics systems */
-        prePhysicsSystemUpdate();
+        prePhysicsSystemUpdate(delta);
 
         /* Physics update */
         m_physicsWorld.tick(delta);
@@ -114,18 +112,20 @@ void GameServer::tick(double delta) {
 /**
     Set forces and movement of entities based on input
 */
-void GameServer::prePhysicsSystemUpdate() {
-    inputSystem();
+void GameServer::prePhysicsSystemUpdate(double delta) {
+    inputSystem(delta);
     cameraSystem();
 }
 
-void GameServer::inputSystem() {
-    auto view = m_entityManager.getRegistry()
-                    .view<Components::Input, Components::Body>();
+void GameServer::inputSystem(double delta) {
+    entt::registry& reg = m_entityManager.getRegistry();
+    auto view = reg.view<Components::Input, Components::Body>();
+
+    // list of entity state changes to send to clients
+    std::vector<std::tuple<entt::entity, uint8_t>> states;
 
     for (auto entity : view) {
-        auto input =
-            m_entityManager.getRegistry().get<Components::Input>(entity);
+        auto input = reg.get<Components::Input>(entity);
 
         uint8_t direction = input.direction;
         float angle = input.angle;
@@ -150,13 +150,43 @@ void GameServer::inputSystem() {
         b2Vec2 inputVector = b2Vec2(x, y);
         b2Vec2 velocity = b2Vec2(inputVector.x * speed, inputVector.y * speed);
 
-        b2Body* body =
-            m_entityManager.getRegistry().get<Components::Body>(entity).body;
+        b2Body* body = reg.get<Components::Body>(entity).body;
 
         assert(body != nullptr);
 
         body->SetLinearVelocity(velocity);
         body->SetTransform(body->GetPosition(), angle);
+
+        // update mouse up/down
+
+        if (input.mouseIsDown) {
+            assert(reg.all_of<Components::AttackCooldown>(entity));
+
+            auto& cooldown = reg.get<Components::AttackCooldown>(entity);
+
+            if (cooldown.update(delta)) {
+                states.emplace_back(entity, 1);
+                cooldown.reset();
+            }
+        }
+    }
+
+    if (!states.empty()) {
+        // send entity states to clients
+        std::lock_guard<std::mutex> lock(m_clientsMutex);
+        for (auto& c : m_clients) {
+            Client& client = *c.second;
+
+            for (const auto& state : states) {
+                if (client.m_previousVisibleEntities.find(std::get<0>(state)) !=
+                    client.m_previousVisibleEntities.end()) {
+                    client.m_writer.writeU8(ServerHeader::ENTITY_STATE);
+                    client.m_writer.writeU32(
+                        static_cast<uint32_t>(std::get<0>(state)));
+                    client.m_writer.writeU8(std::get<1>(state));
+                }
+            }
+        }
     }
 }
 

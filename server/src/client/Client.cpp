@@ -49,6 +49,12 @@ void Client::onMessage(const std::string_view& message) {
             case ClientHeader::MOVEMENT:
                 onMovement();
                 break;
+            case ClientHeader::MOUSE_DOWN:
+                onMouseClick(true);
+                break;
+            case ClientHeader::MOUSE_UP:
+                onMouseClick(false);
+                break;
         }
     }
 }
@@ -67,6 +73,7 @@ void Client::onSpawn() {
 
     m_writer.writeU8(ServerHeader::SPAWN_SUCCESS);
     m_writer.writeU32(static_cast<uint32_t>(m_entity));
+    m_writer.writeU8(this->m_gameServer.m_tps);
     std::cout << "User " << m_name << " has connected" << std::endl;
 
     // notify clients about our new player
@@ -112,6 +119,19 @@ void Client::onMovement() {
     entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
     Components::Input& input = reg.get<Components::Input>(m_entity);
     input.direction = direction;
+}
+
+// @TODO: when the user clicks mouse really fast, it wont register because
+// it will isDown will be false by the time it gets proccessed
+void Client::onMouseClick(bool isDown) {
+    if (!m_active) {
+        return;
+    }
+
+    entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
+    Components::Input& input = reg.get<Components::Input>(m_entity);
+
+    input.mouseIsDown = isDown;
 }
 
 void Client::writeGameState() {

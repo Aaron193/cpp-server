@@ -1,23 +1,21 @@
 import { Entity } from './graphics/Entity'
+import { assert } from './utils/assert'
 import { World } from './World'
-
-interface SnapShop {
-    x: number
-    y: number
-    angle: number
-    timestamp: number
-}
-
-const TPS = 10
-const TIMESTEP = 1000 / TPS
 
 const PI2 = Math.PI * 2
 
 export class Interpolator {
     world: World
+    timestep: number = 10
 
     constructor(world: World) {
         this.world = world
+    }
+
+    setTickrate(tickrate: number) {
+        assert(tickrate > 0, 'Tickrate must be greater than 0')
+        this.timestep = 1000 / tickrate
+        console.log('setting tickrate to ', tickrate)
     }
 
     addSnapshot(entity: Entity, x: number, y: number, angle: number) {
@@ -25,8 +23,7 @@ export class Interpolator {
             return
         }
 
-        const snapshots = entity.snapshots
-        snapshots.push({
+        entity.snapshots.push({
             x: x,
             y: y,
             angle: angle,
@@ -38,29 +35,29 @@ export class Interpolator {
         this.world.entities.forEach((entity) => {
             if (entity.interpolate) {
                 const snapshots = entity.snapshots
-                const renderTime = currentTime - TIMESTEP
-                const historyLimit = renderTime - TIMESTEP * 3
+                const renderTime = currentTime - this.timestep
+                const historyLimit = renderTime - this.timestep * 3
 
-                while (
-                    snapshots.length > 0 &&
-                    snapshots[0].timestamp < historyLimit
-                ) {
-                    snapshots.shift()
-                }
+                snapshots.removeWhile(
+                    (snapshot) => snapshot.timestamp < historyLimit
+                )
 
-                if (snapshots.length === 0) {
+                if (snapshots.getSize() === 0) {
                     return
                 }
 
                 // interpolate between two snapshots
-                let snapshotA: SnapShop | null = null
-                let snapshotB: SnapShop | null = null
+                let snapshotA: Snapshot | null = null
+                let snapshotB: Snapshot | null = null
 
-                for (let i = 0; i < snapshots.length; i++) {
-                    if (snapshots[i].timestamp <= renderTime) {
-                        snapshotA = snapshots[i]
+                for (let i = 0; i < snapshots.getSize(); i++) {
+                    const snapshot = snapshots.get(i)
+                    if (!snapshot) continue
+
+                    if (snapshot.timestamp <= renderTime) {
+                        snapshotA = snapshot
                     } else {
-                        snapshotB = snapshots[i]
+                        snapshotB = snapshot
                         break
                     }
                 }
@@ -92,12 +89,85 @@ export class Interpolator {
                 } else if (!snapshotA && snapshotB) {
                     entity.position.set(snapshotB.x, snapshotB.y)
                     entity.setRot(snapshotB.angle)
-                } else if (snapshots.length > 0) {
-                    const mostRecent = snapshots[snapshots.length - 1]
-                    entity.position.set(mostRecent.x, mostRecent.y)
-                    entity.setRot(mostRecent.angle)
+                } else if (snapshots.getSize() > 0) {
+                    const mostRecent = snapshots.get(snapshots.getSize() - 1)
+                    if (mostRecent) {
+                        entity.position.set(mostRecent.x, mostRecent.y)
+                        entity.setRot(mostRecent.angle)
+                    }
                 }
             }
         })
+    }
+}
+
+export interface Snapshot {
+    x: number
+    y: number
+    angle: number
+    timestamp: number
+}
+
+export class CircularBuffer<T> {
+    private buffer: T[]
+    private head: number = 0
+    private tail: number = 0
+    private size: number = 0
+    private capacity: number
+
+    constructor(capacity: number) {
+        this.capacity = capacity
+        this.buffer = new Array(capacity)
+    }
+
+    push(item: T): void {
+        this.buffer[this.tail] = item
+        this.tail = (this.tail + 1) % this.capacity
+
+        if (this.size < this.capacity) {
+            this.size++
+        } else {
+            this.head = (this.head + 1) % this.capacity
+        }
+    }
+
+    get(index: number): T | undefined {
+        if (index >= this.size) {
+            return undefined
+        }
+        const actualIndex = (this.head + index) % this.capacity
+        return this.buffer[actualIndex]
+    }
+
+    removeOldest(): T | undefined {
+        if (this.size === 0) {
+            return undefined
+        }
+
+        const item = this.buffer[this.head]
+        this.head = (this.head + 1) % this.capacity
+        this.size--
+        return item
+    }
+
+    getSize(): number {
+        return this.size
+    }
+
+    clear(): void {
+        this.head = 0
+        this.tail = 0
+        this.size = 0
+    }
+
+    // Remove items from the front while condition is true
+    removeWhile(predicate: (item: T) => boolean): void {
+        while (this.size > 0) {
+            const item = this.get(0)
+            if (!item || !predicate(item)) {
+                break
+            }
+            this.removeOldest()
+        }
     }
 }

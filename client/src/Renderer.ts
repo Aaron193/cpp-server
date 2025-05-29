@@ -68,11 +68,13 @@ export class Renderer {
         this.camera.y = -y + 0.5 * this.renderer.screen.height
     }
 
-    toWorldCoordinates(mouseX: number, mouseY: number) {
-        return {
-            x: mouseX - this.camera.x,
-            y: mouseY - this.camera.y,
-        }
+    toWorldCoordinates(
+        mouseX: number,
+        mouseY: number,
+        out: { x: number; y: number }
+    ) {
+        out.x = mouseX - this.camera.x
+        out.y = mouseY - this.camera.y
     }
 
     render() {

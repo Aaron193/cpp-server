@@ -29,6 +29,7 @@ class Client {
 
     std::string m_name;
     bool m_active = false;
+    std::unordered_set<entt::entity> m_previousVisibleEntities;
 
     Client(GameServer& gameServer,
            uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id);
@@ -42,6 +43,7 @@ class Client {
     void onClose();
     void onMovement();
     void onMouse();
+    void onMouseClick(bool isDown);
 
     void updateCamera();
 
@@ -49,12 +51,17 @@ class Client {
     void sendBytes();
 
    private:
-    std::unordered_set<entt::entity> m_previousVisibleEntities;
     GameServer& m_gameServer;
 };
 
 // TODO: put this somewhere else
-enum ClientHeader { SPAWN, MOUSE, MOVEMENT };
+enum ClientHeader {
+    SPAWN,
+    MOUSE,
+    MOVEMENT,
+    MOUSE_DOWN,
+    MOUSE_UP,
+};
 enum ServerHeader {
     SPAWN_SUCCESS,
     SET_CAMERA,
@@ -63,4 +70,5 @@ enum ServerHeader {
     ENTITY_REMOVE,
     PLAYER_JOIN,
     PLAYER_LEAVE,
+    ENTITY_STATE,
 };

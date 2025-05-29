@@ -2,8 +2,15 @@ import * as PIXI from 'pixi.js'
 import { NameTag } from './NameTag'
 import { GameClient } from '../GameClient'
 import { Entity } from './Entity'
+import { Animation, LinearFastInSlowOut } from './utils/Animation'
 
 export const Nicknames = new Map<number, string>()
+
+enum STATE {
+    MEELE = 1 << 0,
+}
+
+const TEMP_VEC: { x: number; y: number } = { x: 0, y: 0 }
 
 export class Player extends Entity {
     nameTag: NameTag
@@ -11,6 +18,13 @@ export class Player extends Entity {
     leftHand: PIXI.Graphics
     rightHand: PIXI.Graphics
     client: GameClient
+
+    meele: Animation = new Animation(
+        LinearFastInSlowOut,
+        (1 / 3) * 0.95, // cooldown is 1/3 of a second, make sure animation finishes before server cooldown by * 0.95
+        Math.PI / 3
+    )
+    handToggle: boolean = false
 
     constructor(client: GameClient, { id }: { id: number }) {
         super()
@@ -54,24 +68,60 @@ export class Player extends Entity {
         this.client.world.renderer.foreground.addChild(this)
     }
 
+    getAngleToMouse(): number {
+        this.client.world.renderer.toWorldCoordinates(
+            this.client.mouseX,
+            this.client.mouseY,
+            TEMP_VEC
+        )
+
+        const dx = TEMP_VEC.x - this.position.x
+        const dy = TEMP_VEC.y - this.position.y
+
+        return Math.atan2(dy, dx)
+    }
+
     update(delta: number, tick: number, now: number) {
         // do some update stuff or whatever
         const myEntityId = this.client.world.myEntityId
 
         if (this._id === myEntityId) {
-            const mouseWorldPosition =
-                this.client.world.renderer.toWorldCoordinates(
-                    this.client.mouseX,
-                    this.client.mouseY
-                )
-
-            const dx = mouseWorldPosition.x - this.position.x
-            const dy = mouseWorldPosition.y - this.position.y
-
-            this.body.rotation = Math.atan2(dy, dx)
+            this.body.rotation = this.getAngleToMouse()
         }
 
-        //
+        if (this._state & STATE.MEELE) {
+            const finished = this.meele.update(delta)
+            if (finished) {
+                this.handToggle = !this.handToggle
+                this._state &= ~STATE.MEELE
+                this.meele.reset()
+            }
+        }
+
+        const rightHandRotation = this.handToggle
+            ? -this.meele.current
+            : this.meele.current / 3
+        const leftHandRotation = this.handToggle
+            ? -this.meele.current / 3
+            : this.meele.current
+
+        const extension =
+            this._state & STATE.MEELE ? this.meele.current * 15 : 0
+
+        const rightExtension = this.handToggle ? extension : 0
+        const leftExtension = this.handToggle ? 0 : extension
+
+        this.rightHand.position.set(
+            Math.cos(Math.PI / 4) * rightExtension,
+            Math.sin(Math.PI / 4) * rightExtension
+        )
+        this.leftHand.position.set(
+            Math.cos(-Math.PI / 4) * leftExtension,
+            Math.sin(-Math.PI / 4) * leftExtension
+        )
+
+        this.rightHand.rotation = rightHandRotation
+        this.leftHand.rotation = leftHandRotation
     }
 
     setRot(angle: number) {
