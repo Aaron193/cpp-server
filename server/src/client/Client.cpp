@@ -14,12 +14,11 @@
 #include "util/units.hpp"
 
 Client::Client(GameServer& gameServer,
-               uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id)
+               uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id,
+               mutex_lock_t& clientsWitness)
     : m_gameServer(gameServer), m_ws(ws), m_id(id) {
     changeBody(m_gameServer.m_entityManager.createSpectator(entt::null));
 
-    // the caller holds the lock, we are safe to access m_clients... (Maybe use
-    // recursive mutex to avoid deadlocks?)
     for (auto& [id, client] : m_gameServer.m_clients) {
         if (client->m_active) {
             m_writer.writeU8(ServerHeader::PLAYER_JOIN);
@@ -33,7 +32,8 @@ Client::~Client() {
     std::cout << "User " << m_name << " has disconnected" << std::endl;
 }
 
-void Client::onMessage(const std::string_view& message) {
+void Client::onMessage(const std::string_view& message,
+                       mutex_lock_t& clientsWitness) {
     m_reader.loadMessage(message);
 
     while (m_reader.getOffset() < m_reader.byteLength()) {
@@ -41,7 +41,7 @@ void Client::onMessage(const std::string_view& message) {
 
         switch (header) {
             case ClientHeader::SPAWN:
-                onSpawn();
+                onSpawn(clientsWitness);
                 break;
             case ClientHeader::MOUSE:
                 onMouse();
@@ -59,7 +59,9 @@ void Client::onMessage(const std::string_view& message) {
     }
 }
 
-void Client::onSpawn() {
+// clientsWitness: explicitly show that the caller holds the lock, we are safe
+// to access m_clients...
+void Client::onSpawn(mutex_lock_t& clientsWitness) {
     if (m_active) return;
 
     std::string name = m_reader.readString();
@@ -77,8 +79,6 @@ void Client::onSpawn() {
     std::cout << "User " << m_name << " has connected" << std::endl;
 
     // notify clients about our new player
-    // the caller holds the lock, we are safe to access m_clients... (Maybe use
-    // recursive mutex to avoid deadlocks?)
     for (auto& [id, client] : m_gameServer.m_clients) {
         client->m_writer.writeU8(ServerHeader::PLAYER_JOIN);
         client->m_writer.writeU32(static_cast<uint32_t>(m_entity));
@@ -86,9 +86,7 @@ void Client::onSpawn() {
     }
 }
 
-void Client::onClose() {
-    // the caller holds the lock, we are safe to access m_clients... (Maybe use
-    // recursive mutex to avoid deadlocks?)
+void Client::onClose(mutex_lock_t& clientsWitness) {
     for (auto& [id, client] : m_gameServer.m_clients) {
         if (client != this) {
             client->m_writer.writeU8(ServerHeader::PLAYER_LEAVE);
@@ -140,7 +138,7 @@ void Client::writeGameState() {
     Components::Camera& cam = reg.get<Components::Camera>(m_entity);
 
     // pos is last camera position if target is invalid
-    b2Vec2 pos =
+    const b2Vec2& pos =
         cam.target == entt::null
             ? cam.position
             : reg.get<Components::Body>(cam.target).body->GetPosition();

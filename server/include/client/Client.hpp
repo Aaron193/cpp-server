@@ -11,6 +11,7 @@
 #include "GameServer.hpp"
 #include "packet/buffer/PacketReader.hpp"
 #include "packet/buffer/PacketWriter.hpp"
+#include "util/types.hpp"
 
 struct WebSocketData {
     uint32_t id;
@@ -32,15 +33,17 @@ class Client {
     std::unordered_set<entt::entity> m_previousVisibleEntities;
 
     Client(GameServer& gameServer,
-           uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id);
+           uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id,
+           mutex_lock_t& clientsWitness);
     ~Client();
 
     void changeBody(entt::entity entity);
 
-    void onMessage(const std::string_view& message);
+    void onMessage(const std::string_view& message,
+                   mutex_lock_t& clientsWitness);
 
-    void onSpawn();
-    void onClose();
+    void onSpawn(mutex_lock_t& clientsWitness);
+    void onClose(mutex_lock_t& clientsWitness);
     void onMovement();
     void onMouse();
     void onMouseClick(bool isDown);

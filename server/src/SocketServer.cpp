@@ -20,10 +20,9 @@ void SocketServer::run() {
             "/*",
             {.open =
                  [&](auto* ws) {
-                     std::lock_guard<std::mutex> lock(
-                         m_gameServer.m_clientsMutex);
+                     mutex_lock_t lock(m_gameServer.m_clientsMutex);
 
-                     Client* client = new Client(m_gameServer, ws, id++);
+                     Client* client = new Client(m_gameServer, ws, id++, lock);
                      m_gameServer.m_clients.emplace(client->m_id, client);
 
                      auto* data = (WebSocketData*)ws->getUserData();
@@ -38,8 +37,7 @@ void SocketServer::run() {
                      auto* data = (WebSocketData*)ws->getUserData();
                      uint32_t id = data->id;
 
-                     std::lock_guard<std::mutex> lock(
-                         m_gameServer.m_clientsMutex);
+                     mutex_lock_t lock(m_gameServer.m_clientsMutex);
 
                      auto it = m_gameServer.m_clients.find(id);
 
@@ -55,8 +53,7 @@ void SocketServer::run() {
                      auto* data = (WebSocketData*)ws->getUserData();
                      uint32_t id = data->id;
 
-                     std::lock_guard<std::mutex> lock(
-                         m_gameServer.m_clientsMutex);
+                     mutex_lock_t lock(m_gameServer.m_clientsMutex);
 
                      auto it = m_gameServer.m_clients.find(id);
                      if (it != m_gameServer.m_clients.end()) {
@@ -76,7 +73,7 @@ void SocketServer::run() {
                          // todo: setup all client logic on disconnect to be in
                          // this method.. also do same with onopen, etc (if
                          // needed).
-                         client->onClose();
+                         client->onClose(lock);
                          delete client;
                          m_gameServer.m_clients.erase(it);
                      }

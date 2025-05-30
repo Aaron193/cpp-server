@@ -16,6 +16,9 @@
 #include "ecs/components.hpp"
 #include "physics/PhysicsWorld.hpp"
 
+// @TODO: make sure we have more C++ that typescript in thie project i dont want
+// typescript to show on the git repo as the main language :C
+
 GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {}
 
 void GameServer::run() {
@@ -48,7 +51,7 @@ void GameServer::run() {
 }
 
 void GameServer::processClientMessages() {
-    std::lock_guard<std::mutex> lock(m_clientsMutex);
+    mutex_lock_t lock(m_clientsMutex);
 
     for (auto& message : m_messages) {
         uint32_t id = message.first;
@@ -59,7 +62,7 @@ void GameServer::processClientMessages() {
             Client* client = it->second;
             try {  // TODO: I dont really like try-catch. Maybe lets just not
                    // read outside buffer and set outside bytes to zero
-                client->onMessage(data);
+                client->onMessage(data, lock);
             } catch (std::runtime_error error) {
                 // Reading outside buffer view..
             }
@@ -89,7 +92,7 @@ void GameServer::tick(double delta) {
 
     {  // server update
         {
-            std::lock_guard<std::mutex> lock(m_clientsMutex);
+            mutex_lock_t lock(m_clientsMutex);
 
             for (auto& c : m_clients) {
                 Client& client = *c.second;
@@ -98,7 +101,7 @@ void GameServer::tick(double delta) {
         }
         {
             m_socketLoop->defer([&]() {
-                std::lock_guard<std::mutex> lock(m_clientsMutex);
+                mutex_lock_t lock(m_clientsMutex);
 
                 for (auto& c : m_clients) {
                     Client& client = *c.second;
@@ -173,7 +176,8 @@ void GameServer::inputSystem(double delta) {
 
     if (!states.empty()) {
         // send entity states to clients
-        std::lock_guard<std::mutex> lock(m_clientsMutex);
+        mutex_lock_t lock(m_clientsMutex);
+
         for (auto& c : m_clients) {
             Client& client = *c.second;
 
@@ -193,7 +197,7 @@ void GameServer::inputSystem(double delta) {
 // TODO: i dont really like how this iterates over the clients and not the
 // camera components.
 void GameServer::cameraSystem() {
-    std::lock_guard<std::mutex> lock(m_clientsMutex);
+    mutex_lock_t lock(m_clientsMutex);
 
     for (auto& c : m_clients) {
         Client& client = *c.second;
