@@ -38,3 +38,4 @@ export class Animation {
 
 export const LinearFastInSlowOut = (t: number) =>
     t < 1 / 3 ? 3 * t : 1.5 - 1.5 * t
+export const LinearInOut = (t: number) => (t < 0.5 ? t : 1 - t)

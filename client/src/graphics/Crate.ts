@@ -1,5 +1,4 @@
 import * as PIXI from 'pixi.js'
-import { NameTag } from './NameTag'
 import { GameClient } from '../GameClient'
 import { Entity } from './Entity'
 

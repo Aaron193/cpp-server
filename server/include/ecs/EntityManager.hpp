@@ -3,9 +3,13 @@
 #include <cstdint>
 #include <entt/entt.hpp>
 
-enum EntityTypes : uint8_t { SPECTATOR, PLAYER, CRATE };
+enum EntityTypes : uint8_t { SPECTATOR, PLAYER, CRATE, HITBOX };
 
-enum EntityStates : uint8_t { IDLE = 0, MELEE = 1 };
+enum EntityStates : uint8_t {
+    IDLE = 0,
+    MELEE = 1 << 0,
+    HURT = 1 << 1,
+};
 
 class GameServer;
 

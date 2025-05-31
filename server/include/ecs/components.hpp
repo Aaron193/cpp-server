@@ -67,4 +67,9 @@ struct State {
     void clear() { state = 0; }
 };
 
+struct Health {
+    float max;
+    float current;
+};
+
 };  // namespace Components

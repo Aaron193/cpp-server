@@ -2,12 +2,14 @@ import * as PIXI from 'pixi.js'
 import { NameTag } from './NameTag'
 import { GameClient } from '../GameClient'
 import { Entity } from './Entity'
-import { Animation, LinearFastInSlowOut } from './utils/Animation'
+import { Animation, LinearFastInSlowOut, LinearInOut } from './utils/Animation'
 
 export const Nicknames = new Map<number, string>()
 
 enum STATE {
+    IDLE = 0,
     MELEE = 1 << 0,
+    HURT = 1 << 1,
 }
 
 const TEMP_VEC: { x: number; y: number } = { x: 0, y: 0 }
@@ -24,6 +26,9 @@ export class Player extends Entity {
         (1 / 3) * 0.95, // cooldown is 1/3 of a second, make sure animation finishes before server cooldown by * 0.95
         Math.PI / 3
     )
+
+    hurt: Animation = new Animation(LinearInOut, 0.2, 1)
+
     handToggle: boolean = false
 
     constructor(client: GameClient, { id }: { id: number }) {
@@ -95,6 +100,28 @@ export class Player extends Entity {
                 this.handToggle = !this.handToggle
                 this._state &= ~STATE.MELEE
                 this.melee.reset()
+            }
+        }
+        if (this._state & STATE.HURT) {
+            const finished = this.hurt.update(delta)
+
+            const intensity = this.hurt.current
+            const lerp = (a: number, b: number, t: number) =>
+                (((a & 0xff0000) + ((b & 0xff0000) - (a & 0xff0000)) * t) &
+                    0xff0000) |
+                (((a & 0x00ff00) + ((b & 0x00ff00) - (a & 0x00ff00)) * t) &
+                    0x00ff00) |
+                (((a & 0x0000ff) + ((b & 0x0000ff) - (a & 0x0000ff)) * t) &
+                    0x0000ff)
+
+            const originalTint = 0xba9a50
+            const hurtTint = 0xff0000
+            this.body.tint = lerp(originalTint, hurtTint, intensity)
+
+            if (finished) {
+                this.hurt.reset()
+                this.body.tint = originalTint // restore original tint after hurt
+                this._state &= ~STATE.HURT
             }
         }
 

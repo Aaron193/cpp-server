@@ -1,8 +1,11 @@
 #include "GameServer.hpp"
 
 #include <box2d/b2_body.h>
+#include <box2d/b2_circle_shape.h>
+#include <box2d/b2_collision.h>
 #include <box2d/b2_fixture.h>
 #include <box2d/b2_math.h>
+#include <box2d/b2_shape.h>
 #include <box2d/b2_world.h>
 
 #include <chrono>
@@ -118,6 +121,7 @@ void GameServer::prePhysicsSystemUpdate(double delta) {
     stateSystem();
     inputSystem(delta);
     meleeSystem(delta);
+    healthSystem(delta);
     cameraSystem();
 }
 
@@ -192,6 +196,16 @@ void GameServer::meleeSystem(double delta) {
                     // 2. set state to MELEE
                     state.setState(EntityStates::MELEE);
 
+                    const b2Vec2& pos = body->GetPosition();
+                    const float angle = body->GetAngle();
+                    int playerRadius = 25;
+
+                    b2Vec2 meleePos =
+                        b2Vec2(pixels(pos.x) + playerRadius * std::cos(angle),
+                               pixels(pos.y) + playerRadius * std::sin(angle));
+
+                    Hit(entity, meleePos, 15);
+
                     cooldown.reset();
                 }
             }
@@ -209,4 +223,69 @@ void GameServer::cameraSystem() {
                 cam.position = body->GetPosition();
             }
         });
+}
+
+void GameServer::healthSystem(double delta) {
+    entt::registry& reg = m_entityManager.getRegistry();
+
+    reg.view<Components::Health>().each(
+        [&](entt::entity entity, Components::Health& health) {
+            if (health.current <= 0) {
+                // die
+            }
+        });
+}
+
+void GameServer::Hit(entt::entity attacker, b2Vec2& pos, int radius) {
+    float mRadius = meters(radius);
+
+    float x = meters(pos.x);
+    float y = meters(pos.y);
+
+    b2AABB queryAABB;
+    queryAABB.lowerBound = b2Vec2(x - mRadius, y - mRadius);
+    queryAABB.upperBound = b2Vec2(x + mRadius, y + mRadius);
+
+    b2World* world = m_physicsWorld.m_world.get();
+
+    m_physicsWorld.m_queryBodies->Clear();
+    world->QueryAABB(m_physicsWorld.m_queryBodies, queryAABB);
+
+    b2CircleShape hitbox;
+    hitbox.m_radius = mRadius;
+
+    b2Transform hitboxXf;
+    hitboxXf.Set(b2Vec2(x, y), 0.0f);
+
+    entt::registry& reg = m_entityManager.getRegistry();
+
+    for (entt::entity entity : m_physicsWorld.m_queryBodies->entities) {
+        if (attacker == entity) continue;
+
+        EntityTypes type = reg.get<Components::Type>(entity).type;
+        if (type != EntityTypes::PLAYER) continue;
+
+        b2Body* body = reg.get<Components::Body>(entity).body;
+        assert(body != nullptr);
+
+        b2Fixture* fixture = body->GetFixtureList();
+
+        for (b2Fixture* fixture = body->GetFixtureList(); fixture;
+             fixture = fixture->GetNext()) {
+            const b2Shape* shape = fixture->GetShape();
+            b2Transform shapeXf = body->GetTransform();
+
+            if (b2TestOverlap(&hitbox, 0, shape, 0, hitboxXf, shapeXf)) {
+                // damage player
+                Components::Health& health =
+                    reg.get<Components::Health>(entity);
+                Components::State& state = reg.get<Components::State>(entity);
+
+                const int DAMAGE = 10;
+                health.current -= DAMAGE;
+
+                state.setState(EntityStates::HURT);
+            }
+        }
+    }
 }

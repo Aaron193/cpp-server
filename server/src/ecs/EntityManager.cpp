@@ -40,6 +40,7 @@ entt::entity EntityManager::createPlayer() {
     m_registry.emplace<State>(entity, EntityStates::IDLE);
     m_registry.emplace<Camera>(entity, entity);
     m_registry.emplace<Input>(entity);
+    m_registry.emplace<Health>(entity, 100, 100);
     m_registry.emplace<AttackCooldown>(entity,
                                        1.0f / 3.0f);  // 333ms attack cooldown
 

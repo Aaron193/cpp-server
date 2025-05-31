@@ -35,4 +35,7 @@ class GameServer {
     void inputSystem(double delta);
     void meleeSystem(double delta);
     void cameraSystem();
+    void healthSystem(double delta);
+
+    void Hit(entt::entity entity, b2Vec2& meleePos, int radius);
 };
