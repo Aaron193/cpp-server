@@ -5,6 +5,8 @@
 
 enum EntityTypes : uint8_t { SPECTATOR, PLAYER, CRATE };
 
+enum EntityStates : uint8_t { IDLE = 0, MELEE = 1 };
+
 class GameServer;
 
 class EntityManager {

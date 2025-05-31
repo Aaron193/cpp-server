@@ -7,7 +7,7 @@ import { Animation, LinearFastInSlowOut } from './utils/Animation'
 export const Nicknames = new Map<number, string>()
 
 enum STATE {
-    MEELE = 1 << 0,
+    MELEE = 1 << 0,
 }
 
 const TEMP_VEC: { x: number; y: number } = { x: 0, y: 0 }
@@ -19,7 +19,7 @@ export class Player extends Entity {
     rightHand: PIXI.Graphics
     client: GameClient
 
-    meele: Animation = new Animation(
+    melee: Animation = new Animation(
         LinearFastInSlowOut,
         (1 / 3) * 0.95, // cooldown is 1/3 of a second, make sure animation finishes before server cooldown by * 0.95
         Math.PI / 3
@@ -89,24 +89,24 @@ export class Player extends Entity {
             this.body.rotation = this.getAngleToMouse()
         }
 
-        if (this._state & STATE.MEELE) {
-            const finished = this.meele.update(delta)
+        if (this._state & STATE.MELEE) {
+            const finished = this.melee.update(delta)
             if (finished) {
                 this.handToggle = !this.handToggle
-                this._state &= ~STATE.MEELE
-                this.meele.reset()
+                this._state &= ~STATE.MELEE
+                this.melee.reset()
             }
         }
 
         const rightHandRotation = this.handToggle
-            ? -this.meele.current
-            : this.meele.current / 3
+            ? -this.melee.current
+            : this.melee.current / 3
         const leftHandRotation = this.handToggle
-            ? -this.meele.current / 3
-            : this.meele.current
+            ? -this.melee.current / 3
+            : this.melee.current
 
         const extension =
-            this._state & STATE.MEELE ? this.meele.current * 15 : 0
+            this._state & STATE.MELEE ? this.melee.current * 15 : 0
 
         const rightExtension = this.handToggle ? extension : 0
         const leftExtension = this.handToggle ? 0 : extension

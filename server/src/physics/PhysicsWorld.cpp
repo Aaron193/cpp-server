@@ -11,22 +11,21 @@
 PhysicsWorld::PhysicsWorld(GameServer& gameServer)
     : m_world(std::make_unique<b2World>(b2Vec2(0.0f, 0.0f))),
       m_gameServer(gameServer),
-      m_queryCallback(new QueryNetworkedEntities(gameServer)) {}
+      m_queryNetworkedBodies(new QueryNetworkedBodies(gameServer)) {}
 
 void PhysicsWorld::tick(double delta) { m_world->Step(delta, 8, 3); }
 
-QueryNetworkedEntities::QueryNetworkedEntities(GameServer& gameServer)
+// ======== QueryNetworkedBodies ========
+QueryNetworkedBodies::QueryNetworkedBodies(GameServer& gameServer)
     : m_gameServer(gameServer) {}
 
-void QueryNetworkedEntities::Clear() { entities.clear(); }
-
-bool QueryNetworkedEntities::ReportFixture(b2Fixture* fixture) {
+bool QueryNetworkedBodies::ReportFixture(b2Fixture* fixture) {
     b2Body* body = fixture->GetBody();
 
     if (body && body->GetUserData().pointer) {
         EntityBodyUserData* userData =
             reinterpret_cast<EntityBodyUserData*>(body->GetUserData().pointer);
-        // Ensure the entity is networked before adding
+
         entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
         if (reg.valid(userData->entity) &&
             reg.all_of<Components::Networked>(userData->entity)) {
@@ -36,3 +35,5 @@ bool QueryNetworkedEntities::ReportFixture(b2Fixture* fixture) {
 
     return true;
 }
+
+void QueryNetworkedBodies::Clear() { entities.clear(); }

@@ -154,11 +154,11 @@ void Client::writeGameState() {
     b2World* world = m_gameServer.m_physicsWorld.m_world.get();
 
     PhysicsWorld& physicsWorld = m_gameServer.m_physicsWorld;
-    physicsWorld.m_queryCallback->entities.clear();
-    world->QueryAABB(physicsWorld.m_queryCallback, queryAABB);
+    physicsWorld.m_queryNetworkedBodies->Clear();
+    world->QueryAABB(physicsWorld.m_queryNetworkedBodies, queryAABB);
 
     std::unordered_set<entt::entity> currentlyVisibleEntities;
-    for (entt::entity entity : physicsWorld.m_queryCallback->entities) {
+    for (entt::entity entity : physicsWorld.m_queryNetworkedBodies->entities) {
         currentlyVisibleEntities.insert(entity);
     }
 
@@ -215,11 +215,23 @@ void Client::writeGameState() {
 
     // Entity removal serialization (entity has left the client's view)
     if (!remove.empty()) {
-        std::cout << "removing an entity!" << std::endl;
         m_writer.writeU8(ServerHeader::ENTITY_REMOVE);
         m_writer.writeU32(static_cast<uint32_t>(remove.size()));
         for (entt::entity entity : remove) {
             m_writer.writeU32(static_cast<uint32_t>(entity));
+        }
+    }
+
+    // Write entity states
+    for (entt::entity entity : physicsWorld.m_queryNetworkedBodies->entities) {
+        // if entity has state component, notify client of the state
+        if (reg.all_of<Components::State>(entity)) {
+            Components::State& state = reg.get<Components::State>(entity);
+            if (!state.isIdle()) {
+                m_writer.writeU8(ServerHeader::ENTITY_STATE);
+                m_writer.writeU32(static_cast<uint32_t>(entity));
+                m_writer.writeU8(state.state);
+            }
         }
     }
 

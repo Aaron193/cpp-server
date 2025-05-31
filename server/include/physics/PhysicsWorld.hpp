@@ -8,15 +8,8 @@
 
 #include "ecs/EntityManager.hpp"
 
-class QueryNetworkedEntities : public b2QueryCallback {
-   public:
-    QueryNetworkedEntities(GameServer& gameServer);
-    std::vector<entt::entity> entities;
-    void Clear();
-    bool ReportFixture(b2Fixture* fixture) override;
-
-    GameServer& m_gameServer;
-};
+class QueryBodies;
+class QueryNetworkedBodies;
 
 class PhysicsWorld {
    public:
@@ -26,9 +19,19 @@ class PhysicsWorld {
 
     std::unique_ptr<b2World> m_world;
 
-    QueryNetworkedEntities* m_queryCallback;
+    QueryBodies* m_queryBodies;
+    QueryNetworkedBodies* m_queryNetworkedBodies;
 
     GameServer& m_gameServer;
 
    private:
+};
+class QueryNetworkedBodies : public b2QueryCallback {
+   public:
+    QueryNetworkedBodies(GameServer& gameServer);
+    std::vector<entt::entity> entities;
+    void Clear();
+    bool ReportFixture(b2Fixture* fixture) override;
+
+    GameServer& m_gameServer;
 };

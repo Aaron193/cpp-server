@@ -37,6 +37,7 @@ entt::entity EntityManager::createPlayer() {
     auto& bodyComponent = m_registry.emplace<Body>(entity);
     m_registry.emplace<Dynamic>(entity);
     m_registry.emplace<Networked>(entity);
+    m_registry.emplace<State>(entity, EntityStates::IDLE);
     m_registry.emplace<Camera>(entity, entity);
     m_registry.emplace<Input>(entity);
     m_registry.emplace<AttackCooldown>(entity,

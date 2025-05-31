@@ -31,6 +31,8 @@ class GameServer {
     void processClientMessages();
     void tick(double delta);
     void prePhysicsSystemUpdate(double delta);
+    void stateSystem();
     void inputSystem(double delta);
+    void meleeSystem(double delta);
     void cameraSystem();
 };

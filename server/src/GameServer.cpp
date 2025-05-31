@@ -1,5 +1,6 @@
 #include "GameServer.hpp"
 
+#include <box2d/b2_body.h>
 #include <box2d/b2_fixture.h>
 #include <box2d/b2_math.h>
 #include <box2d/b2_world.h>
@@ -15,6 +16,7 @@
 #include "ecs/EntityManager.hpp"
 #include "ecs/components.hpp"
 #include "physics/PhysicsWorld.hpp"
+#include "util/units.hpp"
 
 // @TODO: make sure we have more C++ that typescript in thie project i dont want
 // typescript to show on the git repo as the main language :C
@@ -112,108 +114,99 @@ void GameServer::tick(double delta) {
     }
 }
 
-/**
-    Set forces and movement of entities based on input
-*/
 void GameServer::prePhysicsSystemUpdate(double delta) {
+    stateSystem();
     inputSystem(delta);
+    meleeSystem(delta);
     cameraSystem();
+}
+
+void GameServer::stateSystem() {
+    entt::registry& reg = m_entityManager.getRegistry();
+
+    reg.view<Components::State>().each(
+        [&](entt::entity entity, Components::State& state) { state.clear(); });
 }
 
 void GameServer::inputSystem(double delta) {
     entt::registry& reg = m_entityManager.getRegistry();
-    auto view = reg.view<Components::Input, Components::Body>();
 
-    // list of entity state changes to send to clients
-    std::vector<std::tuple<entt::entity, uint8_t>> states;
+    reg.view<Components::Input, Components::Body>().each(
+        [&](entt::entity entity, Components::Input& input,
+            Components::Body& b) {
+            uint8_t direction = input.direction;
+            float angle = input.angle;
 
-    for (auto entity : view) {
-        auto input = reg.get<Components::Input>(entity);
+            float x = 0;
+            float y = 0;
 
-        uint8_t direction = input.direction;
-        float angle = input.angle;
+            if (direction & 1) y = -1.0f;
+            if (direction & 2) x = -1.0f;
+            if (direction & 4) y = 1.0f;
+            if (direction & 8) x = 1.0f;
 
-        float x = 0;
-        float y = 0;
-
-        if (direction & 1) y = -1.0f;
-        if (direction & 2) x = -1.0f;
-        if (direction & 4) y = 1.0f;
-        if (direction & 8) x = 1.0f;
-
-        // normalize input vector
-        float length = std::sqrt(x * x + y * y);
-        if (length != 0.0f) {
-            x /= length;
-            y /= length;
-        }
-
-        const float speed = 2.5f;
-
-        b2Vec2 inputVector = b2Vec2(x, y);
-        b2Vec2 velocity = b2Vec2(inputVector.x * speed, inputVector.y * speed);
-
-        b2Body* body = reg.get<Components::Body>(entity).body;
-
-        assert(body != nullptr);
-
-        body->SetLinearVelocity(velocity);
-        body->SetTransform(body->GetPosition(), angle);
-
-        // update mouse up/down
-
-        if (input.mouseIsDown) {
-            assert(reg.all_of<Components::AttackCooldown>(entity));
-
-            auto& cooldown = reg.get<Components::AttackCooldown>(entity);
-
-            if (cooldown.update(delta)) {
-                states.emplace_back(entity, 1);
-                cooldown.reset();
+            // normalize input vector
+            float length = std::sqrt(x * x + y * y);
+            if (length != 0.0f) {
+                x /= length;
+                y /= length;
             }
-        }
-    }
 
-    if (!states.empty()) {
-        // send entity states to clients
-        mutex_lock_t lock(m_clientsMutex);
+            const float speed = 2.5f;
 
-        for (auto& c : m_clients) {
-            Client& client = *c.second;
+            b2Vec2 inputVector = b2Vec2(x, y);
+            b2Vec2 velocity =
+                b2Vec2(inputVector.x * speed, inputVector.y * speed);
 
-            for (const auto& state : states) {
-                if (client.m_previousVisibleEntities.find(std::get<0>(state)) !=
-                    client.m_previousVisibleEntities.end()) {
-                    client.m_writer.writeU8(ServerHeader::ENTITY_STATE);
-                    client.m_writer.writeU32(
-                        static_cast<uint32_t>(std::get<0>(state)));
-                    client.m_writer.writeU8(std::get<1>(state));
-                }
-            }
-        }
-    }
+            b2Body* body = b.body;
+
+            assert(body != nullptr);
+
+            body->SetLinearVelocity(velocity);
+            body->SetTransform(body->GetPosition(), angle);
+        });
 }
 
-// TODO: i dont really like how this iterates over the clients and not the
-// camera components.
+/**
+    @TODO: remove states from this function, decouple that logic into its own
+    system... in other words get client iteration outside of this function to
+    ensure pure ECS system logic
+*/
+void GameServer::meleeSystem(double delta) {
+    entt::registry& reg = m_entityManager.getRegistry();
+
+    reg.view<Components::Body, Components::Input, Components::State>().each(
+        [&](entt::entity entity, Components::Body& bodyComp,
+            Components::Input& input, Components::State& state) {
+            b2Body* body = bodyComp.body;
+            assert(body != nullptr);
+
+            // update mouse up/down
+            if (input.mouseIsDown) {
+                assert(reg.all_of<Components::AttackCooldown>(entity));
+
+                auto& cooldown = reg.get<Components::AttackCooldown>(entity);
+
+                if (cooldown.update(delta)) {
+                    // 1. (@TODO) create melee attack
+                    // 2. set state to MELEE
+                    state.setState(EntityStates::MELEE);
+
+                    cooldown.reset();
+                }
+            }
+        });
+}
+
 void GameServer::cameraSystem() {
-    mutex_lock_t lock(m_clientsMutex);
+    entt::registry& reg = m_entityManager.getRegistry();
+    reg.view<Components::Camera>().each(
+        [&](entt::entity entity, Components::Camera& cam) {
+            if (reg.valid(cam.target)) {
+                assert(reg.all_of<Components::Body>(cam.target));
 
-    for (auto& c : m_clients) {
-        Client& client = *c.second;
-        entt::registry& reg = m_entityManager.getRegistry();
-
-        assert(reg.valid(client.m_entity));
-        assert(reg.all_of<Components::Camera>(client.m_entity));
-
-        Components::Camera& cam = reg.get<Components::Camera>(client.m_entity);
-
-        // set cam.position to target position
-        if (reg.valid(cam.target)) {
-            assert(reg.all_of<Components::Body>(cam.target));
-
-            b2Body* body = reg.get<Components::Body>(cam.target).body;
-            cam.position = body->GetPosition();
-        }
-    }
+                b2Body* body = reg.get<Components::Body>(cam.target).body;
+                cam.position = body->GetPosition();
+            }
+        });
 }

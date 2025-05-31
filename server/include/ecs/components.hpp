@@ -26,6 +26,8 @@ struct Dynamic {};
 
 struct Networked {};
 
+struct Removal {};
+
 struct Camera {
     entt::entity target;
     b2Vec2 position;
@@ -55,6 +57,14 @@ struct AttackCooldown {
     void reset() { current = duration; }
 };
 
-struct Removal {};
+struct State {
+    uint8_t state;
+
+    void setState(uint8_t bitflag) { state |= bitflag; }
+    void unsetState(uint8_t bitflag) { state &= ~bitflag; }
+    bool isSet(uint8_t bitflag) const { return (state & bitflag) != 0; }
+    bool isIdle() const { return state == 0; }
+    void clear() { state = 0; }
+};
 
 };  // namespace Components
