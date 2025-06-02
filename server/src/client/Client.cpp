@@ -140,10 +140,6 @@ void Client::onMouseClick(bool isDown) {
     input.mouseIsDown = isDown;
 }
 
-/**
-    @TODO: this method takes like 95% of the tick time
-    asserts for this function account for about 15% of its runtime
-*/
 void Client::writeGameState() {
     if (this->m_active == false) {
         return;
