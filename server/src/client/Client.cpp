@@ -5,7 +5,9 @@
 #include <box2d/b2_math.h>
 #include <box2d/b2_world.h>
 
+#include <iomanip>
 #include <iostream>
+#include <unordered_set>
 
 #include "ecs/EntityManager.hpp"
 #include "ecs/components.hpp"
@@ -13,6 +15,9 @@
 #include "physics/PhysicsWorld.hpp"
 #include "util/units.hpp"
 
+// TODO: Since this runs on a different thread, im not sure if I can access
+// entt::registry (from changeBody) or other shared pieces of data from this
+// thread. I'm assuming this can be a source of bugs
 Client::Client(GameServer& gameServer,
                uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id,
                mutex_lock_t& clientsWitness)
@@ -103,6 +108,7 @@ void Client::onMouse() {
     }
 
     entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
+    assert(reg.all_of<Components::Input>(m_entity));
     Components::Input& input = reg.get<Components::Input>(m_entity);
     input.angle = angle;
 }
@@ -115,6 +121,7 @@ void Client::onMovement() {
     }
 
     entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
+    assert(reg.all_of<Components::Input>(m_entity));
     Components::Input& input = reg.get<Components::Input>(m_entity);
     input.direction = direction;
 }
@@ -127,111 +134,118 @@ void Client::onMouseClick(bool isDown) {
     }
 
     entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
+    assert(reg.all_of<Components::Input>(m_entity));
     Components::Input& input = reg.get<Components::Input>(m_entity);
 
     input.mouseIsDown = isDown;
 }
 
+/**
+    @TODO: this method takes like 95% of the tick time
+    asserts for this function account for about 15% of its runtime
+*/
 void Client::writeGameState() {
+    if (this->m_active == false) {
+        return;
+    }
+
+    // Static variables to avoid repeated allocations
+    static std::vector<entt::entity> createEntities;
+    static std::vector<entt::entity> updateEntities;
+    static std::vector<entt::entity> removeEntities;
+    static std::unordered_set<entt::entity> currentlyVisibleEntities;
+
+    createEntities.clear();
+    updateEntities.clear();
+    removeEntities.clear();
+    currentlyVisibleEntities.clear();
+
     entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
 
     Components::Camera& cam = reg.get<Components::Camera>(m_entity);
-
-    // pos is last camera position if target is invalid
+    bool targetValid = (cam.target != entt::null && reg.valid(cam.target));
     const b2Vec2& pos =
-        cam.target == entt::null
-            ? cam.position
-            : reg.get<Components::Body>(cam.target).body->GetPosition();
+        targetValid ? reg.get<Components::Body>(cam.target).body->GetPosition()
+                    : cam.position;
+    float halfViewX = meters(cam.width) * 0.5f;
+    float halfViewY = meters(cam.height) * 0.5f;
 
-    float halfViewX = meters(cam.width) * 0.5;
-    float halfViewY = meters(cam.height) * 0.5;
-
-    // TODO: avoid stack object allocation?
     b2AABB queryAABB;
     queryAABB.lowerBound = b2Vec2(pos.x - halfViewX, pos.y - halfViewY);
     queryAABB.upperBound = b2Vec2(pos.x + halfViewX, pos.y + halfViewY);
 
     b2World* world = m_gameServer.m_physicsWorld.m_world.get();
-
     PhysicsWorld& physicsWorld = m_gameServer.m_physicsWorld;
-    physicsWorld.m_queryNetworkedBodies->Clear();
-    world->QueryAABB(physicsWorld.m_queryNetworkedBodies, queryAABB);
+    physicsWorld.m_QueryNetworkedEntities->Clear();
+    world->QueryAABB(physicsWorld.m_QueryNetworkedEntities, queryAABB);
 
-    std::unordered_set<entt::entity> currentlyVisibleEntities;
-    for (entt::entity entity : physicsWorld.m_queryNetworkedBodies->entities) {
+    for (const entt::entity& entity :
+         physicsWorld.m_QueryNetworkedEntities->entities) {
         currentlyVisibleEntities.insert(entity);
     }
 
-    std::vector<entt::entity> create;
-    std::vector<entt::entity> update;
-    std::vector<entt::entity> remove;
+    // most of these entities are going to go into the update list
+    createEntities.reserve(currentlyVisibleEntities.size());
+    updateEntities.reserve(currentlyVisibleEntities.size());
 
-    for (entt::entity entity : currentlyVisibleEntities) {
+    for (const entt::entity& entity : currentlyVisibleEntities) {
         if (m_previousVisibleEntities.find(entity) ==
             m_previousVisibleEntities.end()) {
-            create.push_back(entity);
+            createEntities.push_back(entity);
         } else {
-            update.push_back(entity);
+            updateEntities.push_back(entity);
         }
     }
 
-    for (entt::entity entity : m_previousVisibleEntities) {
+    for (const entt::entity& entity : m_previousVisibleEntities) {
         if (currentlyVisibleEntities.find(entity) ==
             currentlyVisibleEntities.end()) {
-            remove.push_back(entity);
+            removeEntities.push_back(entity);
         }
     }
 
-    // Entity creation serialization (entity has entered the client's view)
-    if (!create.empty()) {
-        m_writer.writeU8(ServerHeader::ENTITY_CREATE);
-        m_writer.writeU32(static_cast<uint32_t>(create.size()));
+    auto bodyView = reg.view<Components::Body>();
+    auto typeView = reg.view<Components::Type>();
+    auto stateView = reg.view<Components::State>();
 
-        for (entt::entity entity : create) {
-            b2Body* body = reg.get<Components::Body>(entity).body;
-            uint8_t type = reg.get<Components::Type>(entity).type;
+    if (!createEntities.empty()) {
+        m_writer.writeU8(ServerHeader::ENTITY_CREATE);
+        m_writer.writeU32(static_cast<uint32_t>(createEntities.size()));
+
+        for (entt::entity entity : createEntities) {
+            b2Body* body = bodyView.get<Components::Body>(entity).body;
+            const b2Vec2& position = body->GetPosition();
+            uint8_t type = typeView.get<Components::Type>(entity).type;
 
             m_writer.writeU32(static_cast<uint32_t>(entity));
             m_writer.writeU8(type);
-            m_writer.writeFloat(pixels(body->GetPosition().x));
-            m_writer.writeFloat(pixels(body->GetPosition().y));
+            m_writer.writeFloat(pixels(position.x));
+            m_writer.writeFloat(pixels(position.y));
             m_writer.writeFloat(body->GetAngle());
         }
     }
 
-    // Entity update serialization (entity is still in the client's view)
-    if (!update.empty()) {
+    if (!updateEntities.empty()) {
         m_writer.writeU8(ServerHeader::ENTITY_UPDATE);
-        m_writer.writeU32(static_cast<uint32_t>(update.size()));
-        for (entt::entity entity : update) {
-            Components::Body& body = reg.get<Components::Body>(entity);
+        m_writer.writeU32(static_cast<uint32_t>(updateEntities.size()));
+
+        for (const entt::entity& entity : updateEntities) {
+            b2Body* body = bodyView.get<Components::Body>(entity).body;
+            const b2Vec2& position = body->GetPosition();
 
             m_writer.writeU32(static_cast<uint32_t>(entity));
-            m_writer.writeFloat(pixels(body.body->GetPosition().x));
-            m_writer.writeFloat(pixels(body.body->GetPosition().y));
-            m_writer.writeFloat(body.body->GetAngle());
+            m_writer.writeFloat(pixels(position.x));
+            m_writer.writeFloat(pixels(position.y));
+            m_writer.writeFloat(body->GetAngle());
         }
     }
 
-    // Entity removal serialization (entity has left the client's view)
-    if (!remove.empty()) {
+    if (!removeEntities.empty()) {
         m_writer.writeU8(ServerHeader::ENTITY_REMOVE);
-        m_writer.writeU32(static_cast<uint32_t>(remove.size()));
-        for (entt::entity entity : remove) {
-            m_writer.writeU32(static_cast<uint32_t>(entity));
-        }
-    }
+        m_writer.writeU32(static_cast<uint32_t>(removeEntities.size()));
 
-    // Write entity states
-    for (entt::entity entity : physicsWorld.m_queryNetworkedBodies->entities) {
-        // if entity has state component, notify client of the state
-        if (reg.all_of<Components::State>(entity)) {
-            Components::State& state = reg.get<Components::State>(entity);
-            if (!state.isIdle()) {
-                m_writer.writeU8(ServerHeader::ENTITY_STATE);
-                m_writer.writeU32(static_cast<uint32_t>(entity));
-                m_writer.writeU8(state.state);
-            }
+        for (entt::entity entity : removeEntities) {
+            m_writer.writeU32(static_cast<uint32_t>(entity));
         }
     }
 
@@ -251,6 +265,8 @@ void Client::changeBody(entt::entity entity) {
     // link client to entity
     entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
     reg.emplace<Components::Client>(entity, m_id);
+
+    assert(reg.all_of<Components::Camera>(entity));
 
     // write set-camera packet with cam target entity
     m_writer.writeU8(ServerHeader::SET_CAMERA);

@@ -8,6 +8,7 @@
 #include <box2d/b2_shape.h>
 #include <box2d/b2_world.h>
 
+#include <cassert>
 #include <chrono>
 #include <cstdint>
 #include <entt/entity/fwd.hpp>
@@ -46,6 +47,9 @@ void GameServer::run() {
         }
 
         auto tickTime = std::chrono::steady_clock::now() - currentTime;
+        std::cout << "tick time: "
+                  << std::chrono::duration<double, std::milli>(tickTime).count()
+                  << "ms" << std::endl;
 
         auto sleepTime = tickInterval - tickTime;
 
@@ -206,6 +210,30 @@ void GameServer::meleeSystem(double delta) {
 
                     Hit(entity, meleePos, 15);
 
+                    {  // notify clients who can see us that our state has
+                       // changed (TODO: i don't like putting this here)
+                       // maybe instead of this, we go query each state
+                       // comonent, and if it is not idle we then go through
+                       // each client, check their visible entities, and
+                       // serialize there
+                        mutex_lock_t lock(m_clientsMutex);
+
+                        auto state = reg.get<Components::State>(entity);
+
+                        for (auto& c : m_clients) {
+                            Client& client = *c.second;
+
+                            if (client.m_previousVisibleEntities.find(entity) !=
+                                client.m_previousVisibleEntities.end()) {
+                                client.m_writer.writeU8(
+                                    ServerHeader::ENTITY_STATE);
+                                client.m_writer.writeU32(
+                                    static_cast<uint32_t>(entity));
+                                client.m_writer.writeU8(
+                                    static_cast<uint8_t>(state.state));
+                            }
+                        }
+                    }
                     cooldown.reset();
                 }
             }
@@ -262,8 +290,14 @@ void GameServer::Hit(entt::entity attacker, b2Vec2& pos, int radius) {
     for (entt::entity entity : m_physicsWorld.m_queryBodies->entities) {
         if (attacker == entity) continue;
 
+        assert(reg.all_of<Components::Type>(entity));
+
         EntityTypes type = reg.get<Components::Type>(entity).type;
         if (type != EntityTypes::PLAYER) continue;
+
+        assert(reg.all_of<Components::Body>(entity));
+        assert(reg.all_of<Components::Health>(entity));
+        assert(reg.all_of<Components::State>(entity));
 
         b2Body* body = reg.get<Components::Body>(entity).body;
         assert(body != nullptr);

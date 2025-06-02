@@ -28,8 +28,8 @@ export class Renderer {
         this.hud = new Hud()
         this.stage = new PIXI.Container()
 
-        this.stage.addChild(this.hud)
         this.stage.addChild(this.camera)
+        this.stage.addChild(this.hud)
 
         window.addEventListener('resize', () => {
             if (this.renderer) {

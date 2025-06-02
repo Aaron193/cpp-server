@@ -28,7 +28,8 @@ void SocketServer::run() {
                      auto* data = (WebSocketData*)ws->getUserData();
                      data->id = client->m_id;
 
-                     std::cout << "Connection opened" << std::endl;
+                     std::cout << "Connection opened, total clients: "
+                               << m_gameServer.m_clients.size() << std::endl;
                  },
              .message =
                  [&](auto* ws, std::string_view message, uWS::OpCode opCode) {

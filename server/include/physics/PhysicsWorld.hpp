@@ -11,7 +11,7 @@
 #include "ecs/components.hpp"
 
 class QueryBodies;
-class QueryNetworkedBodies;
+class QueryNetworkedEntities;
 class ContactListener;
 
 class PhysicsWorld {
@@ -24,15 +24,15 @@ class PhysicsWorld {
 
     ContactListener* m_contactListener;
     QueryBodies* m_queryBodies;
-    QueryNetworkedBodies* m_queryNetworkedBodies;
+    QueryNetworkedEntities* m_QueryNetworkedEntities;
 
     GameServer& m_gameServer;
 
    private:
 };
-class QueryNetworkedBodies : public b2QueryCallback {
+class QueryNetworkedEntities : public b2QueryCallback {
    public:
-    QueryNetworkedBodies(GameServer& gameServer);
+    QueryNetworkedEntities(GameServer& gameServer);
     std::vector<entt::entity> entities;
     void Clear();
     bool ReportFixture(b2Fixture* fixture) override;

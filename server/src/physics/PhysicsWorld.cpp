@@ -14,35 +14,33 @@ PhysicsWorld::PhysicsWorld(GameServer& gameServer)
     : m_world(std::make_unique<b2World>(b2Vec2(0.0f, 0.0f))),
       m_gameServer(gameServer),
       m_contactListener(new ContactListener(gameServer)),
-      m_queryNetworkedBodies(new QueryNetworkedBodies(gameServer)),
+      m_QueryNetworkedEntities(new QueryNetworkedEntities(gameServer)),
       m_queryBodies(new QueryBodies(gameServer)) {
     m_world->SetContactListener(m_contactListener);
 };
 
 void PhysicsWorld::tick(double delta) { m_world->Step(delta, 8, 3); }
 
-// ======== QueryNetworkedBodies ========
-QueryNetworkedBodies::QueryNetworkedBodies(GameServer& gameServer)
+// ======== QueryNetworkedEntities ========
+QueryNetworkedEntities::QueryNetworkedEntities(GameServer& gameServer)
     : m_gameServer(gameServer) {}
 
-bool QueryNetworkedBodies::ReportFixture(b2Fixture* fixture) {
+bool QueryNetworkedEntities::ReportFixture(b2Fixture* fixture) {
     b2Body* body = fixture->GetBody();
 
-    if (body && body->GetUserData().pointer) {
-        EntityBodyUserData* userData =
-            reinterpret_cast<EntityBodyUserData*>(body->GetUserData().pointer);
+    EntityBodyUserData* userData =
+        reinterpret_cast<EntityBodyUserData*>(body->GetUserData().pointer);
 
-        entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
-        if (reg.valid(userData->entity) &&
-            reg.all_of<Components::Networked>(userData->entity)) {
-            entities.push_back(userData->entity);
-        }
+    auto& reg = m_gameServer.m_entityManager.getRegistry();
+
+    if (reg.all_of<Components::Networked>(userData->entity)) {
+        entities.push_back(userData->entity);
     }
 
     return true;
 }
 
-void QueryNetworkedBodies::Clear() { entities.clear(); }
+void QueryNetworkedEntities::Clear() { entities.clear(); }
 
 // ======== QueryBodies ========
 QueryBodies::QueryBodies(GameServer& gameServer) : m_gameServer(gameServer) {}
@@ -74,6 +72,10 @@ std::optional<std::pair<entt::entity, entt::entity>>
 ContactListener::matchEntities(entt::entity entityA, entt::entity entityB,
                                EntityTypes expectedA, EntityTypes expectedB) {
     entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
+
+    assert(reg.all_of<Components::Type>(entityA));
+    assert(reg.all_of<Components::Type>(entityB));
+
     EntityTypes typeA = reg.get<Components::Type>(entityA).type;
     EntityTypes typeB = reg.get<Components::Type>(entityB).type;
 
