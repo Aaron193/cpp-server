@@ -74,14 +74,13 @@ export class Player extends Entity {
     }
 
     getAngleToMouse(): number {
-        this.client.world.renderer.toWorldCoordinates(
+        const pos = this.client.world.renderer.toWorldCoordinates(
             this.client.mouseX,
-            this.client.mouseY,
-            TEMP_VEC
+            this.client.mouseY
         )
 
-        const dx = TEMP_VEC.x - this.position.x
-        const dy = TEMP_VEC.y - this.position.y
+        const dx = pos.x - this.position.x
+        const dy = pos.y - this.position.y
 
         return Math.atan2(dy, dx)
     }

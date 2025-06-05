@@ -1,6 +1,8 @@
 import * as PIXI from 'pixi.js'
 import { Hud } from './graphics/hud/Hud'
 
+const TEMP_VEC = { x: 0, y: 0 }
+
 export class Renderer {
     canvas: HTMLCanvasElement
     scale: number
@@ -68,13 +70,11 @@ export class Renderer {
         this.camera.y = -y + 0.5 * this.renderer.screen.height
     }
 
-    toWorldCoordinates(
-        mouseX: number,
-        mouseY: number,
-        out: { x: number; y: number }
-    ) {
-        out.x = mouseX - this.camera.x
-        out.y = mouseY - this.camera.y
+    toWorldCoordinates(mouseX: number, mouseY: number) {
+        TEMP_VEC.x = mouseX - this.camera.x
+        TEMP_VEC.y = mouseY - this.camera.y
+
+        return TEMP_VEC
     }
 
     render() {
