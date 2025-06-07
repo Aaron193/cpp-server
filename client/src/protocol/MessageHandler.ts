@@ -118,6 +118,16 @@ export class MessageHandler {
                 entity._state |= state
                 break
             }
+            case ServerHeader.HEALTH: {
+                console.log('Entity health')
+                const health = reader.readFloat()
+                assert(health >= 0, 'Health cannot be negative')
+
+                // get hud
+                const hud = client.world.renderer.hud
+                hud.healthBar.setHealth(health)
+                break
+            }
             case ServerHeader.PLAYER_JOIN: {
                 console.log('Player join')
                 const id = reader.readU32()

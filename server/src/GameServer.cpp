@@ -283,7 +283,7 @@ void GameServer::Hit(entt::entity attacker, b2Vec2& pos, int radius) {
             if (b2TestOverlap(&hitbox, 0, shape, 0, hitboxXf, shapeXf)) {
                 // damage entity
                 const int DAMAGE = 10;
-                health.current -= DAMAGE;
+                health.decrement(DAMAGE);
 
                 // if entity has a state, we will set it to hurt
                 if (reg.all_of<Components::State>(entity)) {

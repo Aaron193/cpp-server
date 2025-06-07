@@ -245,10 +245,7 @@ void Client::writeGameState() {
         }
     }
 
-    //    maybe instead of putting this inside Client::writeGameState, we go
-    //    query each state component, and if it is not idle we then go through
-    //    each client, check their visible entities, and
-    //    serialize there
+    // Write entity states
     for (entt::entity entity :
          physicsWorld.m_QueryNetworkedEntities->entities) {
         // if entity has state component, notify client of the state
@@ -260,6 +257,15 @@ void Client::writeGameState() {
                 m_writer.writeU8(state.state);
             }
         }
+    }
+
+    // Write our player's health
+
+    Components::Health& health = reg.get<Components::Health>(m_entity);
+    if (health.dirty) {
+        m_writer.writeU8(ServerHeader::HEALTH);
+        m_writer.writeFloat(health.current / health.max);
+        health.dirty = false;
     }
 
     m_previousVisibleEntities.swap(currentlyVisibleEntities);

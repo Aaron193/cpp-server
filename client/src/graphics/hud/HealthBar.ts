@@ -1,7 +1,7 @@
 import * as PIXI from 'pixi.js'
 
 export class HealthBar extends PIXI.Container {
-    health: number = 100
+    health: number = 1
     location: {
         width: number
         height: number
@@ -32,9 +32,6 @@ export class HealthBar extends PIXI.Container {
 
         this.addChild(red)
         this.addChild(green)
-
-        // just for testing
-        this.setHealth(75)
     }
 
     setHealth(health: number) {
@@ -45,7 +42,7 @@ export class HealthBar extends PIXI.Container {
         green.rect(
             0,
             0,
-            (this.health / 100) * this.location.width,
+            this.health * this.location.width,
             this.location.height
         )
         green.fill()

@@ -70,6 +70,15 @@ struct State {
 struct Health {
     float max;
     float current;
+    bool dirty = false;
+
+    void decrement(float amount) {
+        current -= amount;
+        if (current < 0.0f) {
+            current = 0.0f;
+        }
+        dirty = true;
+    }
 };
 
 };  // namespace Components
