@@ -38,4 +38,5 @@ class GameServer {
     void healthSystem(double delta);
 
     void Hit(entt::entity entity, b2Vec2& meleePos, int radius);
+    void Die(entt::entity entity);
 };

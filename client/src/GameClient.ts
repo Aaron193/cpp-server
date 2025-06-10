@@ -44,11 +44,10 @@ export class GameClient {
         this.sendInputDirection(this.currentDirection)
 
         // get my player
-        if (this.world.entities.has(this.world.myEntityId)) {
+        if (this.world.entities.has(this.world.cameraEntityId)) {
             const myEntity = this.world.entities.get(
-                this.world.myEntityId
+                this.world.cameraEntityId
             )! as Player
-
             this.sendInputAngle(myEntity.body.rotation)
         }
 
@@ -56,6 +55,8 @@ export class GameClient {
     }
 
     private sendInputDirection(direction: number) {
+        if (!this.world.active) return
+
         if (this.lastSendDirection !== direction) {
             this.lastSendDirection = direction
             this.socket.streamWriter.writeU8(ClientHeader.MOVEMENT)
@@ -64,6 +65,8 @@ export class GameClient {
     }
 
     private sendInputAngle(angle: number) {
+        if (!this.world.active) return
+
         if (this.lastSendAngle !== angle) {
             this.lastSendAngle = angle
             this.socket.streamWriter.writeU8(ClientHeader.MOUSE)
@@ -124,13 +127,14 @@ export class GameClient {
     }
 
     private onMouseClick(event: MouseEvent, isDown: boolean) {
-        if (!this.world.entities.has(this.world.myEntityId)) return
+        if (!this.world.entities.has(this.world.cameraEntityId)) return
+        if (!this.world.active) return
 
         // update mouse position to be instantaneous when we click
         this.onMouseMove(event)
 
         const myEntity = this.world.entities.get(
-            this.world.myEntityId
+            this.world.cameraEntityId
         )! as Player
 
         const angle = myEntity.getAngleToMouse()

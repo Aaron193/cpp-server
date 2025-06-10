@@ -87,9 +87,9 @@ export class Player extends Entity {
 
     update(delta: number, tick: number, now: number) {
         // do some update stuff or whatever
-        const myEntityId = this.client.world.myEntityId
+        const cameraEntityId = this.client.world.cameraEntityId
 
-        if (this._id === myEntityId) {
+        if (this._id === cameraEntityId && this.client.world.active) {
             this.body.rotation = this.getAngleToMouse()
         }
 

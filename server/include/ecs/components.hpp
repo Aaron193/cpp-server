@@ -70,6 +70,18 @@ struct State {
 struct Health {
     float max;
     float current;
+    bool dirty = false;
+    entt::entity attacker = entt::null;
+
+    void decrement(float amount, entt::entity attacker = entt::null) {
+        current -= amount;
+        if (current < 0.0f) {
+            current = 0.0f;
+        }
+
+        dirty = true;
+        this->attacker = attacker;
+    }
 };
 
 };  // namespace Components

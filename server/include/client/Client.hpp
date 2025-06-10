@@ -29,6 +29,7 @@ class Client {
     PacketWriter m_writer;
 
     std::string m_name;
+    // we are actively playing inside the game world, spectators are inactive
     bool m_active = false;
     std::unordered_set<entt::entity> m_previousVisibleEntities;
 
@@ -74,4 +75,6 @@ enum ServerHeader {
     PLAYER_JOIN,
     PLAYER_LEAVE,
     ENTITY_STATE,
+    HEALTH,
+    DIED,
 };

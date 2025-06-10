@@ -7,7 +7,9 @@ export class World {
     renderer: Renderer
     interpolator: Interpolator = new Interpolator(this)
     entities: Map<number, Entity> = new Map()
-    myEntityId: number = -1
+    // maybe we can rethink these two identifiers... maybe a controlled entity id, and a camera entity id?
+    cameraEntityId: number = -1
+    active: boolean = false // actively in world vs non active in world, eg: spectator vs player
 
     private constructor(renderer: Renderer) {
         this.renderer = renderer
@@ -25,10 +27,13 @@ export class World {
             entity.update(delta, tick, now)
         })
 
-        const myEntity = this.entities.get(this.myEntityId)
+        const cameraEntity = this.entities.get(this.cameraEntityId)
 
-        if (myEntity) {
-            this.renderer.centerCamera(myEntity.position.x, myEntity.position.y)
+        if (cameraEntity) {
+            this.renderer.centerCamera(
+                cameraEntity.position.x,
+                cameraEntity.position.y
+            )
         }
 
         this.renderer.render()

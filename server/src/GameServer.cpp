@@ -233,7 +233,7 @@ void GameServer::healthSystem(double delta) {
     reg.view<Components::Health>().each(
         [&](entt::entity entity, Components::Health& health) {
             if (health.current <= 0) {
-                // die
+                Die(entity);
             }
         });
 }
@@ -283,7 +283,7 @@ void GameServer::Hit(entt::entity attacker, b2Vec2& pos, int radius) {
             if (b2TestOverlap(&hitbox, 0, shape, 0, hitboxXf, shapeXf)) {
                 // damage entity
                 const int DAMAGE = 10;
-                health.current -= DAMAGE;
+                health.decrement(DAMAGE, attacker);
 
                 // if entity has a state, we will set it to hurt
                 if (reg.all_of<Components::State>(entity)) {
@@ -293,6 +293,48 @@ void GameServer::Hit(entt::entity attacker, b2Vec2& pos, int radius) {
                     state.setState(EntityStates::HURT);
                 }
             }
+        }
+    }
+}
+
+void GameServer::Die(entt::entity entity) {
+    entt::registry& reg = m_entityManager.getRegistry();
+
+    // entity doesn't have a type component
+    // TODO: maybe we should have a base component for all entities that has
+    // stuff like body, type, etc... because every single entity here should
+    // have a type.
+    if (!reg.all_of<Components::Type>(entity)) return;
+
+    EntityTypes type = reg.get<Components::Type>(entity).type;
+
+    switch (type) {
+        case EntityTypes::SPECTATOR:
+        case EntityTypes::CRATE:
+            // These entities cannot die
+            assert(false);
+            break;
+
+        case EntityTypes::PLAYER: {
+            assert(reg.all_of<Components::Client>(entity));
+
+            mutex_lock_t lock(m_clientsMutex);
+            uint32_t id = reg.get<Components::Client>(entity).id;
+            auto it = m_clients.find(id);
+            assert(it != m_clients.end());
+
+            Client* client = it->second;
+
+            m_entityManager.scheduleForRemoval(client->m_entity);
+            client->changeBody(m_entityManager.createSpectator(
+                reg.get<Components::Health>(entity).attacker));
+            client->m_active =
+                false;  // maybe m_active can be on an entity base so that it
+                        // can be set inside createSpectator instead of
+                        // accessing it on client outside here...
+            client->m_writer.writeU8(ServerHeader::DIED);
+
+            break;
         }
     }
 }

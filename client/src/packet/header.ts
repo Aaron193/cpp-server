@@ -15,4 +15,6 @@ export const enum ServerHeader {
     PLAYER_JOIN,
     PLAYER_LEAVE,
     ENTITY_STATE,
+    HEALTH,
+    DIED,
 }

@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <entt/entt.hpp>
 
-enum EntityTypes : uint8_t { SPECTATOR, PLAYER, CRATE, HITBOX };
+enum EntityTypes : uint8_t { SPECTATOR, PLAYER, CRATE };
 
 enum EntityStates : uint8_t {
     IDLE = 0,

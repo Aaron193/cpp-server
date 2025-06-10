@@ -16,13 +16,14 @@ export class MessageHandler {
                 const entity = reader.readU32()
                 const tickrate = reader.readU8()
                 client.world.interpolator.setTickrate(tickrate)
-                client.world.myEntityId = entity
+                client.world.cameraEntityId = entity
+                client.world.active = true
                 break
             }
             case ServerHeader.SET_CAMERA: {
                 console.log('Set camera')
                 const targetEntity = reader.readU32()
-                client.world.myEntityId = targetEntity
+                client.world.cameraEntityId = targetEntity
                 break
             }
             case ServerHeader.ENTITY_CREATE: {
@@ -116,6 +117,24 @@ export class MessageHandler {
                 assert(entity != undefined, `Entity with ID: ${id} not found`)
 
                 entity._state |= state
+                break
+            }
+            case ServerHeader.HEALTH: {
+                console.log('Entity health')
+                const health = reader.readFloat()
+                assert(health >= 0, 'Health cannot be negative')
+
+                // get hud
+                const hud = client.world.renderer.hud
+                hud.healthBar.setHealth(health)
+                break
+            }
+            case ServerHeader.DIED: {
+                console.log('Entity Died')
+
+                // get hud
+                const world = client.world
+                world.active = false
                 break
             }
             case ServerHeader.PLAYER_JOIN: {

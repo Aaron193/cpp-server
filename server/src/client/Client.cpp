@@ -25,11 +25,9 @@ Client::Client(GameServer& gameServer,
     changeBody(m_gameServer.m_entityManager.createSpectator(entt::null));
 
     for (auto& [id, client] : m_gameServer.m_clients) {
-        if (client->m_active) {
-            m_writer.writeU8(ServerHeader::PLAYER_JOIN);
-            m_writer.writeU32(static_cast<uint32_t>(client->m_entity));
-            m_writer.writeString(client->m_name);
-        }
+        m_writer.writeU8(ServerHeader::PLAYER_JOIN);
+        m_writer.writeU32(static_cast<uint32_t>(client->m_entity));
+        m_writer.writeString(client->m_name);
     }
 }
 
@@ -78,9 +76,12 @@ void Client::onSpawn(mutex_lock_t& clientsWitness) {
     m_gameServer.m_entityManager.scheduleForRemoval(m_entity);
     changeBody(m_gameServer.m_entityManager.createPlayer());
 
+    // @TODO: this needs to be a HANDSHAKE and done ASAP, we cannot give tps
+    // when the player spawns because they need the tps before they spawn when
+    // spectating
     m_writer.writeU8(ServerHeader::SPAWN_SUCCESS);
     m_writer.writeU32(static_cast<uint32_t>(m_entity));
-    m_writer.writeU8(this->m_gameServer.m_tps);
+    m_writer.writeU8(m_gameServer.m_tps);
     std::cout << "User " << m_name << " has connected" << std::endl;
 
     // notify clients about our new player
@@ -141,9 +142,9 @@ void Client::onMouseClick(bool isDown) {
 }
 
 void Client::writeGameState() {
-    if (this->m_active == false) {
-        return;
-    }
+    entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
+
+    assert(reg.all_of<Components::Camera>(m_entity));
 
     // Static variables to avoid repeated allocations
     static std::vector<entt::entity> createEntities;
@@ -155,8 +156,6 @@ void Client::writeGameState() {
     updateEntities.clear();
     removeEntities.clear();
     currentlyVisibleEntities.clear();
-
-    entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
 
     Components::Camera& cam = reg.get<Components::Camera>(m_entity);
     bool targetValid = (cam.target != entt::null && reg.valid(cam.target));
@@ -209,7 +208,11 @@ void Client::writeGameState() {
         m_writer.writeU32(static_cast<uint32_t>(createEntities.size()));
 
         for (entt::entity entity : createEntities) {
+            assert(reg.all_of<Components::Body>(entity));
+            assert(reg.all_of<Components::Type>(entity));
+
             b2Body* body = bodyView.get<Components::Body>(entity).body;
+            assert(body != nullptr);
             const b2Vec2& position = body->GetPosition();
             uint8_t type = typeView.get<Components::Type>(entity).type;
 
@@ -226,7 +229,10 @@ void Client::writeGameState() {
         m_writer.writeU32(static_cast<uint32_t>(updateEntities.size()));
 
         for (const entt::entity& entity : updateEntities) {
+            assert(reg.all_of<Components::Body>(entity));
+
             b2Body* body = bodyView.get<Components::Body>(entity).body;
+            assert(body != nullptr);
             const b2Vec2& position = body->GetPosition();
 
             m_writer.writeU32(static_cast<uint32_t>(entity));
@@ -245,10 +251,7 @@ void Client::writeGameState() {
         }
     }
 
-    //    maybe instead of putting this inside Client::writeGameState, we go
-    //    query each state component, and if it is not idle we then go through
-    //    each client, check their visible entities, and
-    //    serialize there
+    // Write entity states
     for (entt::entity entity :
          physicsWorld.m_QueryNetworkedEntities->entities) {
         // if entity has state component, notify client of the state
@@ -259,6 +262,16 @@ void Client::writeGameState() {
                 m_writer.writeU32(static_cast<uint32_t>(entity));
                 m_writer.writeU8(state.state);
             }
+        }
+    }
+
+    // Spectator clients don't have a health component, we must runtime check
+    if (reg.all_of<Components::Health>(m_entity)) {
+        Components::Health& health = reg.get<Components::Health>(m_entity);
+        if (health.dirty) {
+            m_writer.writeU8(ServerHeader::HEALTH);
+            m_writer.writeFloat(health.current / health.max);
+            health.dirty = false;
         }
     }
 
