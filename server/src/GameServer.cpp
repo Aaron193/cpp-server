@@ -338,10 +338,7 @@ void GameServer::Die(entt::entity entity) {
             m_entityManager.scheduleForRemoval(client->m_entity);
             client->changeBody(m_entityManager.createSpectator(
                 reg.get<Components::Health>(entity).attacker));
-            client->m_active =
-                false;  // @TODO: maybe m_active can be on an entity base so
-                        // that it can be set inside createSpectator instead of
-                        // accessing it on client outside here...
+            client->m_active = false;
             client->m_writer.writeU8(ServerHeader::DIED);
 
             break;
