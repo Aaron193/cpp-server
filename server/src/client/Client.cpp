@@ -139,6 +139,7 @@ void Client::onMouseClick(bool isDown) {
     Components::Input& input = reg.get<Components::Input>(m_entity);
 
     input.mouseIsDown = isDown;
+    if (isDown) input.dirtyClick = true;
 }
 
 void Client::writeGameState() {

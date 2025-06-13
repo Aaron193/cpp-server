@@ -39,6 +39,8 @@ struct Input {
     uint8_t direction;
     float angle;
     bool mouseIsDown = false;
+    // true if the mouse was ever down during the current tick
+    bool dirtyClick = false;
 };
 
 struct AttackCooldown {
@@ -47,7 +49,7 @@ struct AttackCooldown {
 
     bool update(float delta) {
         current -= delta;
-        if (current < 0.0f) {
+        if (current <= 0.0f) {
             current = 0.0f;
             return true;
         }

@@ -183,33 +183,34 @@ void GameServer::inputSystem(double delta) {
 void GameServer::meleeSystem(double delta) {
     entt::registry& reg = m_entityManager.getRegistry();
 
-    reg.view<Components::Body, Components::Input, Components::State>().each(
-        [&](entt::entity entity, Components::Body& bodyComp,
-            Components::Input& input, Components::State& state) {
+    reg.view<Components::Body, Components::Input, Components::AttackCooldown,
+             Components::State>()
+        .each([&](entt::entity entity, Components::Body& bodyComp,
+                  Components::Input& input,
+                  Components::AttackCooldown& cooldown,
+                  Components::State& state) {
             b2Body* body = bodyComp.body;
             assert(body != nullptr);
 
-            // update mouse up/down
-            if (input.mouseIsDown) {
-                assert(reg.all_of<Components::AttackCooldown>(entity));
+            const bool shouldAttack = input.mouseIsDown || input.dirtyClick;
+            const bool finishedCooldown = cooldown.update(delta);
 
-                auto& cooldown = reg.get<Components::AttackCooldown>(entity);
+            if (shouldAttack && finishedCooldown) {
+                cooldown.reset();
 
-                if (cooldown.update(delta)) {
-                    state.setState(EntityStates::MELEE);
+                input.dirtyClick = false;
 
-                    const b2Vec2& pos = body->GetPosition();
-                    const float angle = body->GetAngle();
-                    int playerRadius = 25;
+                state.setState(EntityStates::MELEE);
 
-                    b2Vec2 meleePos =
-                        b2Vec2(pixels(pos.x) + playerRadius * std::cos(angle),
-                               pixels(pos.y) + playerRadius * std::sin(angle));
+                const b2Vec2& pos = body->GetPosition();
+                const float angle = body->GetAngle();
+                int playerRadius = 25;
 
-                    Hit(entity, meleePos, 15);
+                b2Vec2 meleePos =
+                    b2Vec2(pixels(pos.x) + playerRadius * std::cos(angle),
+                           pixels(pos.y) + playerRadius * std::sin(angle));
 
-                    cooldown.reset();
-                }
+                Hit(entity, meleePos, 15);
             }
         });
 }
