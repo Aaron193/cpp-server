@@ -3,6 +3,7 @@ import { NameTag } from './NameTag'
 import { GameClient } from '../GameClient'
 import { Entity } from './Entity'
 import { Animation, LinearFastInSlowOut, LinearInOut } from './utils/Animation'
+import { assert } from '../utils/assert'
 
 export const Nicknames = new Map<number, string>()
 
@@ -38,7 +39,9 @@ export class Player extends Entity {
         this._id = id
 
         this.client = client
-        this.nameTag = new NameTag(Nicknames.get(this._id) || '')
+
+        assert(Nicknames.has(this._id), `No nickname for player ${this._id}`)
+        this.nameTag = new NameTag(Nicknames.get(this._id))
         this.nameTag.position.set(0, -50)
 
         this.body = new PIXI.Graphics()
@@ -86,7 +89,6 @@ export class Player extends Entity {
     }
 
     update(delta: number, tick: number, now: number) {
-        // do some update stuff or whatever
         const cameraEntityId = this.client.world.cameraEntityId
 
         if (this._id === cameraEntityId && this.client.world.active) {
@@ -101,6 +103,7 @@ export class Player extends Entity {
                 this.melee.reset()
             }
         }
+
         if (this._state & STATE.HURT) {
             const finished = this.hurt.update(delta)
 
@@ -119,7 +122,7 @@ export class Player extends Entity {
 
             if (finished) {
                 this.hurt.reset()
-                this.body.tint = originalTint // restore original tint after hurt
+                this.body.tint = originalTint
                 this._state &= ~STATE.HURT
             }
         }
