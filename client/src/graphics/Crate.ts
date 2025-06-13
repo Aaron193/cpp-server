@@ -28,4 +28,8 @@ export class Crate extends Entity {
     setRot(angle: number) {
         this.rotation = angle
     }
+
+    getRot(): number {
+        return this.rotation
+    }
 }

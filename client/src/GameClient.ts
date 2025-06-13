@@ -1,3 +1,4 @@
+import { Entity } from './graphics/Entity'
 import { Player } from './graphics/Player'
 import { ClientHeader } from './packet'
 import { Socket } from './protocol/socket'
@@ -44,11 +45,14 @@ export class GameClient {
         this.sendInputDirection(this.currentDirection)
 
         // get my player
-        if (this.world.entities.has(this.world.cameraEntityId)) {
+        if (
+            this.world.active &&
+            this.world.entities.has(this.world.cameraEntityId)
+        ) {
             const myEntity = this.world.entities.get(
                 this.world.cameraEntityId
             )! as Player
-            this.sendInputAngle(myEntity.body.rotation)
+            this.sendInputAngle(myEntity.getRot())
         }
 
         this.socket.flush()
@@ -133,6 +137,7 @@ export class GameClient {
         // update mouse position to be instantaneous when we click
         this.onMouseMove(event)
 
+        // we are active, so we're controlling our player
         const myEntity = this.world.entities.get(
             this.world.cameraEntityId
         )! as Player

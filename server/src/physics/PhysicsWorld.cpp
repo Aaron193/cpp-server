@@ -73,11 +73,11 @@ ContactListener::matchEntities(entt::entity entityA, entt::entity entityB,
                                EntityTypes expectedA, EntityTypes expectedB) {
     entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
 
-    assert(reg.all_of<Components::Type>(entityA));
-    assert(reg.all_of<Components::Type>(entityB));
+    assert(reg.all_of<Components::EntityBase>(entityA));
+    assert(reg.all_of<Components::EntityBase>(entityB));
 
-    EntityTypes typeA = reg.get<Components::Type>(entityA).type;
-    EntityTypes typeB = reg.get<Components::Type>(entityB).type;
+    EntityTypes typeA = reg.get<Components::EntityBase>(entityA).type;
+    EntityTypes typeB = reg.get<Components::EntityBase>(entityB).type;
 
     if (typeA == expectedA && typeB == expectedB) {
         return std::make_pair(entityA, entityB);

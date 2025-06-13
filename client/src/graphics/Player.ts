@@ -156,4 +156,9 @@ export class Player extends Entity {
     setRot(angle: number) {
         this.body.rotation = angle
     }
+
+    getRot(): number {
+        return this.body.rotation
+    }
+    
 }

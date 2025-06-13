@@ -19,7 +19,7 @@ EntityManager::EntityManager(GameServer& gameServer)
 entt::entity EntityManager::createSpectator(entt::entity followee) {
     entt::entity entity = m_registry.create();
 
-    m_registry.emplace<Type>(entity, EntityTypes::SPECTATOR);
+    m_registry.emplace<EntityBase>(entity, EntityTypes::SPECTATOR);
 
     if (followee == entt::null) {
         followee = getFollowEntity();
@@ -33,9 +33,7 @@ entt::entity EntityManager::createSpectator(entt::entity followee) {
 entt::entity EntityManager::createPlayer() {
     entt::entity entity = m_registry.create();
 
-    m_registry.emplace<Type>(entity, EntityTypes::PLAYER);
-    auto& bodyComponent = m_registry.emplace<Body>(entity);
-    m_registry.emplace<Dynamic>(entity);
+    auto& base = m_registry.emplace<EntityBase>(entity, EntityTypes::PLAYER);
     m_registry.emplace<Networked>(entity);
     m_registry.emplace<State>(entity, EntityStates::IDLE);
     m_registry.emplace<Camera>(entity, entity);
@@ -62,7 +60,7 @@ entt::entity EntityManager::createPlayer() {
     bodyDef.userData.pointer = reinterpret_cast<uintptr_t>(userData);
 
     // Create the b2Body and assign it to our component's 'body' member
-    bodyComponent.body = world->CreateBody(&bodyDef);
+    base.body = world->CreateBody(&bodyDef);
 
     // Create circular shape
     b2CircleShape circle;
@@ -78,7 +76,7 @@ entt::entity EntityManager::createPlayer() {
 
     // TODO: setup filter collision bitmasks
 
-    bodyComponent.body->CreateFixture(&fixtureDef);
+    base.body->CreateFixture(&fixtureDef);
 
     return entity;
 }
@@ -86,9 +84,7 @@ entt::entity EntityManager::createPlayer() {
 entt::entity EntityManager::createCrate() {
     entt::entity entity = m_registry.create();
 
-    m_registry.emplace<Type>(entity, EntityTypes::CRATE);
-    auto& bodyComponent = m_registry.emplace<Body>(entity);
-    m_registry.emplace<Static>(entity);
+    auto& base = m_registry.emplace<EntityBase>(entity, EntityTypes::CRATE);
     m_registry.emplace<Networked>(entity);
 
     b2World* world = m_gameServer.m_physicsWorld.m_world.get();
@@ -104,7 +100,7 @@ entt::entity EntityManager::createCrate() {
     bodyDef.userData.pointer = reinterpret_cast<uintptr_t>(userData);
 
     // Create the b2Body and assign it to our component's 'body' member
-    bodyComponent.body = world->CreateBody(&bodyDef);
+    base.body = world->CreateBody(&bodyDef);
 
     // Create box shape
     b2PolygonShape box;
@@ -120,7 +116,7 @@ entt::entity EntityManager::createCrate() {
     fixtureDef.restitution = 0.0f;
     fixtureDef.isSensor = false;
 
-    bodyComponent.body->CreateFixture(&fixtureDef);
+    base.body->CreateFixture(&fixtureDef);
 
     return entity;
 }
@@ -131,17 +127,15 @@ void EntityManager::scheduleForRemoval(entt::entity entity) {
 
 void EntityManager::removeEntities() {
     m_registry.view<Removal>().each([this](entt::entity entity) {
-        if (auto* bodyComponent =
-                m_registry.try_get<Components::Body>(entity)) {
-            if (bodyComponent->body) {
-                if (bodyComponent->body->GetUserData().pointer) {
+        if (auto* base = m_registry.try_get<Components::EntityBase>(entity)) {
+            if (base->body) {
+                if (base->body->GetUserData().pointer) {
                     delete reinterpret_cast<EntityBodyUserData*>(
-                        bodyComponent->body->GetUserData().pointer);
-                    bodyComponent->body->GetUserData().pointer = 0;
+                        base->body->GetUserData().pointer);
+                    base->body->GetUserData().pointer = 0;
                 }
-                m_gameServer.m_physicsWorld.m_world->DestroyBody(
-                    bodyComponent->body);
-                bodyComponent->body = nullptr;
+                m_gameServer.m_physicsWorld.m_world->DestroyBody(base->body);
+                base->body = nullptr;
             }
         }
     });
@@ -150,12 +144,16 @@ void EntityManager::removeEntities() {
     m_registry.destroy(view.begin(), view.end());
 }
 
+// Right now this returns a player entity
+// in future, maybe return any dynamic entity
 entt::entity EntityManager::getFollowEntity() {
-    auto view = m_registry.view<Body, Dynamic, Networked>();
+    auto view = m_registry.view<EntityBase, Networked>();
 
-    // "random" entity for now
     for (auto entity : view) {
-        return entity;
+        auto& base = view.get<EntityBase>(entity);
+        if (base.type == EntityTypes::PLAYER) {
+            return entity;
+        }
     }
 
     return entt::null;

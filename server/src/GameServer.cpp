@@ -159,9 +159,9 @@ void GameServer::stateSystem() {
 void GameServer::inputSystem(double delta) {
     entt::registry& reg = m_entityManager.getRegistry();
 
-    reg.view<Components::Input, Components::Body>().each(
+    reg.view<Components::Input, Components::EntityBase>().each(
         [&](entt::entity entity, Components::Input& input,
-            Components::Body& b) {
+            Components::EntityBase& base) {
             uint8_t direction = input.direction;
             float angle = input.angle;
 
@@ -186,7 +186,7 @@ void GameServer::inputSystem(double delta) {
             b2Vec2 velocity =
                 b2Vec2(inputVector.x * speed, inputVector.y * speed);
 
-            b2Body* body = b.body;
+            b2Body* body = base.body;
 
             assert(body != nullptr);
 
@@ -195,21 +195,16 @@ void GameServer::inputSystem(double delta) {
         });
 }
 
-/**
-    @TODO: remove states from this function, decouple that logic into its own
-    system... in other words get client iteration outside of this function to
-    ensure pure ECS system logic
-*/
 void GameServer::meleeSystem(double delta) {
     entt::registry& reg = m_entityManager.getRegistry();
 
-    reg.view<Components::Body, Components::Input, Components::AttackCooldown,
-             Components::State>()
-        .each([&](entt::entity entity, Components::Body& bodyComp,
+    reg.view<Components::EntityBase, Components::Input,
+             Components::AttackCooldown, Components::State>()
+        .each([&](entt::entity entity, Components::EntityBase& base,
                   Components::Input& input,
                   Components::AttackCooldown& cooldown,
                   Components::State& state) {
-            b2Body* body = bodyComp.body;
+            b2Body* body = base.body;
             assert(body != nullptr);
 
             const bool shouldAttack = input.mouseIsDown || input.dirtyClick;
@@ -240,9 +235,9 @@ void GameServer::cameraSystem() {
     reg.view<Components::Camera>().each(
         [&](entt::entity entity, Components::Camera& cam) {
             if (reg.valid(cam.target)) {
-                assert(reg.all_of<Components::Body>(cam.target));
+                assert(reg.all_of<Components::EntityBase>(cam.target));
 
-                b2Body* body = reg.get<Components::Body>(cam.target).body;
+                b2Body* body = reg.get<Components::EntityBase>(cam.target).body;
                 cam.position = body->GetPosition();
             }
         });
@@ -285,11 +280,10 @@ void GameServer::Hit(entt::entity attacker, b2Vec2& pos, int radius) {
     for (entt::entity entity : m_physicsWorld.m_queryBodies->entities) {
         if (attacker == entity) continue;
 
-        // Only test hit against entities that have a body and health
-        if (!reg.all_of<Components::Body>(entity)) continue;
         if (!reg.all_of<Components::Health>(entity)) continue;
 
-        b2Body* body = reg.get<Components::Body>(entity).body;
+        assert(reg.all_of<Components::EntityBase>(entity));
+        b2Body* body = reg.get<Components::EntityBase>(entity).body;
         assert(body != nullptr);
 
         Components::Health& health = reg.get<Components::Health>(entity);
@@ -320,14 +314,9 @@ void GameServer::Hit(entt::entity attacker, b2Vec2& pos, int radius) {
 
 void GameServer::Die(entt::entity entity) {
     entt::registry& reg = m_entityManager.getRegistry();
+    assert(reg.all_of<Components::EntityBase>(entity));
 
-    // entity doesn't have a type component
-    // TODO: maybe we should have a base component for all entities that has
-    // stuff like body, type, etc... because every single entity here should
-    // have a type.
-    if (!reg.all_of<Components::Type>(entity)) return;
-
-    EntityTypes type = reg.get<Components::Type>(entity).type;
+    EntityTypes type = reg.get<Components::EntityBase>(entity).type;
 
     switch (type) {
         case EntityTypes::SPECTATOR:
@@ -350,8 +339,8 @@ void GameServer::Die(entt::entity entity) {
             client->changeBody(m_entityManager.createSpectator(
                 reg.get<Components::Health>(entity).attacker));
             client->m_active =
-                false;  // maybe m_active can be on an entity base so that it
-                        // can be set inside createSpectator instead of
+                false;  // @TODO: maybe m_active can be on an entity base so
+                        // that it can be set inside createSpectator instead of
                         // accessing it on client outside here...
             client->m_writer.writeU8(ServerHeader::DIED);
 

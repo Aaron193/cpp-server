@@ -9,23 +9,16 @@
 
 namespace Components {
 
-struct Type {
-    EntityTypes type;
-};
-
 struct Client {
     uint32_t id;
 };
 
-struct Body {
-    b2Body* body;
+struct EntityBase {
+    EntityTypes type;
+    b2Body* body = nullptr;
 };
 
-struct Static {};
-struct Dynamic {};
-
 struct Networked {};
-
 struct Removal {};
 
 struct Camera {

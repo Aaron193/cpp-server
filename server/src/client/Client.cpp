@@ -124,8 +124,6 @@ void Client::onMovement() {
     input.direction = direction;
 }
 
-// @TODO: when the user clicks mouse really fast, it wont register because
-// it will isDown will be false by the time it gets proccessed
 void Client::onMouseClick(bool isDown) {
     if (!m_active) {
         return;
@@ -158,8 +156,9 @@ void Client::writeGameState() {
     Components::Camera& cam = reg.get<Components::Camera>(m_entity);
     bool targetValid = (cam.target != entt::null && reg.valid(cam.target));
     const b2Vec2& pos =
-        targetValid ? reg.get<Components::Body>(cam.target).body->GetPosition()
-                    : cam.position;
+        targetValid
+            ? reg.get<Components::EntityBase>(cam.target).body->GetPosition()
+            : cam.position;
     float halfViewX = meters(cam.width) * 0.5f;
     float halfViewY = meters(cam.height) * 0.5f;
 
@@ -197,8 +196,7 @@ void Client::writeGameState() {
         }
     }
 
-    auto bodyView = reg.view<Components::Body>();
-    auto typeView = reg.view<Components::Type>();
+    auto baseView = reg.view<Components::EntityBase>();
     auto stateView = reg.view<Components::State>();
 
     if (!createEntities.empty()) {
@@ -206,13 +204,13 @@ void Client::writeGameState() {
         m_writer.writeU32(static_cast<uint32_t>(createEntities.size()));
 
         for (entt::entity entity : createEntities) {
-            assert(reg.all_of<Components::Body>(entity));
-            assert(reg.all_of<Components::Type>(entity));
+            assert(reg.all_of<Components::EntityBase>(entity));
 
-            b2Body* body = bodyView.get<Components::Body>(entity).body;
+            auto& base = baseView.get<Components::EntityBase>(entity);
+            b2Body* body = base.body;
             assert(body != nullptr);
             const b2Vec2& position = body->GetPosition();
-            uint8_t type = typeView.get<Components::Type>(entity).type;
+            uint8_t type = base.type;
 
             m_writer.writeU32(static_cast<uint32_t>(entity));
             m_writer.writeU8(type);
@@ -227,9 +225,9 @@ void Client::writeGameState() {
         m_writer.writeU32(static_cast<uint32_t>(updateEntities.size()));
 
         for (const entt::entity& entity : updateEntities) {
-            assert(reg.all_of<Components::Body>(entity));
+            assert(reg.all_of<Components::EntityBase>(entity));
 
-            b2Body* body = bodyView.get<Components::Body>(entity).body;
+            b2Body* body = baseView.get<Components::EntityBase>(entity).body;
             assert(body != nullptr);
             const b2Vec2& position = body->GetPosition();
 

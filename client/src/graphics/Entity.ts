@@ -22,4 +22,5 @@ export abstract class Entity extends PIXI.Container {
     abstract update(delta: number, tick: number, now: number): void
 
     abstract setRot(angle: number): void
+    abstract getRot(): number
 }
