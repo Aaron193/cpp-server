@@ -27,6 +27,25 @@
 
 GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {}
 
+void GameServer::enqueueJob(std::function<void()> job) {
+    {
+        std::lock_guard<std::mutex> lock(m_jobQueueMutex);
+        m_jobQueue.push(std::move(job));
+    }
+}
+
+void GameServer::processJobs() {
+    std::queue<std::function<void()>> jobs;
+    {
+        std::lock_guard<std::mutex> lock(m_jobQueueMutex);
+        std::swap(jobs, m_jobQueue);
+    }
+    while (!jobs.empty()) {
+        jobs.front()();
+        jobs.pop();
+    }
+}
+
 void GameServer::run() {
     std::cout << "starting game server!" << std::endl;
 
@@ -84,6 +103,7 @@ void GameServer::processClientMessages() {
 }
 
 void GameServer::tick(double delta) {
+    processJobs();
     processClientMessages();
 
     {  // game world update

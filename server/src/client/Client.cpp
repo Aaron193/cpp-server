@@ -15,9 +15,6 @@
 #include "physics/PhysicsWorld.hpp"
 #include "util/units.hpp"
 
-// TODO: Since this runs on a different thread, im not sure if I can access
-// entt::registry (from changeBody) or other shared pieces of data from this
-// thread. I'm assuming this can be a source of bugs
 Client::Client(GameServer& gameServer,
                uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id,
                mutex_lock_t& clientsWitness)

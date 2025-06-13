@@ -20,16 +20,22 @@ void SocketServer::run() {
             "/*",
             {.open =
                  [&](auto* ws) {
-                     mutex_lock_t lock(m_gameServer.m_clientsMutex);
+                     // Defer client creation to the game thread
+                     m_gameServer.enqueueJob([this, ws]() {
+                         static uint32_t nextId = 0;
+                         mutex_lock_t lock(m_gameServer.m_clientsMutex);
 
-                     Client* client = new Client(m_gameServer, ws, id++, lock);
-                     m_gameServer.m_clients.emplace(client->m_id, client);
+                         Client* client =
+                             new Client(m_gameServer, ws, nextId++, lock);
+                         m_gameServer.m_clients.emplace(client->m_id, client);
 
-                     auto* data = (WebSocketData*)ws->getUserData();
-                     data->id = client->m_id;
+                         auto* data = (WebSocketData*)ws->getUserData();
+                         data->id = client->m_id;
 
-                     std::cout << "Connection opened, total clients: "
-                               << m_gameServer.m_clients.size() << std::endl;
+                         std::cout << "Connection opened, total clients: "
+                                   << m_gameServer.m_clients.size()
+                                   << std::endl;
+                     });
                  },
              .message =
                  [&](auto* ws, std::string_view message, uWS::OpCode opCode) {
@@ -38,49 +44,54 @@ void SocketServer::run() {
                      auto* data = (WebSocketData*)ws->getUserData();
                      uint32_t id = data->id;
 
-                     mutex_lock_t lock(m_gameServer.m_clientsMutex);
+                     // Defer message handling to the game thread
+                     m_gameServer.enqueueJob(
+                         [this, id, message = std::string(message)]() {
+                             mutex_lock_t lock(m_gameServer.m_clientsMutex);
 
-                     auto it = m_gameServer.m_clients.find(id);
+                             auto it = m_gameServer.m_clients.find(id);
 
-                     if (it != m_gameServer.m_clients.end()) {
-                         m_gameServer.m_messages.emplace_back(id, message);
-                     } else {
-                         std::cout << "Client with ID " << id << " not found"
-                                   << std::endl;
-                     }
+                             if (it != m_gameServer.m_clients.end()) {
+                                 m_gameServer.m_messages.emplace_back(id,
+                                                                      message);
+                             } else {
+                                 std::cout << "Client with ID " << id
+                                           << " not found" << std::endl;
+                             }
+                         });
                  },
              .close =
                  [&](auto* ws, int code, std::string_view message) {
                      auto* data = (WebSocketData*)ws->getUserData();
                      uint32_t id = data->id;
 
-                     mutex_lock_t lock(m_gameServer.m_clientsMutex);
+                     // Defer client removal to the game thread
+                     m_gameServer.enqueueJob([this, id]() {
+                         mutex_lock_t lock(m_gameServer.m_clientsMutex);
 
-                     auto it = m_gameServer.m_clients.find(id);
-                     if (it != m_gameServer.m_clients.end()) {
-                         Client* client = it->second;
-                         m_gameServer.m_entityManager.scheduleForRemoval(
-                             client->m_entity);
+                         auto it = m_gameServer.m_clients.find(id);
+                         if (it != m_gameServer.m_clients.end()) {
+                             Client* client = it->second;
+                             m_gameServer.m_entityManager.scheduleForRemoval(
+                                 client->m_entity);
 
-                         // remove this client's messages
-                         m_gameServer.m_messages.erase(
-                             std::remove_if(m_gameServer.m_messages.begin(),
-                                            m_gameServer.m_messages.end(),
-                                            [id](const auto& message) {
-                                                return message.first == id;
-                                            }),
-                             m_gameServer.m_messages.end());
+                             // remove this client's messages
+                             m_gameServer.m_messages.erase(
+                                 std::remove_if(m_gameServer.m_messages.begin(),
+                                                m_gameServer.m_messages.end(),
+                                                [id](const auto& message) {
+                                                    return message.first == id;
+                                                }),
+                                 m_gameServer.m_messages.end());
 
-                         // todo: setup all client logic on disconnect to be in
-                         // this method.. also do same with onopen, etc (if
-                         // needed).
-                         client->onClose(lock);
-                         delete client;
-                         m_gameServer.m_clients.erase(it);
-                     }
+                             client->onClose(lock);
+                             delete client;
+                             m_gameServer.m_clients.erase(it);
+                         }
 
-                     std::cout << "WebSocket closed, client deleted"
-                               << std::endl;
+                         std::cout << "WebSocket closed, client deleted"
+                                   << std::endl;
+                     });
                  }})
         .get("/",
              [](auto* res, auto* req) {

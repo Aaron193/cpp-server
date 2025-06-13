@@ -2,7 +2,9 @@
 
 #include <uwebsockets/Loop.h>
 
+#include <functional>
 #include <mutex>
+#include <queue>
 
 #include "ecs/EntityManager.hpp"
 #include "physics/PhysicsWorld.hpp"
@@ -25,6 +27,9 @@ class GameServer {
     // incoming network messages
     std::vector<std::pair<uint32_t, std::string>> m_messages;
 
+    // Job queue for cross-thread tasks
+    void enqueueJob(std::function<void()> job);
+
     void run();
 
    private:
@@ -39,4 +44,9 @@ class GameServer {
 
     void Hit(entt::entity entity, b2Vec2& meleePos, int radius);
     void Die(entt::entity entity);
+
+    // Job queue and synchronization
+    std::queue<std::function<void()>> m_jobQueue;
+    std::mutex m_jobQueueMutex;
+    void processJobs();
 };
