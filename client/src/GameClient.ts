@@ -103,7 +103,6 @@ export class GameClient {
         this.lastAngleSentTime = now
         this.socket.streamWriter.writeU8(ClientHeader.MOUSE)
         this.socket.streamWriter.writeFloat(angle)
-        console.log('sent angle', angle, saveBandwidth)
     }
 
     private onKeyDown(event: KeyboardEvent) {

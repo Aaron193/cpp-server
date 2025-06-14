@@ -330,7 +330,6 @@ void GameServer::Die(entt::entity entity) {
                 reg.get<Components::Health>(entity).attacker));
             client->m_active = false;
             client->m_writer.writeU8(ServerHeader::DIED);
-
             break;
         }
     }
