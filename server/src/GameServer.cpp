@@ -79,8 +79,6 @@ void GameServer::run() {
 }
 
 void GameServer::processClientMessages() {
-    mutex_lock_t lock(m_clientsMutex);
-
     for (auto& message : m_messages) {
         uint32_t id = message.first;
         std::string_view data = message.second;
@@ -90,7 +88,7 @@ void GameServer::processClientMessages() {
             Client* client = it->second;
             try {  // TODO: I dont really like try-catch. Maybe lets just not
                    // read outside buffer and set outside bytes to zero
-                client->onMessage(data, lock);
+                client->onMessage(data);
             } catch (std::runtime_error error) {
                 // Reading outside buffer view..
             }
@@ -120,24 +118,17 @@ void GameServer::tick(double delta) {
     }
 
     {  // server update
-        {
-            mutex_lock_t lock(m_clientsMutex);
+        for (auto& c : m_clients) {
+            Client& client = *c.second;
+            client.writeGameState();
+        }
 
+        m_socketLoop->defer([&]() {
             for (auto& c : m_clients) {
                 Client& client = *c.second;
-                client.writeGameState();
+                client.sendBytes();
             }
-        }
-        {
-            m_socketLoop->defer([&]() {
-                mutex_lock_t lock(m_clientsMutex);
-
-                for (auto& c : m_clients) {
-                    Client& client = *c.second;
-                    client.sendBytes();
-                }
-            });
-        }
+        });
     }
 }
 
@@ -328,7 +319,6 @@ void GameServer::Die(entt::entity entity) {
         case EntityTypes::PLAYER: {
             assert(reg.all_of<Components::Client>(entity));
 
-            mutex_lock_t lock(m_clientsMutex);
             uint32_t id = reg.get<Components::Client>(entity).id;
             auto it = m_clients.find(id);
             assert(it != m_clients.end());

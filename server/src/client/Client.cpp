@@ -5,7 +5,6 @@
 #include <box2d/b2_math.h>
 #include <box2d/b2_world.h>
 
-#include <iomanip>
 #include <iostream>
 #include <unordered_set>
 
@@ -16,8 +15,7 @@
 #include "util/units.hpp"
 
 Client::Client(GameServer& gameServer,
-               uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id,
-               mutex_lock_t& clientsWitness)
+               uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id)
     : m_gameServer(gameServer), m_ws(ws), m_id(id) {
     changeBody(m_gameServer.m_entityManager.createSpectator(entt::null));
 
@@ -32,8 +30,7 @@ Client::~Client() {
     std::cout << "User " << m_name << " has disconnected" << std::endl;
 }
 
-void Client::onMessage(const std::string_view& message,
-                       mutex_lock_t& clientsWitness) {
+void Client::onMessage(const std::string_view& message) {
     m_reader.loadMessage(message);
 
     while (m_reader.getOffset() < m_reader.byteLength()) {
@@ -41,7 +38,7 @@ void Client::onMessage(const std::string_view& message,
 
         switch (header) {
             case ClientHeader::SPAWN:
-                onSpawn(clientsWitness);
+                onSpawn();
                 break;
             case ClientHeader::MOUSE:
                 onMouse();
@@ -61,7 +58,7 @@ void Client::onMessage(const std::string_view& message,
 
 // clientsWitness: explicitly show that the caller holds the lock, we are safe
 // to access m_clients...
-void Client::onSpawn(mutex_lock_t& clientsWitness) {
+void Client::onSpawn() {
     if (m_active) return;
 
     std::string name = m_reader.readString();
@@ -89,7 +86,7 @@ void Client::onSpawn(mutex_lock_t& clientsWitness) {
     }
 }
 
-void Client::onClose(mutex_lock_t& clientsWitness) {
+void Client::onClose() {
     for (auto& [id, client] : m_gameServer.m_clients) {
         if (client != this) {
             client->m_writer.writeU8(ServerHeader::PLAYER_LEAVE);

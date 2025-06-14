@@ -15,6 +15,7 @@ SocketServer::SocketServer(GameServer& gameServer, uint16_t port)
 
 void SocketServer::run() {
     std::cout << "Starting socket server on port " << m_port << std::endl;
+    static uint32_t nextId = 0;
     uWS::App()
         .ws<WebSocketData>(
             "/*",
@@ -22,11 +23,8 @@ void SocketServer::run() {
                  [&](auto* ws) {
                      // Defer client creation to the game thread
                      m_gameServer.enqueueJob([this, ws]() {
-                         static uint32_t nextId = 0;
-                         mutex_lock_t lock(m_gameServer.m_clientsMutex);
-
                          Client* client =
-                             new Client(m_gameServer, ws, nextId++, lock);
+                             new Client(m_gameServer, ws, nextId++);
                          m_gameServer.m_clients.emplace(client->m_id, client);
 
                          auto* data = (WebSocketData*)ws->getUserData();
@@ -41,14 +39,11 @@ void SocketServer::run() {
                  [&](auto* ws, std::string_view message, uWS::OpCode opCode) {
                      if (opCode != uWS::OpCode::BINARY) return;
 
-                     auto* data = (WebSocketData*)ws->getUserData();
-                     uint32_t id = data->id;
-
-                     // Defer message handling to the game thread
+                     // Capture ws, not id
                      m_gameServer.enqueueJob(
-                         [this, id, message = std::string(message)]() {
-                             mutex_lock_t lock(m_gameServer.m_clientsMutex);
-
+                         [this, ws, message = std::string(message)]() {
+                             auto* data = (WebSocketData*)ws->getUserData();
+                             uint32_t id = data->id;
                              auto it = m_gameServer.m_clients.find(id);
 
                              if (it != m_gameServer.m_clients.end()) {
@@ -62,13 +57,10 @@ void SocketServer::run() {
                  },
              .close =
                  [&](auto* ws, int code, std::string_view message) {
-                     auto* data = (WebSocketData*)ws->getUserData();
-                     uint32_t id = data->id;
-
-                     // Defer client removal to the game thread
-                     m_gameServer.enqueueJob([this, id]() {
-                         mutex_lock_t lock(m_gameServer.m_clientsMutex);
-
+                     // Capture ws, not id
+                     m_gameServer.enqueueJob([this, ws]() {
+                         auto* data = (WebSocketData*)ws->getUserData();
+                         uint32_t id = data->id;
                          auto it = m_gameServer.m_clients.find(id);
                          if (it != m_gameServer.m_clients.end()) {
                              Client* client = it->second;
@@ -84,7 +76,7 @@ void SocketServer::run() {
                                                 }),
                                  m_gameServer.m_messages.end());
 
-                             client->onClose(lock);
+                             client->onClose();
                              delete client;
                              m_gameServer.m_clients.erase(it);
                          }
