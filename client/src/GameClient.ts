@@ -14,6 +14,9 @@ export class GameClient {
     mouseY: number = 0
     lastSendAngle: number = 0
 
+    private lastAngleSentTime: number = 0
+    private lastSendMouseDown: boolean = false
+
     private constructor(world: World) {
         this.world = world
         this.socket.connect()
@@ -52,7 +55,7 @@ export class GameClient {
             const myEntity = this.world.entities.get(
                 this.world.cameraEntityId
             )! as Player
-            this.sendInputAngle(myEntity.getRot())
+            this.sendInputAngle(myEntity.getRot(), true)
         }
 
         this.socket.flush()
@@ -68,14 +71,39 @@ export class GameClient {
         }
     }
 
-    private sendInputAngle(angle: number) {
+    private sendInputAngle(angle: number, saveBandwidth: boolean = false) {
         if (!this.world.active) return
 
-        if (this.lastSendAngle !== angle) {
-            this.lastSendAngle = angle
-            this.socket.streamWriter.writeU8(ClientHeader.MOUSE)
-            this.socket.streamWriter.writeFloat(angle)
+        let angleTolerance = 0.01 // radians
+        let throttleTime = 100 // milliseconds
+
+        // reduce tolerance and throttle if our mouse is down
+        // this allows more accurate aiming
+        if (this.lastSendMouseDown) {
+            angleTolerance = 0.001
+            throttleTime = 16
         }
+
+        const now = Date.now()
+
+        // Save bandwidth by not sending the same angle repeatedly
+        if (
+            saveBandwidth &&
+            Math.abs(this.lastSendAngle - angle) < angleTolerance
+        ) {
+            return
+        }
+
+        // Throttle message to send at interval
+        if (saveBandwidth && now - this.lastAngleSentTime < throttleTime) {
+            return
+        }
+
+        this.lastSendAngle = angle
+        this.lastAngleSentTime = now
+        this.socket.streamWriter.writeU8(ClientHeader.MOUSE)
+        this.socket.streamWriter.writeFloat(angle)
+        console.log('sent angle', angle, saveBandwidth)
     }
 
     private onKeyDown(event: KeyboardEvent) {
@@ -145,6 +173,8 @@ export class GameClient {
         const angle = myEntity.getAngleToMouse()
 
         this.sendInputAngle(angle)
+
+        this.lastSendMouseDown = isDown
 
         this.socket.streamWriter.writeU8(
             isDown ? ClientHeader.MOUSE_DOWN : ClientHeader.MOUSE_UP

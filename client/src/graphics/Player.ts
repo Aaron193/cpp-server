@@ -160,5 +160,4 @@ export class Player extends Entity {
     getRot(): number {
         return this.body.rotation
     }
-    
 }
