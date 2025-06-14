@@ -135,6 +135,9 @@ export class MessageHandler {
                 // get hud
                 const world = client.world
                 world.active = false
+
+                const hud = world.renderer.hud
+                hud.healthBar.setHealth(0)
                 break
             }
             case ServerHeader.PLAYER_JOIN: {
