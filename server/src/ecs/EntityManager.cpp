@@ -47,7 +47,7 @@ entt::entity EntityManager::createPlayer() {
     // Define the body
     b2BodyDef bodyDef;
     bodyDef.type = b2_dynamicBody;
-    // Set player to a random position between 0 and 1000
+
     float x = static_cast<float>(rand()) / RAND_MAX * 10.0f;
     float y = static_cast<float>(rand()) / RAND_MAX * 10.0f;
     // float x = static_cast<float>(rand()) / RAND_MAX * 50000.0f;
@@ -92,7 +92,11 @@ entt::entity EntityManager::createCrate() {
     // Define the body
     b2BodyDef bodyDef;
     bodyDef.type = b2_staticBody;
-    bodyDef.position.Set(meters(0.0), meters(0.0));
+
+    float x = static_cast<float>(rand()) / RAND_MAX * 1000.0f;
+    float y = static_cast<float>(rand()) / RAND_MAX * 1000.0f;
+    std::cout << "Create created at x: " << x << ", y: " << y << std::endl;
+    bodyDef.position.Set(meters(x), meters(y));
     bodyDef.fixedRotation = true;
 
     // Assign User Data to point to our entity

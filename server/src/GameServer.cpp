@@ -25,7 +25,13 @@
 // @TODO: make sure we have more C++ that typescript in thie project i dont want
 // typescript to show on the git repo as the main language :C
 
-GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {}
+GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {
+    // Setup world
+    for (int i = 0; i < 10; i++) {
+        std::cout << "Creating a crate!" << std::endl;
+        m_entityManager.createCrate();
+    }
+}
 
 void GameServer::enqueueJob(std::function<void()> job) {
     {
@@ -48,8 +54,6 @@ void GameServer::processJobs() {
 
 void GameServer::run() {
     std::cout << "starting game server!" << std::endl;
-
-    m_entityManager.createCrate();
 
     const std::chrono::duration<double> tickInterval(1.0 / m_tps);
 

@@ -1,9 +1,11 @@
 import * as PIXI from 'pixi.js'
 import { Hud } from './graphics/hud/Hud'
+import { World } from './World'
 
 const TEMP_VEC = { x: 0, y: 0 }
 
 export class Renderer {
+    world!: World
     canvas: HTMLCanvasElement
     scale: number
     stage: PIXI.Container
@@ -27,7 +29,7 @@ export class Renderer {
         this.camera.addChild(this.background)
         this.camera.addChild(this.foreground)
 
-        this.hud = new Hud()
+        this.hud = new Hud(this)
         this.stage = new PIXI.Container()
 
         this.stage.addChild(this.camera)
@@ -59,6 +61,10 @@ export class Renderer {
         return rendererInstance
     }
 
+    setWorld(world: World) {
+        this.world = world
+    }
+
     resize() {
         this.renderer.resize(window.innerWidth, window.innerHeight)
 
@@ -75,6 +81,10 @@ export class Renderer {
         TEMP_VEC.y = mouseY - this.camera.y
 
         return TEMP_VEC
+    }
+
+    update(delta: number, tick: number, now: number) {
+        this.hud.update(delta, tick, now)
     }
 
     render() {

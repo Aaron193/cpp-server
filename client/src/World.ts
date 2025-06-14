@@ -17,7 +17,9 @@ export class World {
 
     public static async create(): Promise<World> {
         const renderer = await Renderer.create()
-        return new World(renderer)
+        const world = new World(renderer)
+        renderer.setWorld(world)
+        return world
     }
 
     update(delta: number, tick: number, now: number) {
@@ -36,6 +38,7 @@ export class World {
             )
         }
 
+        this.renderer.update(delta, tick, now)
         this.renderer.render()
     }
 }
