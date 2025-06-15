@@ -50,8 +50,6 @@ entt::entity EntityManager::createPlayer() {
 
     float x = static_cast<float>(rand()) / RAND_MAX * 10.0f;
     float y = static_cast<float>(rand()) / RAND_MAX * 10.0f;
-    // float x = static_cast<float>(rand()) / RAND_MAX * 50000.0f;
-    // float y = static_cast<float>(rand()) / RAND_MAX * 50000.0f;
     bodyDef.position.Set(meters(x), meters(y));
     bodyDef.fixedRotation = true;
 
@@ -93,9 +91,8 @@ entt::entity EntityManager::createCrate() {
     b2BodyDef bodyDef;
     bodyDef.type = b2_staticBody;
 
-    float x = static_cast<float>(rand()) / RAND_MAX * 1000.0f;
-    float y = static_cast<float>(rand()) / RAND_MAX * 1000.0f;
-    std::cout << "Create created at x: " << x << ", y: " << y << std::endl;
+    float x = static_cast<float>(rand()) / RAND_MAX * 1500.0f;
+    float y = static_cast<float>(rand()) / RAND_MAX * 1500.0f;
     bodyDef.position.Set(meters(x), meters(y));
     bodyDef.fixedRotation = true;
 
@@ -115,6 +112,47 @@ entt::entity EntityManager::createCrate() {
     // Add shape to a fixture
     b2FixtureDef fixtureDef;
     fixtureDef.shape = &box;
+    fixtureDef.density = 1.0f;
+    fixtureDef.friction = 0.0f;
+    fixtureDef.restitution = 0.0f;
+    fixtureDef.isSensor = false;
+
+    base.body->CreateFixture(&fixtureDef);
+
+    return entity;
+}
+
+entt::entity EntityManager::createBush() {
+    entt::entity entity = m_registry.create();
+
+    auto& base = m_registry.emplace<EntityBase>(entity, EntityTypes::BUSH);
+    m_registry.emplace<Networked>(entity);
+
+    b2World* world = m_gameServer.m_physicsWorld.m_world.get();
+
+    // Define the body
+    b2BodyDef bodyDef;
+    bodyDef.type = b2_staticBody;
+
+    float x = static_cast<float>(rand()) / RAND_MAX * 1500.0f;
+    float y = static_cast<float>(rand()) / RAND_MAX * 1500.0f;
+    bodyDef.position.Set(meters(x), meters(y));
+    bodyDef.fixedRotation = true;
+
+    // Assign User Data to point to our entity
+    EntityBodyUserData* userData = new EntityBodyUserData{entity};
+    bodyDef.userData.pointer = reinterpret_cast<uintptr_t>(userData);
+
+    // Create the b2Body and assign it to our component's 'body' member
+    base.body = world->CreateBody(&bodyDef);
+
+    // Create box shape
+    b2CircleShape circle;
+    circle.m_radius = meters(50.0f);
+
+    // Add shape to a fixture
+    b2FixtureDef fixtureDef;
+    fixtureDef.shape = &circle;
     fixtureDef.density = 1.0f;
     fixtureDef.friction = 0.0f;
     fixtureDef.restitution = 0.0f;

@@ -5,6 +5,7 @@ import { assert } from '../utils/assert'
 import { Entity } from '../graphics/Entity'
 import { EntityTypes } from '../EntityTypes'
 import { Crate } from '../graphics/Crate'
+import { BasicSprite } from '../graphics/BasicSprite'
 
 export class MessageHandler {
     static handle(reader: PacketReader, client: GameClient): void {
@@ -46,6 +47,10 @@ export class MessageHandler {
                         }
                         case EntityTypes.CRATE: {
                             entity = new Crate(client)
+                            break
+                        }
+                        case EntityTypes.BUSH: {
+                            entity = new BasicSprite(client)
                             break
                         }
                         default: {

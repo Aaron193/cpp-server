@@ -12,6 +12,7 @@ export class Renderer {
     camera: PIXI.Container
     hud: Hud
     background: PIXI.Container
+    middleground: PIXI.Container
     foreground: PIXI.Container
     renderer!: PIXI.Renderer
 
@@ -24,9 +25,11 @@ export class Renderer {
 
         this.camera = new PIXI.Container()
         this.background = new PIXI.Container()
+        this.middleground = new PIXI.Container()
         this.foreground = new PIXI.Container()
 
         this.camera.addChild(this.background)
+        this.camera.addChild(this.middleground)
         this.camera.addChild(this.foreground)
 
         this.hud = new Hud(this)

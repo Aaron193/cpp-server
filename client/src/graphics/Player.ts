@@ -73,7 +73,7 @@ export class Player extends Entity {
         this.body.addChild(this.rightHand)
         this.addChild(this.nameTag)
 
-        this.client.world.renderer.foreground.addChild(this)
+        this.client.world.renderer.middleground.addChild(this)
     }
 
     getAngleToMouse(): number {

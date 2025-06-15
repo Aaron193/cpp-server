@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <entt/entt.hpp>
 
-enum EntityTypes : uint8_t { SPECTATOR, PLAYER, CRATE };
+enum EntityTypes : uint8_t { SPECTATOR, PLAYER, CRATE, BUSH };
 
 enum EntityStates : uint8_t {
     IDLE = 0,
@@ -29,6 +29,7 @@ class EntityManager {
     entt::entity createSpectator(entt::entity folowee);
     entt::entity createPlayer();
     entt::entity createCrate();
+    entt::entity createBush();
 
     void scheduleForRemoval(entt::entity entity);
     void removeEntities();

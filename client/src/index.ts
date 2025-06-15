@@ -1,7 +1,10 @@
 import { GameClient } from './GameClient'
+import { AssetLoader } from './graphics/utils/AssetLoader'
 
 window.onload = async function () {
     console.log('window loaded')
+
+    await AssetLoader.loadAll()
 
     const client = await GameClient.create()
 

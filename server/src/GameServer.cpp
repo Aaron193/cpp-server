@@ -28,8 +28,8 @@
 GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {
     // Setup world
     for (int i = 0; i < 10; i++) {
-        std::cout << "Creating a crate!" << std::endl;
         m_entityManager.createCrate();
+        m_entityManager.createBush();
     }
 }
 
