@@ -11,10 +11,15 @@ export class BasicSprite extends Entity {
 
         this.client = client
 
+        const sprites = ['bush_1', 'bush_2', 'rock_1', 'rock_2']
         const texture = AssetLoader.getTexture(
-            Math.random() > 0.5 ? 'rock' : 'bush'
+            sprites[Math.floor(Math.random() * sprites.length)]
         )
+
         const sprite = new PIXI.Sprite(texture)
+
+        // images are upscaled by default for shaper images
+        sprite.scale.set(0.5, 0.5)
         sprite.anchor.set(0.5, 0.5)
         this.addChild(sprite)
 

@@ -2,8 +2,10 @@ import * as PIXI from 'pixi.js'
 
 export class AssetLoader {
     private static assets: Record<string, string> = {
-        bush: 'assets/img/bush.png',
-        rock: 'assets/img/rock.png',
+        bush_1: 'assets/img/bush_1.png',
+        bush_2: 'assets/img/bush_2.png',
+        rock_1: 'assets/img/rock_1.png',
+        rock_2: 'assets/img/rock_2.png',
     }
 
     private static loaded: boolean = false
