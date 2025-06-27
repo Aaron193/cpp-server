@@ -23,7 +23,11 @@ export class Renderer {
 
         this.scale = 1
 
-        this.camera = new PIXI.Container()
+        // Game World Containers
+        this.camera = new PIXI.Container({
+            isRenderGroup: true,
+        })
+
         this.background = new PIXI.Container()
         this.middleground = new PIXI.Container()
         this.foreground = new PIXI.Container()
@@ -32,6 +36,7 @@ export class Renderer {
         this.camera.addChild(this.middleground)
         this.camera.addChild(this.foreground)
 
+        // also render group
         this.hud = new Hud(this)
         this.stage = new PIXI.Container()
 

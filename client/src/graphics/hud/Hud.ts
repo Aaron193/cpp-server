@@ -9,7 +9,9 @@ export class Hud extends PIXI.Container {
     debugPanel: DebugPanel = new DebugPanel(this)
 
     constructor(renderer: Renderer) {
-        super()
+        super({
+            isRenderGroup: true,
+        })
 
         this.renderer = renderer
 
