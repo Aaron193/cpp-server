@@ -13,6 +13,8 @@ enum STATE {
     HURT = 1 << 1,
 }
 
+const STROKE = 0x1b2727 //#1f2d2d
+
 const TEMP_VEC: { x: number; y: number } = { x: 0, y: 0 }
 
 export class Player extends Entity {
@@ -46,9 +48,8 @@ export class Player extends Entity {
 
         this.body = new PIXI.Graphics()
         this.body.circle(0, 0, 25)
-        this.body.fill({ color: 0xffffff })
-        this.body.tint = 0xba9a50
-        this.body.stroke({ width: 3, color: 0x000000, alignment: 0 })
+        this.body.fill({ color: 0xba9a50 })
+        this.body.stroke({ width: 6, color: STROKE, alignment: 0 })
 
         this.leftHand = new PIXI.Graphics()
         this.leftHand.circle(
@@ -56,8 +57,8 @@ export class Player extends Entity {
             Math.sin(-Math.PI / 4) * 25,
             7
         )
-        this.leftHand.fill({ color: 0xffffff })
-        this.leftHand.stroke({ width: 3, color: 0x000000, alignment: 0 })
+        this.leftHand.fill({ color: 0xba9a50 })
+        this.leftHand.stroke({ width: 6, color: STROKE, alignment: 0 })
 
         this.rightHand = new PIXI.Graphics()
         this.rightHand.circle(
@@ -65,8 +66,8 @@ export class Player extends Entity {
             Math.sin(Math.PI / 4) * 25,
             7
         )
-        this.rightHand.fill({ color: 0xffffff })
-        this.rightHand.stroke({ width: 3, color: 0x000000, alignment: 0 })
+        this.rightHand.fill({ color: 0xba9a50 })
+        this.rightHand.stroke({ width: 6, color: STROKE, alignment: 0 })
 
         this.addChild(this.body)
         this.body.addChild(this.leftHand)
@@ -116,13 +117,23 @@ export class Player extends Entity {
                 (((a & 0x0000ff) + ((b & 0x0000ff) - (a & 0x0000ff)) * t) &
                     0x0000ff)
 
-            const originalTint = 0xba9a50
-            const hurtTint = 0xff0000
-            this.body.tint = lerp(originalTint, hurtTint, intensity)
+            const originalColor = 0xba9a50
+            const hurtColor = 0xff0000
+            const lerpedColor = lerp(originalColor, hurtColor, intensity)
+
+            // Redraw body with new color instead of using tint
+            this.body.clear()
+            this.body.circle(0, 0, 25)
+            this.body.fill({ color: lerpedColor })
+            this.body.stroke({ width: 6, color: STROKE, alignment: 0 })
 
             if (finished) {
                 this.hurt.reset()
-                this.body.tint = originalTint
+                // Redraw with original color
+                this.body.clear()
+                this.body.circle(0, 0, 25)
+                this.body.fill({ color: originalColor })
+                this.body.stroke({ width: 6, color: STROKE, alignment: 0 })
                 this._state &= ~STATE.HURT
             }
         }
