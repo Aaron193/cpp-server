@@ -1,6 +1,7 @@
 import * as PIXI from 'pixi.js'
 import { Hud } from './graphics/hud/Hud'
 import { World } from './World'
+import { Grid } from './graphics/Grid'
 
 const TEMP_VEC = { x: 0, y: 0 }
 
@@ -11,6 +12,7 @@ export class Renderer {
     stage: PIXI.Container
     camera: PIXI.Container
     hud: Hud
+    grid: Grid
     background: PIXI.Container
     middleground: PIXI.Container
     foreground: PIXI.Container
@@ -31,6 +33,9 @@ export class Renderer {
         this.background = new PIXI.Container()
         this.middleground = new PIXI.Container()
         this.foreground = new PIXI.Container()
+
+        this.grid = new Grid(this)
+        this.background.addChild(this.grid)
 
         this.camera.addChild(this.background)
         this.camera.addChild(this.middleground)
@@ -57,7 +62,7 @@ export class Renderer {
             canvas: this.canvas,
             antialias: false,
             resolution: 1,
-            backgroundColor: 0x378047,
+            backgroundColor: 0x509446,
         })
 
         this.resize()
@@ -92,6 +97,7 @@ export class Renderer {
     }
 
     update(delta: number, tick: number, now: number) {
+        this.grid.update(delta, tick, now)
         this.hud.update(delta, tick, now)
     }
 
