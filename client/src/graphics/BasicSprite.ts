@@ -5,6 +5,8 @@ import { AssetLoader } from './utils/AssetLoader'
 
 export class BasicSprite extends Entity {
     client: GameClient
+    shadow: PIXI.Sprite
+    sprite: PIXI.Sprite
 
     constructor(client: GameClient) {
         super()
@@ -16,12 +18,19 @@ export class BasicSprite extends Entity {
             sprites[Math.floor(Math.random() * sprites.length)]
         )
 
-        const sprite = new PIXI.Sprite(texture)
+        this.shadow = new PIXI.Sprite(texture)
+        this.shadow.scale.set(0.5, 0.5)
+        this.shadow.anchor.set(0.5, 0.5)
+        this.shadow.tint = 0x000000
+        this.shadow.alpha = 0.3
+        this.shadow.position.y = 15
 
-        // images are upscaled by default for shaper images
-        sprite.scale.set(0.5, 0.5)
-        sprite.anchor.set(0.5, 0.5)
-        this.addChild(sprite)
+        this.sprite = new PIXI.Sprite(texture)
+        this.sprite.scale.set(0.5, 0.5)
+        this.sprite.anchor.set(0.5, 0.5)
+
+        this.addChild(this.shadow)
+        this.addChild(this.sprite)
 
         this.client.world.renderer.foreground.addChild(this)
     }

@@ -1,6 +1,7 @@
 #include "packet/buffer/PacketWriter.hpp"
 
 #include <string>
+#include <string_view>
 
 void PacketWriter::writeU8(uint8_t x) { writeBytes<uint8_t>(x); }
 
@@ -15,7 +16,7 @@ void PacketWriter::writeFloat(float x) {
 }
 
 void PacketWriter::writeString(const std::string& x) {
-    uint16_t len = static_cast<uint16_t>(x.length());
+    auto len = static_cast<uint16_t>(x.length());
     writeU16(len);
     for (const unsigned char& c : x) {
         writeU8(c);

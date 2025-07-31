@@ -315,6 +315,7 @@ void GameServer::Die(entt::entity entity) {
 
     switch (type) {
         case EntityTypes::SPECTATOR:
+        case EntityTypes::BUSH:
         case EntityTypes::CRATE:
             // These entities cannot die
             assert(false);

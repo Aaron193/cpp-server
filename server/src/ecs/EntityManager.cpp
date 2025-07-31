@@ -48,8 +48,8 @@ entt::entity EntityManager::createPlayer() {
     b2BodyDef bodyDef;
     bodyDef.type = b2_dynamicBody;
 
-    float x = static_cast<float>(rand()) / RAND_MAX * 10.0f;
-    float y = static_cast<float>(rand()) / RAND_MAX * 10.0f;
+    float x = static_cast<float>(rand()) / (float)RAND_MAX * 10.0f;
+    float y = static_cast<float>(rand()) / (float)RAND_MAX * 10.0f;
     bodyDef.position.Set(meters(x), meters(y));
     bodyDef.fixedRotation = true;
 
@@ -91,8 +91,8 @@ entt::entity EntityManager::createCrate() {
     b2BodyDef bodyDef;
     bodyDef.type = b2_staticBody;
 
-    float x = static_cast<float>(rand()) / RAND_MAX * 1500.0f;
-    float y = static_cast<float>(rand()) / RAND_MAX * 1500.0f;
+    float x = static_cast<float>(rand()) / (float)RAND_MAX * 1500.0f;
+    float y = static_cast<float>(rand()) / (float)RAND_MAX * 1500.0f;
     bodyDef.position.Set(meters(x), meters(y));
     bodyDef.fixedRotation = true;
 
@@ -134,8 +134,8 @@ entt::entity EntityManager::createBush() {
     b2BodyDef bodyDef;
     bodyDef.type = b2_staticBody;
 
-    float x = static_cast<float>(rand()) / RAND_MAX * 1500.0f;
-    float y = static_cast<float>(rand()) / RAND_MAX * 1500.0f;
+    float x = static_cast<float>(rand()) / (float)RAND_MAX * 1500.0f;
+    float y = static_cast<float>(rand()) / (float)RAND_MAX * 1500.0f;
     bodyDef.position.Set(meters(x), meters(y));
     bodyDef.fixedRotation = true;
 
