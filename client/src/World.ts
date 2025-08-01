@@ -1,8 +1,7 @@
 import { Entity } from './graphics/Entity'
-import { Player } from './graphics/Player'
 import { Interpolator } from './Interpolator'
 import { Renderer } from './Renderer'
-import * as PIXI from 'pixi.js'
+
 export class World {
     renderer: Renderer
     interpolator: Interpolator = new Interpolator(this)

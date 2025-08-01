@@ -31,7 +31,7 @@ export class Interpolator {
         })
     }
 
-    update(delta: number, tick: number, currentTime: number) {
+    update(_delta: number, _tick: number, currentTime: number) {
         this.world.entities.forEach((entity) => {
             if (entity.interpolate) {
                 const snapshots = entity.snapshots

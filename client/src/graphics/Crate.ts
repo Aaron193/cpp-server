@@ -21,7 +21,7 @@ export class Crate extends Entity {
         this.client.world.renderer.background.addChild(this)
     }
 
-    update(delta: number) {
+    update(_delta: number) {
         // do some update stuff or whatever
     }
 

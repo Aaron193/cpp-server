@@ -56,8 +56,6 @@ void Client::onMessage(const std::string_view& message) {
     }
 }
 
-// clientsWitness: explicitly show that the caller holds the lock, we are safe
-// to access m_clients...
 void Client::onSpawn() {
     if (m_active) return;
 

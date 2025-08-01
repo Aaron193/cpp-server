@@ -22,5 +22,5 @@ export class NameTag extends PIXI.Container {
         this.addChild(this.nameTag)
     }
 
-    update(delta: number) {}
+    update(_delta: number) {}
 }

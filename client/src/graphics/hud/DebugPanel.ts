@@ -1,5 +1,4 @@
 import * as PIXI from 'pixi.js'
-import { Renderer } from '../../Renderer'
 import { Hud } from './Hud'
 
 export class DebugPanel extends PIXI.Container {
@@ -24,7 +23,7 @@ export class DebugPanel extends PIXI.Container {
         this.addChild(this.panel)
     }
 
-    update(delta: number, tick: number, now: number) {
+    update(_delta: number, _tick: number, _now: number) {
         const world = this.hud.renderer.world
 
         if (world.entities.has(world.cameraEntityId)) {

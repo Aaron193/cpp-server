@@ -15,8 +15,6 @@ enum STATE {
 
 const STROKE = 0x1b2727 //#1f2d2d
 
-const TEMP_VEC: { x: number; y: number } = { x: 0, y: 0 }
-
 export class Player extends Entity {
     nameTag: NameTag
     body: PIXI.Graphics
@@ -89,7 +87,7 @@ export class Player extends Entity {
         return Math.atan2(dy, dx)
     }
 
-    update(delta: number, tick: number, now: number) {
+    update(delta: number, _tick: number, _now: number) {
         const cameraEntityId = this.client.world.cameraEntityId
 
         if (this._id === cameraEntityId && this.client.world.active) {

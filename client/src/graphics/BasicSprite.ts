@@ -35,7 +35,7 @@ export class BasicSprite extends Entity {
         this.client.world.renderer.foreground.addChild(this)
     }
 
-    update(delta: number) {
+    update(_delta: number) {
         // do some update stuff or whatever
     }
 
