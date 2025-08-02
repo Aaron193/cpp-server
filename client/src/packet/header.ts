@@ -17,4 +17,5 @@ export const enum ServerHeader {
     ENTITY_STATE,
     HEALTH,
     DIED,
+    TPS,
 }

@@ -19,6 +19,11 @@ Client::Client(GameServer& gameServer,
     : m_gameServer(gameServer), m_ws(ws), m_id(id) {
     changeBody(m_gameServer.m_entityManager.createSpectator(entt::null));
 
+    // send server tps
+    m_writer.writeU8(ServerHeader::TPS);
+    m_writer.writeU8(m_gameServer.m_tps);
+
+    // tell our player about others
     for (auto& [id, client] : m_gameServer.m_clients) {
         m_writer.writeU8(ServerHeader::PLAYER_JOIN);
         m_writer.writeU32(static_cast<uint32_t>(client->m_entity));
@@ -73,7 +78,6 @@ void Client::onSpawn() {
     // spectating
     m_writer.writeU8(ServerHeader::SPAWN_SUCCESS);
     m_writer.writeU32(static_cast<uint32_t>(m_entity));
-    m_writer.writeU8(m_gameServer.m_tps);
     std::cout << "User " << m_name << " has connected" << std::endl;
 
     // notify clients about our new player

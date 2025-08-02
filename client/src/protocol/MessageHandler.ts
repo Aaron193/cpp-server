@@ -15,8 +15,6 @@ export class MessageHandler {
             case ServerHeader.SPAWN_SUCCESS: {
                 console.log('Spawn success')
                 const entity = reader.readU32()
-                const tickrate = reader.readU8()
-                client.world.interpolator.setTickrate(tickrate)
                 client.world.cameraEntityId = entity
                 client.world.active = true
                 break
@@ -164,6 +162,12 @@ export class MessageHandler {
                 const id = reader.readU32()
 
                 Nicknames.delete(id)
+                break
+            }
+            case ServerHeader.TPS: {
+                const tickrate = reader.readU8()
+                client.world.interpolator.setTickrate(tickrate)
+
                 break
             }
             default:
