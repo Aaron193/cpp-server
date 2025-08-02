@@ -9,8 +9,8 @@ export class HealthBar extends PIXI.Container {
         padding: number
     } = {
         width: 200,
-        height: 20,
-        padding: 20,
+        height: 25,
+        padding: 5,
     }
     constructor() {
         super()
