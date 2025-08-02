@@ -4,6 +4,7 @@ import { GameClient } from '../GameClient'
 import { Entity } from './Entity'
 import { Animation, LinearFastInSlowOut, LinearInOut } from './utils/Animation'
 import { assert } from '../utils/assert'
+import { COLORS, STROKE_WIDTH } from '../utils/constants'
 
 export const Nicknames = new Map<number, string>()
 
@@ -12,8 +13,6 @@ enum STATE {
     MELEE = 1 << 0,
     HURT = 1 << 1,
 }
-
-const STROKE = 0x1b2727 //#1f2d2d
 
 export class Player extends Entity {
     nameTag: NameTag
@@ -47,7 +46,11 @@ export class Player extends Entity {
         this.body = new PIXI.Graphics()
         this.body.circle(0, 0, 25)
         this.body.fill({ color: 0xba9a50 })
-        this.body.stroke({ width: 6, color: STROKE, alignment: 0 })
+        this.body.stroke({
+            width: STROKE_WIDTH,
+            color: COLORS.STROKE,
+            alignment: 0,
+        })
 
         this.leftHand = new PIXI.Graphics()
         this.leftHand.circle(
@@ -56,7 +59,11 @@ export class Player extends Entity {
             7
         )
         this.leftHand.fill({ color: 0xba9a50 })
-        this.leftHand.stroke({ width: 6, color: STROKE, alignment: 0 })
+        this.leftHand.stroke({
+            width: STROKE_WIDTH,
+            color: COLORS.STROKE,
+            alignment: 0,
+        })
 
         this.rightHand = new PIXI.Graphics()
         this.rightHand.circle(
@@ -65,7 +72,11 @@ export class Player extends Entity {
             7
         )
         this.rightHand.fill({ color: 0xba9a50 })
-        this.rightHand.stroke({ width: 6, color: STROKE, alignment: 0 })
+        this.rightHand.stroke({
+            width: STROKE_WIDTH,
+            color: COLORS.STROKE,
+            alignment: 0,
+        })
 
         this.addChild(this.body)
         this.body.addChild(this.leftHand)
@@ -123,7 +134,11 @@ export class Player extends Entity {
             this.body.clear()
             this.body.circle(0, 0, 25)
             this.body.fill({ color: lerpedColor })
-            this.body.stroke({ width: 6, color: STROKE, alignment: 0 })
+            this.body.stroke({
+                width: STROKE_WIDTH,
+                color: COLORS.STROKE,
+                alignment: 0,
+            })
 
             if (finished) {
                 this.hurt.reset()
@@ -131,7 +146,11 @@ export class Player extends Entity {
                 this.body.clear()
                 this.body.circle(0, 0, 25)
                 this.body.fill({ color: originalColor })
-                this.body.stroke({ width: 6, color: STROKE, alignment: 0 })
+                this.body.stroke({
+                    width: STROKE_WIDTH,
+                    color: COLORS.STROKE,
+                    alignment: 0,
+                })
                 this._state &= ~STATE.HURT
             }
         }

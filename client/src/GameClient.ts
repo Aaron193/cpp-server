@@ -1,4 +1,3 @@
-import { Entity } from './graphics/Entity'
 import { Player } from './graphics/Player'
 import { ClientHeader } from './packet'
 import { Socket } from './protocol/Socket'
