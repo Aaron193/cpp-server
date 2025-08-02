@@ -10,7 +10,7 @@ export class DebugPanel extends PIXI.Container {
         this.hud = hud
 
         this.panel = new PIXI.Text({
-            text: 'Fps \nNew line',
+            text: '',
             style: new PIXI.TextStyle({
                 fontFamily: 'Arial',
                 fontSize: 18,
@@ -18,9 +18,16 @@ export class DebugPanel extends PIXI.Container {
             }),
         })
 
-        this.position.set(15, 15)
-
         this.addChild(this.panel)
+        this.resize()
+    }
+
+    resize(): void {
+        const padding = 15
+        this.position.set(
+            padding,
+            window.innerHeight - this.panel.height - padding
+        )
     }
 
     update(_delta: number, _tick: number, _now: number) {
