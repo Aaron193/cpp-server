@@ -20,8 +20,6 @@ export class Hud extends PIXI.Container {
         this.addChild(this.healthBar)
         this.addChild(this.debugPanel)
         this.addChild(this.newsFeed)
-
-        this.newsFeed.addMessage('Welcome to the game...')
     }
 
     resize() {

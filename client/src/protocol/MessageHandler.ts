@@ -3,9 +3,10 @@ import { GameClient } from '../GameClient'
 import { Nicknames, Player } from '../graphics/Player'
 import { assert } from '../utils/assert'
 import { Entity } from '../graphics/Entity'
-import { EntityTypes } from '../EntityTypes'
+import { EntityTypes } from '../enums/EntityTypes'
 import { Crate } from '../graphics/Crate'
 import { BasicSprite } from '../graphics/BasicSprite'
+import { NewsType } from '../enums/NewsType'
 
 export class MessageHandler {
     static handle(reader: PacketReader, client: GameClient): void {
@@ -165,9 +166,23 @@ export class MessageHandler {
                 break
             }
             case ServerHeader.TPS: {
+                console.log('Set tickrate')
                 const tickrate = reader.readU8()
                 client.world.interpolator.setTickrate(tickrate)
+                break
+            }
+            case ServerHeader.NEWS: {
+                console.log('News')
+                const type = reader.readU8()
+                switch (type) {
+                    case NewsType.TEXT: {
+                        const text = reader.readString()
 
+                        const newsFeed = client.world.renderer.hud.newsFeed
+                        newsFeed.addMessage(text)
+                        break
+                    }
+                }
                 break
             }
             default:

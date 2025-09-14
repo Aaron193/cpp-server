@@ -62,6 +62,7 @@ enum ClientHeader {
     MOUSE_DOWN,
     MOUSE_UP,
 };
+
 enum ServerHeader {
     SPAWN_SUCCESS,
     SET_CAMERA,
@@ -73,5 +74,10 @@ enum ServerHeader {
     ENTITY_STATE,
     HEALTH,
     DIED,
-    TPS
+    TPS,
+    NEWS,
+};
+
+enum NewsType {
+    TEXT,
 };

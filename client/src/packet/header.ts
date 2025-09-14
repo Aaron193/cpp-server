@@ -18,4 +18,5 @@ export const enum ServerHeader {
     HEALTH,
     DIED,
     TPS,
+    NEWS,
 }

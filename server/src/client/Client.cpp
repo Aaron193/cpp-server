@@ -73,9 +73,6 @@ void Client::onSpawn() {
     m_gameServer.m_entityManager.scheduleForRemoval(m_entity);
     changeBody(m_gameServer.m_entityManager.createPlayer());
 
-    // @TODO: this needs to be a HANDSHAKE and done ASAP, we cannot give tps
-    // when the player spawns because they need the tps before they spawn when
-    // spectating
     m_writer.writeU8(ServerHeader::SPAWN_SUCCESS);
     m_writer.writeU32(static_cast<uint32_t>(m_entity));
     std::cout << "User " << m_name << " has connected" << std::endl;
@@ -86,6 +83,10 @@ void Client::onSpawn() {
         client->m_writer.writeU32(static_cast<uint32_t>(m_entity));
         client->m_writer.writeString(m_name);
     }
+
+    m_writer.writeU8(ServerHeader::NEWS);
+    m_writer.writeU8(NewsType::TEXT);
+    m_writer.writeString("Welcome to the game, " + m_name);
 }
 
 void Client::onClose() {
