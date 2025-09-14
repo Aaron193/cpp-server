@@ -6,6 +6,7 @@
 #include <mutex>
 #include <queue>
 
+#include "client/Client.hpp"
 #include "ecs/EntityManager.hpp"
 #include "physics/PhysicsWorld.hpp"
 
@@ -43,6 +44,9 @@ class GameServer {
 
     void Hit(entt::entity entity, b2Vec2& meleePos, int radius);
     void Die(entt::entity entity);
+
+    void broadcastKill(entt::entity subject);
+    void broadcastMessage(const std::string& message);
 
     // Job queue and synchronization
     std::queue<std::function<void()>> m_jobQueue;

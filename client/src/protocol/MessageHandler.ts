@@ -182,6 +182,28 @@ export class MessageHandler {
                         newsFeed.addMessage(text)
                         break
                     }
+                    case NewsType.KILL: {
+                        const subject = reader.readU32()
+                        const killer = reader.readU32()
+
+                        assert(
+                            Nicknames.has(subject),
+                            'Subject nickname not found'
+                        )
+                        assert(
+                            Nicknames.has(killer),
+                            'Killer nickname not found'
+                        )
+
+                        const subjectName = Nicknames.get(subject)
+                        const killerName = Nicknames.get(killer)
+
+                        const newsFeed = client.world.renderer.hud.newsFeed
+                        newsFeed.addMessage(
+                            `${killerName} has eliminated ${subjectName} with fists` // TODO: weapon name
+                        )
+                        break
+                    }
                 }
                 break
             }

@@ -17,6 +17,7 @@
 #include <thread>
 
 #include "client/Client.hpp"
+#include "common/enums.hpp"
 #include "ecs/EntityManager.hpp"
 #include "ecs/components.hpp"
 #include "physics/PhysicsWorld.hpp"
@@ -335,7 +336,29 @@ void GameServer::Die(entt::entity entity) {
                 reg.get<Components::Health>(entity).attacker));
             client->m_active = false;
             client->m_writer.writeU8(ServerHeader::DIED);
+
+            broadcastKill(entity);
             break;
         }
+    }
+}
+
+void GameServer::broadcastKill(entt::entity subject) {
+    entt::registry& reg = m_entityManager.getRegistry();
+    entt::entity killer = reg.get<Components::Health>(subject).attacker;
+
+    for (auto& [id, client] : m_clients) {
+        client->m_writer.writeU8(ServerHeader::NEWS);
+        client->m_writer.writeU8(NewsType::KILL);
+        client->m_writer.writeU32(static_cast<uint32_t>(subject));
+        client->m_writer.writeU32(static_cast<uint32_t>(killer));
+    }
+}
+
+void GameServer::broadcastMessage(const std::string& message) {
+    for (auto& [id, client] : m_clients) {
+        client->m_writer.writeU8(ServerHeader::NEWS);
+        client->m_writer.writeU8(NewsType::TEXT);
+        client->m_writer.writeString(message);
     }
 }

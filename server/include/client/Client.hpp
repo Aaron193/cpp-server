@@ -7,9 +7,12 @@
 #include <entt/entt.hpp>
 #include <unordered_set>
 
-#include "GameServer.hpp"
+#include "common/enums.hpp"
 #include "packet/buffer/PacketReader.hpp"
 #include "packet/buffer/PacketWriter.hpp"
+
+// forward declaration
+class GameServer;
 
 struct WebSocketData {
     uint32_t id;
@@ -52,32 +55,4 @@ class Client {
 
    private:
     GameServer& m_gameServer;
-};
-
-// TODO: put this somewhere else
-enum ClientHeader {
-    SPAWN,
-    MOUSE,
-    MOVEMENT,
-    MOUSE_DOWN,
-    MOUSE_UP,
-};
-
-enum ServerHeader {
-    SPAWN_SUCCESS,
-    SET_CAMERA,
-    ENTITY_CREATE,
-    ENTITY_UPDATE,
-    ENTITY_REMOVE,
-    PLAYER_JOIN,
-    PLAYER_LEAVE,
-    ENTITY_STATE,
-    HEALTH,
-    DIED,
-    TPS,
-    NEWS,
-};
-
-enum NewsType {
-    TEXT,
 };

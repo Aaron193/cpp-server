@@ -8,6 +8,7 @@
 #include <iostream>
 #include <unordered_set>
 
+#include "GameServer.hpp"
 #include "ecs/EntityManager.hpp"
 #include "ecs/components.hpp"
 #include "packet/buffer/PacketReader.hpp"
@@ -82,11 +83,11 @@ void Client::onSpawn() {
         client->m_writer.writeU8(ServerHeader::PLAYER_JOIN);
         client->m_writer.writeU32(static_cast<uint32_t>(m_entity));
         client->m_writer.writeString(m_name);
-    }
 
-    m_writer.writeU8(ServerHeader::NEWS);
-    m_writer.writeU8(NewsType::TEXT);
-    m_writer.writeString("Welcome to the game, " + m_name);
+        client->m_writer.writeU8(ServerHeader::NEWS);
+        client->m_writer.writeU8(NewsType::TEXT);
+        client->m_writer.writeString(m_name + " has joined the game!!");
+    }
 }
 
 void Client::onClose() {
