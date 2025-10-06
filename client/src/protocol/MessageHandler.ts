@@ -53,7 +53,7 @@ export class MessageHandler {
                             break
                         }
                         default: {
-                            assert(false, `Unknown entity type: ${type}`)
+                            return assert(false, `Unknown entity type: ${type}`)
                         }
                     }
 
