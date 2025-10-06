@@ -53,7 +53,7 @@ export class MessageHandler {
                             break
                         }
                         default: {
-                            throw new Error(`Unknown entity type: ${type}`)
+                            assert(false, `Unknown entity type: ${type}`)
                         }
                     }
 
@@ -208,7 +208,7 @@ export class MessageHandler {
                 break
             }
             default:
-                throw new Error(`Unknown message type: ${messageType}`)
+                assert(false, `Unknown message type: ${messageType}`)
         }
     }
 }

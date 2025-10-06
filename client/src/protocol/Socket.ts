@@ -1,5 +1,6 @@
 import { GameClient } from '../GameClient'
 import { ClientHeader, PacketReader, PacketWriter } from '../packet'
+import { assert } from '../utils/assert'
 import { isDevelopment } from '../utils/environment'
 import { MessageHandler } from './MessageHandler'
 
@@ -15,13 +16,15 @@ export class Socket {
 
     public connect(): void {
         if (this.isOpen()) {
-            throw new Error(
+            assert(
+                false,
                 'SOCKET::CONNECT - Attempting to connect to the server while a connection has already been established'
             )
         }
 
         if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
-            throw new Error(
+            assert(
+                false,
                 'SOCKET::CONNECT - Attempting to connect to the server while a connection is in progress'
             )
         }
@@ -49,9 +52,7 @@ export class Socket {
     private onMessage(msg: MessageEvent): void {
         const data = msg.data
         if (typeof data === 'string') {
-            throw new Error(
-                "Received string data from server, shouldn't happen"
-            )
+            assert(false, "Received string data from server, shouldn't happen")
         }
 
         this.streamReader.loadBuffer(data)
