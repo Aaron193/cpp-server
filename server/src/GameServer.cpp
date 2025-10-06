@@ -318,7 +318,7 @@ void GameServer::Die(entt::entity entity) {
         case EntityTypes::SPECTATOR:
         case EntityTypes::BUSH:
         case EntityTypes::CRATE:
-            // These entities cannot die
+            // Unreachable: These entities cannot die
             assert(false);
             break;
 
