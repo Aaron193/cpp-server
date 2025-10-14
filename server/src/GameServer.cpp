@@ -31,6 +31,7 @@ GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {
     for (int i = 0; i < 10; i++) {
         m_entityManager.createCrate();
         m_entityManager.createBush();
+        m_entityManager.createRock();
     }
 }
 

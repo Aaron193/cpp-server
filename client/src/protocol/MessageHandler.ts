@@ -7,6 +7,7 @@ import { EntityTypes } from '../enums/EntityTypes'
 import { Crate } from '../graphics/Crate'
 import { BasicSprite } from '../graphics/BasicSprite'
 import { NewsType } from '../enums/NewsType'
+import { AssetLoader } from '../graphics/utils/AssetLoader'
 
 export class MessageHandler {
     static handle(reader: PacketReader, client: GameClient): void {
@@ -33,6 +34,7 @@ export class MessageHandler {
                 for (let i = 0; i < count; i++) {
                     const id = reader.readU32()
                     const type = reader.readU8()
+                    const variant = reader.readU8()
                     const x = reader.readFloat()
                     const y = reader.readFloat()
                     const angle = reader.readFloat()
@@ -48,8 +50,14 @@ export class MessageHandler {
                             entity = new Crate(client)
                             break
                         }
-                        case EntityTypes.BUSH: {
-                            entity = new BasicSprite(client)
+
+                        case EntityTypes.BUSH:
+                        case EntityTypes.ROCK: {
+                            entity = new BasicSprite(
+                                client,
+                                AssetLoader.getTextureFromType(type, variant)
+                            )
+                            console.log('creating from type: ', type)
                             break
                         }
                         default: {

@@ -8,16 +8,12 @@ export class BasicSprite extends Entity {
     shadow: PIXI.Sprite
     sprite: PIXI.Sprite
 
-    constructor(client: GameClient) {
+    constructor(client: GameClient, texture: PIXI.Texture) {
         super()
 
         this.client = client
 
-        const sprites = ['bush_1', 'bush_2', 'rock_1', 'rock_2']
-        const texture = AssetLoader.getTexture(
-            sprites[Math.floor(Math.random() * sprites.length)]
-        )
-
+        this.sprite = new PIXI.Sprite(texture)
         this.shadow = new PIXI.Sprite(texture)
         this.shadow.scale.set(0.5, 0.5)
         this.shadow.anchor.set(0.5, 0.5)

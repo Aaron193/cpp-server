@@ -3,4 +3,5 @@ export enum EntityTypes {
     PLAYER,
     CRATE,
     BUSH,
+    ROCK,
 }

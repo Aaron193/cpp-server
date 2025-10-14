@@ -15,6 +15,7 @@ struct Client {
 
 struct EntityBase {
     EntityTypes type;
+    Variant variant = Variant::NONE;
     b2Body* body = nullptr;
 };
 

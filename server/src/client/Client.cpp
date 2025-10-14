@@ -215,6 +215,7 @@ void Client::writeGameState() {
 
             m_writer.writeU32(static_cast<uint32_t>(entity));
             m_writer.writeU8(type);
+            m_writer.writeU8(base.variant);
             m_writer.writeFloat(pixels(position.x));
             m_writer.writeFloat(pixels(position.y));
             m_writer.writeFloat(body->GetAngle());

@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js'
+import { EntityTypes } from '../../enums/EntityTypes'
 
 export class AssetLoader {
     private static assets: Record<string, string> = {
@@ -23,5 +24,18 @@ export class AssetLoader {
 
     static getTexture(key: string): PIXI.Texture {
         return PIXI.Texture.from(key)
+    }
+
+    static getTextureFromType(type: number, variant: number): PIXI.Texture {
+        switch (type) {
+            case EntityTypes.BUSH:
+                console.log('registering bush variant: ', variant)
+                return this.getTexture(`bush_${variant}`)
+            case EntityTypes.ROCK:
+                console.log('registering rock variant: ', variant)
+                return this.getTexture(`rock_${variant}`)
+            default:
+                throw new Error(`No texture for entity type: ${type}`)
+        }
     }
 }

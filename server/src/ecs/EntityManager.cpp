@@ -122,11 +122,67 @@ entt::entity EntityManager::createCrate() {
     return entity;
 }
 
+// This is scuffed but is fine for now
+Variant EntityManager::getRandomVariant() {
+    int r = rand() % 2;
+    switch (r) {
+        case 0:
+            return Variant::VARIANT_1;
+        case 1:
+            return Variant::VARIANT_2;
+        default:
+            return Variant::NONE;
+    }
+}
+
 entt::entity EntityManager::createBush() {
     entt::entity entity = m_registry.create();
 
     auto& base = m_registry.emplace<EntityBase>(entity, EntityTypes::BUSH);
     m_registry.emplace<Networked>(entity);
+    base.variant = getRandomVariant();
+
+    b2World* world = m_gameServer.m_physicsWorld.m_world.get();
+
+    // Define the body
+    b2BodyDef bodyDef;
+    bodyDef.type = b2_staticBody;
+
+    float x = static_cast<float>(rand()) / (float)RAND_MAX * 1500.0f;
+    float y = static_cast<float>(rand()) / (float)RAND_MAX * 1500.0f;
+    bodyDef.position.Set(meters(x), meters(y));
+    bodyDef.fixedRotation = true;
+
+    // Assign User Data to point to our entity
+    EntityBodyUserData* userData = new EntityBodyUserData{entity};
+    bodyDef.userData.pointer = reinterpret_cast<uintptr_t>(userData);
+
+    // Create the b2Body and assign it to our component's 'body' member
+    base.body = world->CreateBody(&bodyDef);
+
+    // Create box shape
+    b2CircleShape circle;
+    circle.m_radius = meters(50.0f);
+
+    // Add shape to a fixture
+    b2FixtureDef fixtureDef;
+    fixtureDef.shape = &circle;
+    fixtureDef.density = 1.0f;
+    fixtureDef.friction = 0.0f;
+    fixtureDef.restitution = 0.0f;
+    fixtureDef.isSensor = false;
+
+    base.body->CreateFixture(&fixtureDef);
+
+    return entity;
+}
+
+entt::entity EntityManager::createRock() {
+    entt::entity entity = m_registry.create();
+
+    auto& base = m_registry.emplace<EntityBase>(entity, EntityTypes::ROCK);
+    m_registry.emplace<Networked>(entity);
+    base.variant = getRandomVariant();
 
     b2World* world = m_gameServer.m_physicsWorld.m_world.get();
 
