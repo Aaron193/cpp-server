@@ -65,6 +65,9 @@ export class MessageHandler {
                         }
                     }
 
+                    // sprite render order will be based on their type
+                    entity.zIndex = type
+
                     const interpolator = client.world.interpolator
                     interpolator.addSnapshot(entity, x, y, angle)
 
