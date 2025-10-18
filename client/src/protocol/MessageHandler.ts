@@ -145,7 +145,6 @@ export class MessageHandler {
                 const health = reader.readFloat()
                 assert(health >= 0, 'Health cannot be negative')
 
-                // get hud
                 const hud = client.world.renderer.hud
                 hud.healthBar.setHealth(health)
                 break
@@ -153,7 +152,6 @@ export class MessageHandler {
             case ServerHeader.DIED: {
                 console.log('Entity Died')
 
-                // get hud
                 const world = client.world
                 world.active = false
 

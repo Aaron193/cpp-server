@@ -8,7 +8,6 @@ const TEMP_VEC = { x: 0, y: 0 }
 export class Renderer {
     world!: World
     canvas: HTMLCanvasElement
-    scale: number
     stage: PIXI.Container
     camera: PIXI.Container
     hud: Hud
@@ -22,8 +21,6 @@ export class Renderer {
         this.canvas = document.getElementById(
             'game_canvas'
         ) as HTMLCanvasElement
-
-        this.scale = 1
 
         // Game World Containers
         this.camera = new PIXI.Container({
@@ -80,7 +77,6 @@ export class Renderer {
 
     resize() {
         this.renderer.resize(window.innerWidth, window.innerHeight)
-
         this.hud.resize()
     }
 

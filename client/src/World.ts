@@ -21,6 +21,10 @@ export class World {
         return world
     }
 
+    isControllingPlayer() {
+        return this.active && this.entities.has(this.cameraEntityId)
+    }
+
     update(delta: number, tick: number, now: number) {
         this.interpolator.update(delta, tick, now)
 

@@ -47,10 +47,7 @@ export class GameClient {
         this.sendInputDirection(this.currentDirection)
 
         // get my player
-        if (
-            this.world.active &&
-            this.world.entities.has(this.world.cameraEntityId)
-        ) {
+        if (this.world.isControllingPlayer()) {
             const myEntity = this.world.entities.get(
                 this.world.cameraEntityId
             )! as Player
@@ -157,8 +154,7 @@ export class GameClient {
     }
 
     private onMouseClick(event: MouseEvent, isDown: boolean) {
-        if (!this.world.entities.has(this.world.cameraEntityId)) return
-        if (!this.world.active) return
+        if (!this.world.isControllingPlayer()) return
 
         // update mouse position to be instantaneous when we click
         this.onMouseMove(event)

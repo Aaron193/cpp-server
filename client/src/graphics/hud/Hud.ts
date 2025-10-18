@@ -28,6 +28,7 @@ export class Hud extends PIXI.Container {
     }
 
     update(delta: number, tick: number, now: number) {
+        // this.alpha = +this.renderer.world.isControllingPlayer()
         this.debugPanel.update(delta, tick, now)
         this.newsFeed.update(delta, tick, now)
     }
