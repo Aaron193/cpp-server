@@ -14,7 +14,23 @@
 using namespace Components;
 
 EntityManager::EntityManager(GameServer& gameServer)
-    : m_gameServer(gameServer) {}
+    : m_gameServer(gameServer) {
+    m_variants[EntityTypes::BUSH] = 2;
+    m_variants[EntityTypes::ROCK] = 2;
+    m_variants[EntityTypes::CRATE] = 0;
+    m_variants[EntityTypes::PLAYER] = 0;
+    m_variants[EntityTypes::SPECTATOR] = 0;
+}
+
+uint8_t EntityManager::getVariantCount(EntityTypes type) {
+    assert(m_variants.count(type));
+    return m_variants[type];
+}
+
+uint8_t EntityManager::getRandomVariant(EntityTypes type) {
+    uint8_t variants = getVariantCount(type);
+    return (rand() % variants) + 1;
+}
 
 entt::entity EntityManager::createSpectator(entt::entity followee) {
     entt::entity entity = m_registry.create();
@@ -122,25 +138,12 @@ entt::entity EntityManager::createCrate() {
     return entity;
 }
 
-// This is scuffed but is fine for now
-Variant EntityManager::getRandomVariant() {
-    int r = rand() % 2;
-    switch (r) {
-        case 0:
-            return Variant::VARIANT_1;
-        case 1:
-            return Variant::VARIANT_2;
-        default:
-            return Variant::NONE;
-    }
-}
-
 entt::entity EntityManager::createBush() {
     entt::entity entity = m_registry.create();
 
     auto& base = m_registry.emplace<EntityBase>(entity, EntityTypes::BUSH);
     m_registry.emplace<Networked>(entity);
-    base.variant = getRandomVariant();
+    base.variant = getRandomVariant(EntityTypes::BUSH);
 
     b2World* world = m_gameServer.m_physicsWorld.m_world.get();
 
@@ -182,7 +185,7 @@ entt::entity EntityManager::createRock() {
 
     auto& base = m_registry.emplace<EntityBase>(entity, EntityTypes::ROCK);
     m_registry.emplace<Networked>(entity);
-    base.variant = getRandomVariant();
+    base.variant = getRandomVariant(EntityTypes::ROCK);
 
     b2World* world = m_gameServer.m_physicsWorld.m_world.get();
 

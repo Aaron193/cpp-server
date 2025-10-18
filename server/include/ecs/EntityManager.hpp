@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <entt/entt.hpp>
+#include <unordered_map>
 
 enum EntityTypes : uint8_t { SPECTATOR, PLAYER, CRATE, BUSH, ROCK };
 enum Variant : uint8_t { NONE, VARIANT_1, VARIANT_2, VARIANT_3 };
@@ -26,7 +27,11 @@ class EntityManager {
     EntityManager& operator=(const EntityManager&) = delete;
 
     entt::registry& getRegistry() { return m_registry; }
-    Variant getRandomVariant();
+
+    // Max amount of variants per EntityType
+    std::unordered_map<EntityTypes, uint8_t> m_variants;
+    uint8_t getVariantCount(EntityTypes type);
+    uint8_t getRandomVariant(EntityTypes type);
 
     entt::entity createSpectator(entt::entity folowee);
     entt::entity createPlayer();

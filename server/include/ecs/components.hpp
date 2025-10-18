@@ -4,6 +4,7 @@
 #include <box2d/b2_math.h>
 
 #include <entt/entt.hpp>
+#include <unordered_map>
 
 #include "ecs/EntityManager.hpp"
 
@@ -15,7 +16,7 @@ struct Client {
 
 struct EntityBase {
     EntityTypes type;
-    Variant variant = Variant::NONE;
+    uint8_t variant = 0;
     b2Body* body = nullptr;
 };
 
