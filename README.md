@@ -6,7 +6,7 @@ A real-time multiplayer game built with C++ server and TypeScript client, includ
 
 ## Overview
 
-This project is a learning-focused multiplayer game implementation that showcases:
+This project is an educational multiplayer game implementation that showcases:
 
 -   **Custom C++ Game Server**: High-performance server architecture with entity component system (ECS)
 -   **TypeScript Client**: Game can be played in a web browser
