@@ -1,6 +1,6 @@
 # Multiplayer Game in C++/TypeScript
 
-A real-time multiplayer game built with a C++ server and TypeScript client, including custom binary serialization, physics simulation, and client-side interpolation.
+A real-time multiplayer game built with a C++ server and TypeScript client, including custom binary serialization, physics simulation, and entity interpolation.
 
 ![C++ Game Demo](cpp_game.gif)
 
@@ -10,7 +10,7 @@ This project is an educational multiplayer game implementation that showcases:
 
 -   **Custom C++ Game Server**: High-performance server architecture with entity component system (ECS)
 -   **TypeScript Client**: Game can be played in a web browser
--   **Real-time Networking**: Custom binary protocol for efficient client-server communication
+-   **Real-time Networking**: Custom binary packet serialization for efficient client-server communication
 -   **Physics Simulation**: Server-authoritative physics using Box2D
 -   **Entity Management**: Component-based architecture for scalability and managing entities
 
@@ -34,7 +34,7 @@ This project is an educational multiplayer game implementation that showcases:
 **Core Dependencies**:
 
 -   **Box2D** - Industry-standard 2D physics engine for collision detection and rigid body dynamics
--   **uWebSockets** - High-performance WebSocket library for real-time client-server communication (This is what Bun.js uses natively for networking)
+-   **uWebSockets** - High-performance WebSocket library for real-time client-server communication (This is what Bun.js uses natively for its http server)
 -   **EnTT** - Fast and reliable Entity Component System (ECS) library for game entity management
 
 ### Client (TypeScript)
@@ -49,7 +49,7 @@ This project is an educational multiplayer game implementation that showcases:
 **Development Tools**:
 
 -   **Webpack** - Module bundler with hot reload support
--   **TypeScript Loader** - Compiles TypeScript to JavaScript
+-   **TypeScript Loader** - Transpiles TypeScript to JavaScript
 -   **CSS Loaders** - Processes and bundles stylesheets
 -   **HTML Plugin** - Generates and injects bundles into HTML
 -   **Copy Plugin** - Manages static assets
@@ -87,8 +87,7 @@ This project is an educational multiplayer game implementation that showcases:
 
 ```bash
 cd server
-./build.sh
-./build/server
+./build.sh [--release or --debug] [--run]
 ```
 
 ### Client
@@ -96,8 +95,7 @@ cd server
 ```bash
 cd client
 npm install
-npm run build
-npm start
+npm run dev
 ```
 
 ## License
