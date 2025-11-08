@@ -315,14 +315,10 @@ void GameServer::Die(entt::entity entity) {
 
     EntityTypes type = reg.get<Components::EntityBase>(entity).type;
 
-    switch (type) {
-        case EntityTypes::SPECTATOR:
-        case EntityTypes::BUSH:
-        case EntityTypes::CRATE:
-            // Unreachable: These entities cannot die
-            assert(false);
-            break;
+    // Entities cannot be 'killed' unless they have a health component
+    assert(reg.all_of<Components::Health>(entity));
 
+    switch (type) {
         case EntityTypes::PLAYER: {
             assert(reg.all_of<Components::Client>(entity));
 
@@ -341,6 +337,11 @@ void GameServer::Die(entt::entity entity) {
             broadcastKill(entity);
             break;
         }
+
+        default:
+            std::cout << "Did not implement case for " << type << std::endl;
+            assert(false);
+            break;
     }
 }
 
