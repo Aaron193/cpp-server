@@ -1,6 +1,6 @@
-# Multiplayer Game (C++ backend, TypeScript frontend)
+# Multiplayer Game in C++/TypeScript
 
-A real-time multiplayer game built with C++ server and TypeScript client, including custom networking protocols, physics simulation, and client-side prediction.
+A real-time multiplayer game built with a C++ server and TypeScript client, including custom binary serialization, physics simulation, and client-side interpolation.
 
 ![C++ Game Demo](cpp_game.gif)
 
