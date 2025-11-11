@@ -38,6 +38,7 @@ export class Interpolator {
                 const renderTime = currentTime - this.timestep
                 const historyLimit = renderTime - this.timestep * 3
 
+                // Clear old snapshots that are more than 3 timesteps behind renderTime
                 snapshots.removeWhile(
                     (snapshot) => snapshot.timestamp < historyLimit
                 )
@@ -47,8 +48,8 @@ export class Interpolator {
                 }
 
                 // interpolate between two snapshots
-                let snapshotA: Snapshot | null = null
-                let snapshotB: Snapshot | null = null
+                let snapshotA: Snapshot | null = null // last snapshot before renderTime
+                let snapshotB: Snapshot | null = null // first snapshot after renderTime
 
                 for (let i = 0; i < snapshots.getSize(); i++) {
                     const snapshot = snapshots.get(i)
@@ -68,21 +69,26 @@ export class Interpolator {
                         entity.position.set(snapshotA.x, snapshotA.y)
                         entity.setRot(snapshotA.angle)
                     } else {
+                        // How far between A and B are we? 0-1
                         const t =
                             (renderTime - snapshotA.timestamp) /
                             (snapshotB.timestamp - snapshotA.timestamp)
+
                         const x = snapshotA.x + (snapshotB.x - snapshotA.x) * t
                         const y = snapshotA.y + (snapshotB.y - snapshotA.y) * t
 
                         let angleA = snapshotA.angle
                         let angleB = snapshotB.angle
 
+                        // Rotate the shortest way (prevent spinning when crossing 2pi or 0)
                         const delta = (angleB - angleA) % PI2
                         const angle = angleA + (((2 * delta) % PI2) - delta) * t
 
                         entity.position.set(x, y)
                         entity.setRot(angle)
                     }
+
+                    // We don't have enough data to interpolate
                 } else if (snapshotA && !snapshotB) {
                     entity.position.set(snapshotA.x, snapshotA.y)
                     entity.setRot(snapshotA.angle)
