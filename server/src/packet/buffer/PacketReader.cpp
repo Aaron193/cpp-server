@@ -1,6 +1,7 @@
 #include "packet/buffer/PacketReader.hpp"
 
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <sstream>
 
@@ -41,7 +42,9 @@ std::string PacketReader::readString() {
 template <class T>
 T PacketReader::readBytes() {
     validateBounds(sizeof(T));
-    T value = *reinterpret_cast<const T*>(&m_message[m_offset]);
+
+    T value;
+    std::memcpy(&value, m_message.data() + m_offset, sizeof(T));
     m_offset += sizeof(T);
     return value;
 }
