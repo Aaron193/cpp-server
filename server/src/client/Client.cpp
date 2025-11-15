@@ -32,9 +32,7 @@ Client::Client(GameServer& gameServer,
     }
 }
 
-Client::~Client() {
-    std::cout << "User " << m_name << " has disconnected" << std::endl;
-}
+Client::~Client() {}
 
 void Client::onMessage(const std::string_view& message) {
     m_reader.loadMessage(message);

@@ -2,9 +2,7 @@
 
 #include <uwebsockets/Loop.h>
 
-#include <functional>
 #include <mutex>
-#include <queue>
 
 #include "client/Client.hpp"
 #include "ecs/EntityManager.hpp"
@@ -18,6 +16,8 @@ class GameServer {
 
     uWS::Loop* m_socketLoop = nullptr;
 
+    std::mutex m_gameMutex;
+
     const uint8_t m_tps = 10;
 
     EntityManager m_entityManager;
@@ -26,9 +26,6 @@ class GameServer {
 
     // incoming network messages
     std::vector<std::pair<uint32_t, std::string>> m_messages;
-
-    // Job queue for cross-thread tasks
-    void enqueueJob(std::function<void()> job);
 
     void run();
 
@@ -48,8 +45,5 @@ class GameServer {
     void broadcastKill(entt::entity subject);
     void broadcastMessage(const std::string& message);
 
-    // Job queue and synchronization
-    std::queue<std::function<void()>> m_jobQueue;
-    std::mutex m_jobQueueMutex;
     void processJobs();
 };

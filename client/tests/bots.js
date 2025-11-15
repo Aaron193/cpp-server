@@ -1,4 +1,5 @@
-for (let i = 0; i < 100; i++) {
+const count = 50
+for (let i = 0; i < count; i++) {
     const ws = new WebSocket('ws://localhost:9001')
     ws.onopen = function () {
         ws.send(
@@ -7,5 +8,9 @@ for (let i = 0; i < 100; i++) {
                 0x21,
             ])
         )
+
+        // setTimeout(() => {
+        //     ws.close()
+        // }, Math.random() * 50)
     }
 }

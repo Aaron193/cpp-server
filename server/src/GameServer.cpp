@@ -35,25 +35,6 @@ GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {
     }
 }
 
-void GameServer::enqueueJob(std::function<void()> job) {
-    {
-        std::lock_guard<std::mutex> lock(m_jobQueueMutex);
-        m_jobQueue.push(std::move(job));
-    }
-}
-
-void GameServer::processJobs() {
-    std::queue<std::function<void()>> jobs;
-    {
-        std::lock_guard<std::mutex> lock(m_jobQueueMutex);
-        std::swap(jobs, m_jobQueue);
-    }
-    while (!jobs.empty()) {
-        jobs.front()();
-        jobs.pop();
-    }
-}
-
 void GameServer::run() {
     std::cout << "starting game server!" << std::endl;
 
@@ -68,6 +49,7 @@ void GameServer::run() {
 
         // socket server is ready
         if (m_socketLoop) {
+            std::lock_guard<std::mutex> lock(m_gameMutex);
             tick(deltaTime.count());
         }
 
@@ -107,7 +89,6 @@ void GameServer::processClientMessages() {
 }
 
 void GameServer::tick(double delta) {
-    processJobs();
     processClientMessages();
 
     {  // game world update
@@ -115,7 +96,7 @@ void GameServer::tick(double delta) {
         /* Pre physics systems */
         prePhysicsSystemUpdate(delta);
 
-        /* Physics update */
+        /* Physics update (can get slow when connection spamming) */
         m_physicsWorld.tick(delta);
 
         /* Post physics systems */
@@ -129,7 +110,8 @@ void GameServer::tick(double delta) {
             client.writeGameState();
         }
 
-        m_socketLoop->defer([&]() {
+        m_socketLoop->defer([this]() {
+            std::lock_guard<std::mutex> lock(m_gameMutex);
             for (auto& c : m_clients) {
                 Client& client = *c.second;
                 client.sendBytes();
@@ -324,7 +306,11 @@ void GameServer::Die(entt::entity entity) {
 
             uint32_t id = reg.get<Components::Client>(entity).id;
             auto it = m_clients.find(id);
-            assert(it != m_clients.end());
+
+            // It is possible for the client to have disconnected already
+            if (it == m_clients.end()) {
+                return;
+            }
 
             Client* client = it->second;
 

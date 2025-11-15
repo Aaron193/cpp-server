@@ -43,6 +43,9 @@ if(MSVC)
 else()
     target_compile_options(server PRIVATE
         $<$<CONFIG:Release>:-O3 -DNDEBUG>
-        $<$<CONFIG:Debug>:-g -O0>
+        $<$<CONFIG:Debug>:-g -O0 -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer>
+    )
+    target_link_options(server PRIVATE
+        $<$<CONFIG:Debug>:-fsanitize=address -fsanitize=undefined>
     )
 endif()
