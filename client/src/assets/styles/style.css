@@ -1,5 +1,42 @@
+:root {
+    --stroke: #1b2727;
+}
+
 body {
     background-color: black;
     margin: 0;
     overflow: hidden;
+}
+
+#chat_container {
+    position: fixed;
+    top: calc(50% + 55px);
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#chat_input {
+    width: 300px;
+    padding: 12px 16px;
+    border: 2px solid var(--stroke);
+    border-radius: 8px;
+    background-color: var(--stroke);
+    color: white;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    outline: none;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s ease;
+}
+
+#chat_input::placeholder {
+    color: #888;
+}
+
+.hidden {
+    display: none;
 }

@@ -4,6 +4,7 @@ export const enum ClientHeader {
     MOVEMENT,
     MOUSE_DOWN,
     MOUSE_UP,
+    CLIENT_CHAT,
 }
 
 export const enum ServerHeader {
@@ -19,4 +20,5 @@ export const enum ServerHeader {
     DIED,
     TPS,
     NEWS,
+    SERVER_CHAT,
 }

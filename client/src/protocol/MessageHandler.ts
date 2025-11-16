@@ -50,7 +50,6 @@ export class MessageHandler {
                             entity = new Crate(client)
                             break
                         }
-
                         case EntityTypes.BUSH:
                         case EntityTypes.ROCK: {
                             entity = new BasicSprite(
@@ -65,7 +64,7 @@ export class MessageHandler {
                         }
                     }
 
-                    // sprite render order will be based on their type
+                    // sprite render order will be based on their type (just keep each type on a new layer)
                     entity.zIndex = type
 
                     const interpolator = client.world.interpolator
@@ -214,6 +213,21 @@ export class MessageHandler {
                         break
                     }
                 }
+                break
+            }
+            case ServerHeader.SERVER_CHAT: {
+                console.log('Received a chat message!')
+                const id = reader.readU32()
+                const message = reader.readString()
+
+                assert(
+                    client.world.entities.has(id),
+                    'Chat sender entity not found'
+                )
+
+                const entity = client.world.entities.get(id)! as Player
+                entity.receivedChat(message)
+
                 break
             }
             default:

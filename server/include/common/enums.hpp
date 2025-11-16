@@ -8,6 +8,7 @@ enum ClientHeader : uint8_t {
     MOVEMENT,
     MOUSE_DOWN,
     MOUSE_UP,
+    CLIENT_CHAT,
 };
 
 enum ServerHeader : uint8_t {
@@ -23,6 +24,7 @@ enum ServerHeader : uint8_t {
     DIED,
     TPS,
     NEWS,
+    SERVER_CHAT,
 };
 
 enum NewsType : uint8_t {

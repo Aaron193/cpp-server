@@ -5,6 +5,7 @@ import { Entity } from './Entity'
 import { Animation, LinearFastInSlowOut, LinearInOut } from './utils/Animation'
 import { assert } from '../utils/assert'
 import { COLORS, STROKE_WIDTH } from '../utils/constants'
+import { ChatContainer } from './ChatContainer'
 
 export const Nicknames = new Map<number, string>()
 
@@ -19,6 +20,8 @@ export class Player extends Entity {
     body: PIXI.Graphics
     leftHand: PIXI.Graphics
     rightHand: PIXI.Graphics
+    chatContainer: ChatContainer = new ChatContainer()
+
     client: GameClient
 
     melee: Animation = new Animation(
@@ -82,6 +85,10 @@ export class Player extends Entity {
         this.body.addChild(this.leftHand)
         this.body.addChild(this.rightHand)
         this.addChild(this.nameTag)
+
+        // Chat renders above nametag
+        this.chatContainer.position.set(0, -80)
+        this.addChild(this.chatContainer)
 
         this.client.world.renderer.middleground.addChild(this)
     }
@@ -179,6 +186,12 @@ export class Player extends Entity {
 
         this.rightHand.rotation = rightHandRotation
         this.leftHand.rotation = leftHandRotation
+
+        this.chatContainer.update(delta)
+    }
+
+    receivedChat(message: string) {
+        this.chatContainer.addMessage(message)
     }
 
     setRot(angle: number) {

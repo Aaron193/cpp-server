@@ -101,46 +101,84 @@ export class GameClient {
         this.socket.streamWriter.writeFloat(angle)
     }
 
+    private isChatOpen(): boolean {
+        const chat = document.getElementById('chat_input') as HTMLInputElement
+        return chat && !chat.classList.contains('hidden')
+    }
+
     private onKeyDown(event: KeyboardEvent) {
-        switch (event.key) {
-            case 'w':
-            case 'ArrowUp':
-                this.currentDirection |= 1
-                break
-            case 'a':
-            case 'ArrowLeft':
-                this.currentDirection |= 2
-                break
-            case 's':
-            case 'ArrowDown':
-                this.currentDirection |= 4
-                break
-            case 'd':
-            case 'ArrowRight':
-                this.currentDirection |= 8
-                break
-        }
+        if (!this.isChatOpen())
+            switch (event.key) {
+                case 'w':
+                case 'ArrowUp':
+                    this.currentDirection |= 1
+                    break
+                case 'a':
+                case 'ArrowLeft':
+                    this.currentDirection |= 2
+                    break
+                case 's':
+                case 'ArrowDown':
+                    this.currentDirection |= 4
+                    break
+                case 'd':
+                case 'ArrowRight':
+                    this.currentDirection |= 8
+                    break
+            }
     }
 
     private onKeyUp(event: KeyboardEvent) {
-        switch (event.key) {
-            case 'w':
-            case 'ArrowUp':
-                this.currentDirection &= ~1
-                break
-            case 'a':
-            case 'ArrowLeft':
-                this.currentDirection &= ~2
-                break
-            case 's':
-            case 'ArrowDown':
-                this.currentDirection &= ~4
-                break
-            case 'd':
-            case 'ArrowRight':
-                this.currentDirection &= ~8
-                break
-        }
+        if (!this.isChatOpen())
+            switch (event.key) {
+                case 'w':
+                case 'ArrowUp':
+                    this.currentDirection &= ~1
+                    break
+                case 'a':
+                case 'ArrowLeft':
+                    this.currentDirection &= ~2
+                    break
+                case 's':
+                case 'ArrowDown':
+                    this.currentDirection &= ~4
+                    break
+                case 'd':
+                case 'ArrowRight':
+                    this.currentDirection &= ~8
+                    break
+                case 'Enter': {
+                    const chat = document.getElementById(
+                        'chat_input'
+                    ) as HTMLInputElement
+
+                    chat.classList.remove('hidden')
+                    chat.focus()
+                }
+            }
+        else
+            switch (event.key) {
+                case 'Enter': {
+                    console.log('pressed enter')
+                    const chat = document.getElementById(
+                        'chat_input'
+                    ) as HTMLInputElement
+
+                    chat.classList.add('hidden')
+                    chat.blur()
+
+                    const message = chat.value.trim()
+                    if (message.length > 0 && message.length <= 50) {
+                        this.socket.streamWriter.writeU8(
+                            ClientHeader.CLIENT_CHAT
+                        )
+                        this.socket.streamWriter.writeString(message)
+                    }
+
+                    chat.value = ''
+                    break
+                }
+            }
     }
 
     private onMouseMove(event: MouseEvent) {

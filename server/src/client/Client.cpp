@@ -9,6 +9,7 @@
 #include <unordered_set>
 
 #include "GameServer.hpp"
+#include "common/enums.hpp"
 #include "ecs/EntityManager.hpp"
 #include "ecs/components.hpp"
 #include "packet/buffer/PacketReader.hpp"
@@ -55,6 +56,9 @@ void Client::onMessage(const std::string_view& message) {
                 break;
             case ClientHeader::MOUSE_UP:
                 onMouseClick(false);
+                break;
+            case ClientHeader::CLIENT_CHAT:
+                onChat();
                 break;
         }
     }
@@ -134,6 +138,23 @@ void Client::onMouseClick(bool isDown) {
 
     input.mouseIsDown = isDown;
     if (isDown) input.dirtyClick = true;
+}
+
+void Client::onChat() {
+    std::string message = m_reader.readString();
+
+    if (!m_active) {
+        return;
+    }
+
+    for (auto& [id, client] : m_gameServer.m_clients) {
+        if (client->m_previousVisibleEntities.find(m_entity) !=
+            client->m_previousVisibleEntities.end()) {
+            client->m_writer.writeU8(ServerHeader::SERVER_CHAT);
+            client->m_writer.writeU32(static_cast<uint32_t>(m_entity));
+            client->m_writer.writeString(message);
+        }
+    }
 }
 
 void Client::writeGameState() {

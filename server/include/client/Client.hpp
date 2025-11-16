@@ -47,6 +47,7 @@ class Client {
     void onMovement();
     void onMouse();
     void onMouseClick(bool isDown);
+    void onChat();
 
     void updateCamera();
 
