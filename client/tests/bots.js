@@ -1,4 +1,4 @@
-const count = 50
+const count = 100
 for (let i = 0; i < count; i++) {
     const ws = new WebSocket('ws://localhost:9001')
     ws.onopen = function () {
@@ -9,6 +9,7 @@ for (let i = 0; i < count; i++) {
             ])
         )
 
+        console.log(`Bot ${i} connected`)
         // setTimeout(() => {
         //     ws.close()
         // }, Math.random() * 50)

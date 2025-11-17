@@ -147,6 +147,10 @@ void Client::onChat() {
         return;
     }
 
+    if (message.length() > 50) {
+        return;
+    }
+
     for (auto& [id, client] : m_gameServer.m_clients) {
         if (client->m_previousVisibleEntities.find(m_entity) !=
             client->m_previousVisibleEntities.end()) {

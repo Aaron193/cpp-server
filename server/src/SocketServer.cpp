@@ -32,6 +32,8 @@ void SocketServer::run() {
                      std::cout << "Connection opened, total clients: "
                                << m_gameServer.m_clients.size() << std::endl;
                  },
+
+             //  TODO: Set max message size to prevent spam
              .message =
                  [&](auto* ws, std::string_view message, uWS::OpCode opCode) {
                      if (opCode != uWS::OpCode::BINARY) return;
