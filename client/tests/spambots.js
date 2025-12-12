@@ -2,7 +2,7 @@ const WebSocket = require('ws')
 
 let botCounter = 0
 let activeConnections = 0
-const maxConcurrentConnections = 50
+const maxConcurrentConnections = 500
 const totalBotsCreated = { count: 0 }
 
 function createBot() {
