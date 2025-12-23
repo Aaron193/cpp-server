@@ -43,6 +43,7 @@ class GameServer {
     void meleeSystem(double delta);
     void cameraSystem();
     void healthSystem(double delta);
+    void applyRiverFlow(double delta);
 
     void Hit(entt::entity entity, b2Vec2& meleePos, int radius);
     void Die(entt::entity entity);

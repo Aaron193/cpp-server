@@ -15,6 +15,7 @@ export interface Tile {
     height: number // 0-255
     biome: Biome
     isWater: boolean
+    flowDirection: number // 0-255 representing 0-360 degrees
 }
 
 export interface River {
@@ -24,6 +25,8 @@ export interface River {
 const SEA_LEVEL = 90
 const BEACH_LEVEL = 100
 const MOUNTAIN_LEVEL = 210
+const RIVER_WIDTH = 3
+const NUM_RIVERS = 15
 
 export class TerrainGenerator {
     private seed: number
@@ -33,6 +36,10 @@ export class TerrainGenerator {
     private temperatureNoise: PerlinNoise
     private tiles: Tile[] = []
     private rivers: River[] = []
+    private height: number[] = []
+    private biome: Biome[] = []
+    private flags: number[] = []  // TileFlags: Water = 1, Cover = 2
+    private flowDirection: number[] = []
 
     constructor(seed: number, worldSize: number) {
         this.seed = seed
@@ -44,19 +51,35 @@ export class TerrainGenerator {
         this.temperatureNoise = new PerlinNoise(seed + 2)
 
         this.tiles = new Array(worldSize * worldSize)
+        this.height = new Array(worldSize * worldSize)
+        this.biome = new Array(worldSize * worldSize)
+        this.flags = new Array(worldSize * worldSize).fill(0)
+        this.flowDirection = new Array(worldSize * worldSize).fill(0)
     }
 
-    generate(rivers: River[]) {
-        this.rivers = rivers
+    generate(rivers?: Array<{path: Array<{x: number, y: number}>}>) {
         this.generateHeightmap()
         this.generateBiomes()
-        this.applyRivers()
+        
+        if (rivers) {
+            // Use server-provided river data
+            console.log('Using server river data:', rivers.length, 'rivers')
+            this.rivers = rivers
+            for (const river of rivers) {
+                this.applyRiverToMap(river.path)
+            }
+        } else {
+            // Generate rivers client-side (fallback)
+            this.generateRivers()
+        }
+        
+        this.buildTiles()
     }
 
     private generateHeightmap() {
         for (let y = 0; y < this.worldSize; y++) {
             for (let x = 0; x < this.worldSize; x++) {
-                const idx = y * this.worldSize + x
+                const idx = this.worldToTileIndex(x, y)
 
                 // Get fractal noise with 3 octaves to match server
                 let h = this.heightNoise.fractal(x * 0.002, y * 0.002, 3, 0.5)
@@ -66,12 +89,7 @@ export class TerrainGenerator {
                 h = Math.max(0, Math.min(1, h))
 
                 const height = Math.floor(h * 255)
-
-                this.tiles[idx] = {
-                    height,
-                    biome: Biome.Plains,
-                    isWater: false,
-                }
+                this.height[idx] = height
             }
         }
     }
@@ -79,9 +97,8 @@ export class TerrainGenerator {
     private generateBiomes() {
         for (let y = 0; y < this.worldSize; y++) {
             for (let x = 0; x < this.worldSize; x++) {
-                const idx = y * this.worldSize + x
-                const tile = this.tiles[idx]
-                const h = tile.height
+                const idx = this.worldToTileIndex(x, y)
+                const h = this.height[idx]
 
                 const m =
                     this.moistureNoise.noise(x * 0.005, y * 0.005) * 0.5 + 0.5
@@ -93,7 +110,6 @@ export class TerrainGenerator {
 
                 if (h < SEA_LEVEL) {
                     biome = Biome.Ocean
-                    tile.isWater = true
                 } else if (h < BEACH_LEVEL) {
                     biome = Biome.Beach
                 } else if (h > MOUNTAIN_LEVEL) {
@@ -110,24 +126,221 @@ export class TerrainGenerator {
                     biome = Biome.Plains
                 }
 
-                tile.biome = biome
+                this.biome[idx] = biome
             }
         }
     }
 
-    private applyRivers() {
-        for (const river of this.rivers) {
-            for (const point of river.path) {
-                if (
-                    point.x >= 0 &&
-                    point.x < this.worldSize &&
-                    point.y >= 0 &&
-                    point.y < this.worldSize
-                ) {
-                    const idx = point.y * this.worldSize + point.x
-                    this.tiles[idx].isWater = true
+    private generateRivers() {
+        const rng = this.seededRandom(this.seed)
+
+        for (let i = 0; i < NUM_RIVERS; i++) {
+            // Find a high elevation starting point
+            let startX = 0
+            let startY = 0
+            let attempts = 0
+            do {
+                startX = Math.floor(rng() * this.worldSize)
+                startY = Math.floor(rng() * this.worldSize)
+                attempts++
+            } while (this.height[this.worldToTileIndex(startX, startY)] < 130 && attempts < 2000)
+
+            if (attempts >= 2000) continue
+
+            const path: Array<{ x: number; y: number }> = []
+            const visited = new Set<string>()
+            let x = startX
+            let y = startY
+
+            // Flow downhill
+            while (this.inBounds(x, y) && this.height[this.worldToTileIndex(x, y)] >= SEA_LEVEL) {
+                const key = `${x},${y}`
+                if (visited.has(key)) break
+                visited.add(key)
+
+                path.push({ x, y })
+
+                const [nextX, nextY] = this.findLowestNeighbor(x, y)
+
+                // If stuck, try to dig through slightly
+                if (nextX === x && nextY === y) {
+                    const currentHeight = this.height[this.worldToTileIndex(x, y)]
+                    let found = false
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (let dx = -1; dx <= 1; dx++) {
+                            const nx = x + dx
+                            const ny = y + dy
+                            if (this.inBounds(nx, ny)) {
+                                const neighborHeight = this.height[this.worldToTileIndex(nx, ny)]
+                                if (neighborHeight < currentHeight + 5) {
+                                    x = nx
+                                    y = ny
+                                    found = true
+                                    break
+                                }
+                            }
+                        }
+                        if (found) break
+                    }
+                    if (!found) break
+                } else {
+                    x = nextX
+                    y = nextY
+                }
+
+                if (path.length > 2000) break
+            }
+
+            if (path.length > 10) {
+                this.rivers.push({ path })
+                this.applyRiverToMap(path)
+            }
+        }
+    }
+
+    private applyRiverToMap(path: Array<{ x: number; y: number }>) {
+        // Mark river tiles and calculate flow direction
+        for (let i = 0; i < path.length; i++) {
+            const x = path[i].x
+            const y = path[i].y
+
+            // Calculate flow direction from this tile to next
+            let nextX = x
+            let nextY = y
+            if (i + 1 < path.length) {
+                nextX = path[i + 1].x
+                nextY = path[i + 1].y
+            }
+
+            // Calculate angle in radians
+            const dx = nextX - x
+            const dy = nextY - y
+            const angle = Math.atan2(dy, dx)
+
+            // Convert angle [-π, π] to 0-255 range (0 = -π, 128 = 0, 255 = π)
+            const flowDir = Math.round(((angle + Math.PI) / (2 * Math.PI)) * 255) & 0xFF
+
+            // Mark the center tile as water and set flow direction
+            if (this.inBounds(x, y)) {
+                const idx = this.worldToTileIndex(x, y)
+                this.flags[idx] |= 1 // Water flag
+                this.flowDirection[idx] = flowDir
+            }
+
+            // Expand river width
+            for (let dy = -RIVER_WIDTH; dy <= RIVER_WIDTH; dy++) {
+                for (let dx = -RIVER_WIDTH; dx <= RIVER_WIDTH; dx++) {
+                    const nx = x + dx
+                    const ny = y + dy
+
+                    if (!this.inBounds(nx, ny)) continue
+
+                    const nIdx = this.worldToTileIndex(nx, ny)
+                    const dist = Math.sqrt(dx * dx + dy * dy)
+
+                    if (dist <= RIVER_WIDTH) {
+                        this.flags[nIdx] |= 1 // Water flag
+                        if (this.flowDirection[nIdx] === 0) {
+                            this.flowDirection[nIdx] = flowDir
+                        }
+
+                        // Mark edge tiles
+                        if (dist > RIVER_WIDTH - 0.5) {
+                            this.flags[nIdx] |= 2 // Cover flag
+                        }
+                    }
                 }
             }
+        }
+
+        // Post-process to add edge biomes
+        for (let y = 0; y < this.worldSize; y++) {
+            for (let x = 0; x < this.worldSize; x++) {
+                const idx = this.worldToTileIndex(x, y)
+
+                if (this.flags[idx] & 1) {
+                    // This is water
+                    let isEdge = false
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (let dx = -1; dx <= 1; dx++) {
+                            if (dx === 0 && dy === 0) continue
+                            const nIdx = this.worldToTileIndex(x + dx, y + dy)
+                            if (this.inBounds(x + dx, y + dy)) {
+                                if (!(this.flags[nIdx] & 1)) {
+                                    isEdge = true
+                                    break
+                                }
+                            }
+                        }
+                        if (isEdge) break
+                    }
+
+                    // Edge tiles get special biome treatment
+                    if (isEdge && !(this.flags[idx] & 2)) {
+                        const height = this.height[idx]
+                        if (height < SEA_LEVEL + 15) {
+                            this.biome[idx] = Biome.Beach
+                        } else {
+                            this.biome[idx] = Biome.Swamp
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private buildTiles() {
+        for (let y = 0; y < this.worldSize; y++) {
+            for (let x = 0; x < this.worldSize; x++) {
+                const idx = this.worldToTileIndex(x, y)
+                this.tiles[idx] = {
+                    height: this.height[idx],
+                    biome: this.biome[idx],
+                    isWater: (this.flags[idx] & 1) !== 0,
+                    flowDirection: this.flowDirection[idx],
+                }
+            }
+        }
+    }
+
+    private findLowestNeighbor(x: number, y: number): [number, number] {
+        const dx = [-1, 0, 1, -1, 1, -1, 0, 1]
+        const dy = [-1, -1, -1, 0, 0, 1, 1, 1]
+
+        let bestX = x
+        let bestY = y
+        let lowestHeight = this.height[this.worldToTileIndex(x, y)]
+
+        for (let i = 0; i < 8; i++) {
+            const nx = x + dx[i]
+            const ny = y + dy[i]
+
+            if (!this.inBounds(nx, ny)) continue
+
+            const h = this.height[this.worldToTileIndex(nx, ny)]
+            if (h < lowestHeight) {
+                lowestHeight = h
+                bestX = nx
+                bestY = ny
+            }
+        }
+
+        return [bestX, bestY]
+    }
+
+    private inBounds(x: number, y: number): boolean {
+        return x >= 0 && x < this.worldSize && y >= 0 && y < this.worldSize
+    }
+
+    private worldToTileIndex(x: number, y: number): number {
+        return y * this.worldSize + x
+    }
+
+    private seededRandom(seed: number) {
+        let value = seed
+        return () => {
+            value = (value * 9301 + 49297) % 233280
+            return value / 233280
         }
     }
 

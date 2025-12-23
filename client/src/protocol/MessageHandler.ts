@@ -19,21 +19,27 @@ export class MessageHandler {
                 console.log('Map init')
                 const seed = reader.readU32()
                 const worldSize = reader.readU16()
-                const riverCount = reader.readU16()
-                console.log('Received seed:', seed, 'worldSize:', worldSize, 'riverCount:', riverCount)
-
-                const rivers: Array<{ x: number; y: number }> = []
-                for (let i = 0; i < riverCount; i++) {
-                    const pointCount = reader.readU16()
-                    console.log(`River ${i + 1}: ${pointCount} points`)
-                    for (let j = 0; j < pointCount; j++) {
+                
+                // Read river data from server
+                const numRivers = reader.readU16()
+                const rivers: Array<{path: Array<{x: number, y: number}>}> = []
+                
+                for (let i = 0; i < numRivers; i++) {
+                    const pathLength = reader.readU16()
+                    const path: Array<{x: number, y: number}> = []
+                    
+                    for (let j = 0; j < pathLength; j++) {
                         const x = reader.readU16()
                         const y = reader.readU16()
-                        rivers.push({ x, y })
+                        path.push({x, y})
                     }
+                    
+                    rivers.push({path})
                 }
+                
+                console.log('Received seed:', seed, 'worldSize:', worldSize, 'rivers:', numRivers)
 
-                // Initialize terrain generator
+                // Initialize terrain generator with server-provided river data
                 client.world.initializeTerrain(seed, worldSize, rivers)
                 break
             }

@@ -4,8 +4,8 @@ import { Renderer } from '../Renderer'
 export class Grid extends PIXI.Graphics {
   renderer: Renderer
   gridSize: number = 75
-  gridColor: number = 0x4b8a42
-  gridAlpha: number = 1
+  gridColor: number = 0x000000
+  gridAlpha: number = 0.10
   lineWidth: number = 5
 
   constructor(renderer: Renderer) {

@@ -31,13 +31,12 @@ Client::Client(GameServer& gameServer,
         m_writer.writeU8(ServerHeader::MAP_INIT);
         m_writer.writeU32(m_gameServer.m_worldGenerator->GetSeed());
         m_writer.writeU16(m_gameServer.m_worldGenerator->GetWorldSize());
-
-        // Send rivers
+        
+        // Send river data so client matches server exactly
         const auto& rivers = m_gameServer.m_worldGenerator->GetRivers();
         m_writer.writeU16(static_cast<uint16_t>(rivers.size()));
-        std::cout << "Sending " << rivers.size() << " rivers to client " << m_id << std::endl;
+        
         for (const auto& river : rivers) {
-            std::cout << "  River with " << river.path.size() << " points" << std::endl;
             m_writer.writeU16(static_cast<uint16_t>(river.path.size()));
             for (const auto& [x, y] : river.path) {
                 m_writer.writeU16(static_cast<uint16_t>(x));

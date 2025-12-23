@@ -123,15 +123,23 @@ class WorldGenerator {
     const std::vector<SpawnPoint>& GetSpawnPoints() const {
         return m_spawnPoints;
     }
+    uint8_t GetFlowDirection(int x, int y) const {
+        if (!InBounds(x, y)) return NO_FLOW;
+        return m_flowDirection[WorldToTileIndex(x, y)];
+    }
 
     // Build physics for a chunk
     void BuildChunkPhysics(Chunk* chunk, b2World& physicsWorld);
+
+    // Constants
+    static constexpr uint8_t NO_FLOW = 255;
 
    private:
     // Generation phases
     void GenerateHeight();
     void GenerateBiomes();
     void GenerateRivers();
+    void ApplyRiverToMap(const std::vector<std::pair<int, int>>& path);
     void GenerateLakes();
     void GenerateStructures();
     void AnalyzePvPFairness();
@@ -170,6 +178,7 @@ class WorldGenerator {
     std::vector<uint8_t> m_height;
     std::vector<uint8_t> m_biome;
     std::vector<uint8_t> m_flags;
+    std::vector<uint8_t> m_flowDirection;  // Flow angle in 0-255 (0-360 degrees)
 
     // Final chunked data
     std::unordered_map<int64_t, Chunk> m_chunks;

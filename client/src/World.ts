@@ -32,15 +32,11 @@ export class World {
     initializeTerrain(
         seed: number,
         worldSize: number,
-        riverPoints: Array<{ x: number; y: number }>
+        rivers?: Array<{path: Array<{x: number, y: number}>}>
     ) {
-        console.log('Initializing terrain with seed:', seed, 'worldSize:', worldSize)
-        console.log("river points!", riverPoints)
-        // Convert flat river points to river paths
-        // For now, treat all points as one river - in production you'd track river IDs
-        const rivers = riverPoints.length > 0 ? [{ path: riverPoints }] : []
-
-        // Create terrain generator
+        console.log('Initializing terrain with seed:', seed, 'worldSize:', worldSize, 'rivers:', rivers?.length)
+        
+        // Create terrain generator with optional server river data
         this.terrainGenerator = new TerrainGenerator(seed, worldSize)
         this.terrainGenerator.generate(rivers)
 

@@ -10,6 +10,7 @@
 
 #include <cassert>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <entt/entity/fwd.hpp>
 #include <iostream>
@@ -34,7 +35,7 @@ GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {
     // Generate world
     WorldGenParams params;
     params.seed = 12345;
-    params.worldSizeChunks = 16;  // 16x16 chunks = 1024x1024 tiles = 65,536x65,536 pixels
+    params.worldSizeChunks = 8;  // 8x8 chunks = 512x512 tiles = 32,768x32,768 pixels
     params.numRivers = 15;
     params.structureDensity = 0.015f;  // 1.5% density for more structures
     params.minCoverDensity = 0.05f;
@@ -221,6 +222,7 @@ void GameServer::tick(double delta) {
 void GameServer::prePhysicsSystemUpdate(double delta) {
     stateSystem();
     inputSystem(delta);
+    applyRiverFlow(delta);
     meleeSystem(delta);
     healthSystem(delta);
     cameraSystem();
@@ -270,6 +272,9 @@ void GameServer::inputSystem(double delta) {
             body->SetLinearVelocity(velocity);
             body->SetTransform(body->GetPosition(), angle);
         });
+    
+    // Apply river flow after input velocity is set
+    applyRiverFlow(delta);
 }
 
 void GameServer::meleeSystem(double delta) {
@@ -387,6 +392,52 @@ void GameServer::Hit(entt::entity attacker, b2Vec2& pos, int radius) {
             }
         }
     }
+}
+
+void GameServer::applyRiverFlow(double delta) {
+    entt::registry& reg = m_entityManager.getRegistry();
+    static bool debugOnce = true;
+
+    // Apply river flow velocity to entities in water
+    reg.view<Components::EntityBase>().each(
+        [&](entt::entity entity, Components::EntityBase& base) {
+            if (!base.body) return;
+
+            b2Vec2 pos = base.body->GetPosition();
+
+            // Convert from Box2D meters to tile coordinates using shared unit helpers
+            constexpr float TILE_SIZE = 64.0f;  // pixels per tile
+            const float metersPerTile = meters(TILE_SIZE);
+
+            int tileX = static_cast<int>(std::floor(pos.x / metersPerTile));
+            int tileY = static_cast<int>(std::floor(pos.y / metersPerTile));
+
+            // Check if entity is in water
+            const Tile* tile = m_worldGenerator->GetTile(tileX, tileY);
+            if (!tile) return;
+            
+            if (!(tile->flags & TileFlags::Water)) return;
+
+            // Get river flow direction
+            uint8_t flowDir = m_worldGenerator->GetFlowDirection(tileX, tileY);
+            if (flowDir == WorldGenerator::NO_FLOW) return;
+
+            // Convert flow direction (0-255) back to radians [-π, π]
+            float angle = (static_cast<float>(flowDir) / 255.0f) * 2.0f * M_PI - M_PI;
+
+            // Apply velocity in direction of flow
+            const float RIVER_SPEED = 0.8f;  // River speed in m/s
+            b2Vec2 flowVelocity(
+                RIVER_SPEED * std::cos(angle),
+                RIVER_SPEED * std::sin(angle)
+            );
+
+            // Get current velocity and add river component
+            b2Vec2 currentVel = base.body->GetLinearVelocity();
+            b2Vec2 newVel = currentVel + flowVelocity;
+
+            base.body->SetLinearVelocity(newVel);
+        });
 }
 
 void GameServer::Die(entt::entity entity) {

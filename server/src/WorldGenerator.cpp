@@ -36,6 +36,7 @@ void WorldGenerator::GenerateWorld(const WorldGenParams& params) {
     m_height.resize(totalTiles);
     m_biome.resize(totalTiles);
     m_flags.resize(totalTiles);
+    m_flowDirection.resize(totalTiles, WorldGenerator::NO_FLOW);
 
     // Initialize noise generators with deterministic seeds
     m_heightNoise = PerlinNoise(m_seed);
@@ -128,6 +129,7 @@ void WorldGenerator::GenerateBiomes() {
 
             if (h < SEA_LEVEL) {
                 biome = Biome::Ocean;
+                m_flags[idx] |= TileFlags::Water;  // Mark ocean tiles as water
             } else if (h < BEACH_LEVEL) {
                 biome = Biome::Beach;
             } else if (h > MOUNTAIN_LEVEL) {
@@ -173,6 +175,7 @@ void WorldGenerator::GenerateRivers() {
 
         int x = startX, y = startY;
         std::unordered_set<int64_t> visited;
+        std::vector<std::pair<int, int>> pathWithFlow;
 
         // Flow downhill with channel digging
         while (InBounds(x, y) && m_height[WorldToTileIndex(x, y)] >= SEA_LEVEL) {
@@ -181,20 +184,7 @@ void WorldGenerator::GenerateRivers() {
             visited.insert(key);
 
             river.path.push_back({x, y});
-            m_flags[WorldToTileIndex(x, y)] |= TileFlags::Water;
-            
-            // Widen river by marking neighbors as water too
-            for (int dy = -1; dy <= 1; dy++) {
-                for (int dx = -1; dx <= 1; dx++) {
-                    int nx = x + dx;
-                    int ny = y + dy;
-                    if (InBounds(nx, ny) && (dx != 0 || dy != 0)) {
-                        if (rng() % 100 < 40) {  // 40% chance to extend
-                            m_flags[WorldToTileIndex(nx, ny)] |= TileFlags::Water;
-                        }
-                    }
-                }
-            }
+            pathWithFlow.push_back({x, y});
 
             auto [nextX, nextY] = FindLowestNeighbor(x, y);
             
@@ -228,8 +218,111 @@ void WorldGenerator::GenerateRivers() {
         if (river.path.size() > 10) {
             m_rivers.push_back(river);
             std::cout << "River " << m_rivers.size() << " created with " << river.path.size() << " points" << std::endl;
+
+            // Now populate flow direction and create thick river with edges
+            ApplyRiverToMap(pathWithFlow);
         } else {
             std::cout << "River rejected - only " << river.path.size() << " points" << std::endl;
+        }
+    }
+}
+
+void WorldGenerator::ApplyRiverToMap(const std::vector<std::pair<int, int>>& path) {
+    if (path.empty()) return;
+
+    constexpr int RIVER_WIDTH = 3;  // 3 tiles wide (center + 1 on each side)
+    
+    // Mark river tiles and calculate flow direction
+    for (size_t i = 0; i < path.size(); i++) {
+        int x = path[i].first;
+        int y = path[i].second;
+
+        // Calculate flow direction from this tile to next
+        int nextX = x;
+        int nextY = y;
+        if (i + 1 < path.size()) {
+            nextX = path[i + 1].first;
+            nextY = path[i + 1].second;
+        }
+
+        // Calculate angle in radians
+        float dx = static_cast<float>(nextX - x);
+        float dy = static_cast<float>(nextY - y);
+        float angle = std::atan2(dy, dx);
+
+        // Convert angle [-π, π] to 0-255 range (0 = -π, 128 = 0, 255 = π)
+        uint8_t flowDir = static_cast<uint8_t>(((angle + M_PI) / (2.0f * M_PI)) * 255.0f);
+
+        // Mark the center tile as water and set flow direction
+        if (InBounds(x, y)) {
+            int idx = WorldToTileIndex(x, y);
+            m_flags[idx] |= TileFlags::Water;
+            m_flowDirection[idx] = flowDir;
+        }
+
+        // Expand river width - create thick river
+        for (int dy = -RIVER_WIDTH; dy <= RIVER_WIDTH; dy++) {
+            for (int dx = -RIVER_WIDTH; dx <= RIVER_WIDTH; dx++) {
+                int nx = x + dx;
+                int ny = y + dy;
+
+                if (!InBounds(nx, ny)) continue;
+
+                int nIdx = WorldToTileIndex(nx, ny);
+                
+                // Distance from center
+                float dist = std::sqrt(static_cast<float>(dx * dx + dy * dy));
+
+                // Mark water within radius
+                if (dist <= RIVER_WIDTH) {
+                    m_flags[nIdx] |= TileFlags::Water;
+                    if (m_flowDirection[nIdx] == NO_FLOW) {  // Don't overwrite existing flow
+                        m_flowDirection[nIdx] = flowDir;
+                    }
+                    
+                    // Mark edge tiles (distance > RIVER_WIDTH - 1) for biome transition
+                    if (dist > RIVER_WIDTH - 0.5f) {
+                        m_flags[nIdx] |= TileFlags::Cover;  // Mark as edge
+                    }
+                }
+            }
+        }
+    }
+
+    // Post-process to add edge biomes (Beach/Swamp transitions)
+    for (int y = 0; y < m_worldSize; y++) {
+        for (int x = 0; x < m_worldSize; x++) {
+            int idx = WorldToTileIndex(x, y);
+
+            // If this is water, check neighbors for edge marking
+            if (m_flags[idx] & TileFlags::Water) {
+                // Check if this is an edge by looking for non-water neighbors
+                bool isEdge = false;
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        if (dx == 0 && dy == 0) continue;
+                        int nIdx = WorldToTileIndex(x + dx, y + dy);
+                        if (InBounds(x + dx, y + dy)) {
+                            if (!(m_flags[nIdx] & TileFlags::Water)) {
+                                isEdge = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (isEdge) break;
+                }
+
+                // Edge tiles get special biome treatment
+                if (isEdge && !(m_flags[idx] & TileFlags::Cover)) {
+                    uint8_t height = m_height[idx];
+                    // Water edges become beach/swamp depending on height
+                    if (height < SEA_LEVEL + 15) {
+                        m_biome[idx] = static_cast<uint8_t>(Biome::Beach);
+                    } else {
+                        m_biome[idx] = static_cast<uint8_t>(Biome::Swamp);
+                    }
+                }
+            }
         }
     }
 }
