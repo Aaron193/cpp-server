@@ -4,4 +4,7 @@ export enum EntityTypes {
     CRATE,
     BUSH,
     ROCK,
+    WALL,
+    FENCE,
+    TREE,
 }

@@ -7,6 +7,7 @@
 #include <entt/entt.hpp>
 
 #include "GameServer.hpp"
+#include "common/enums.hpp"
 #include "ecs/components.hpp"
 #include "physics/PhysicsWorld.hpp"
 #include "util/units.hpp"
@@ -20,6 +21,9 @@ EntityManager::EntityManager(GameServer& gameServer)
     m_variants[EntityTypes::CRATE] = 0;
     m_variants[EntityTypes::PLAYER] = 0;
     m_variants[EntityTypes::SPECTATOR] = 0;
+    m_variants[EntityTypes::WALL] = 0;
+    m_variants[EntityTypes::FENCE] = 0;
+    m_variants[EntityTypes::TREE] = 2;
 }
 
 uint8_t EntityManager::getVariantCount(EntityTypes type) {
@@ -64,11 +68,22 @@ entt::entity EntityManager::createPlayer() {
     b2BodyDef bodyDef;
     bodyDef.type = b2_dynamicBody;
 
-    // float x = static_cast<float>(rand()) / (float)RAND_MAX * 10.0f;
-    // float y = static_cast<float>(rand()) / (float)RAND_MAX * 10.0f;
-    float x = static_cast<float>(rand()) / (float)RAND_MAX * 100000.0f;
-    float y = static_cast<float>(rand()) / (float)RAND_MAX * 100000.0f;
-    bodyDef.position.Set(meters(x), meters(y));
+    // Get spawn point from world generator or use center of world
+    constexpr float TILE_SIZE = 64.0f;
+    float spawnX = 1024.0f * TILE_SIZE; // Center of 2048 tile world
+    float spawnY = 1024.0f * TILE_SIZE;
+    
+    if (m_gameServer.m_worldGenerator) {
+        const auto& spawnPoints = m_gameServer.m_worldGenerator->GetSpawnPoints();
+        if (!spawnPoints.empty()) {
+            // Pick a random spawn point
+            const auto& spawn = spawnPoints[rand() % spawnPoints.size()];
+            spawnX = spawn.x * TILE_SIZE;
+            spawnY = spawn.y * TILE_SIZE;
+        }
+    }
+    
+    bodyDef.position.Set(meters(spawnX), meters(spawnY));
     bodyDef.fixedRotation = true;
 
     // Assign User Data to point to our entity
@@ -89,8 +104,8 @@ entt::entity EntityManager::createPlayer() {
     fixtureDef.friction = 0.0f;
     fixtureDef.restitution = 0.0f;
     fixtureDef.isSensor = false;
-
-    // TODO: setup filter collision bitmasks
+    fixtureDef.filter.categoryBits = CAT_PLAYER;
+    fixtureDef.filter.maskBits = MASK_PLAYER_MOVE | CAT_PLAYER;
 
     base.body->CreateFixture(&fixtureDef);
 
@@ -218,6 +233,122 @@ entt::entity EntityManager::createRock() {
     fixtureDef.friction = 0.0f;
     fixtureDef.restitution = 0.0f;
     fixtureDef.isSensor = false;
+
+    base.body->CreateFixture(&fixtureDef);
+
+    return entity;
+}
+
+entt::entity EntityManager::createWall(float x, float y, bool destructible) {
+    entt::entity entity = m_registry.create();
+
+    auto& base = m_registry.emplace<EntityBase>(entity, EntityTypes::WALL);
+    m_registry.emplace<Networked>(entity);
+
+    if (destructible) {
+        Components::Destructible dest;
+        dest.maxHealth = 100.0f;
+        dest.currentHealth = 100.0f;
+        m_registry.emplace<Components::Destructible>(entity, dest);
+    }
+
+    // Create Box2D body
+    b2BodyDef bodyDef;
+    bodyDef.type = destructible ? b2_dynamicBody : b2_staticBody;
+    bodyDef.position.Set(meters(x), meters(y));
+    bodyDef.fixedRotation = true;
+
+    base.body = m_gameServer.m_physicsWorld.m_world->CreateBody(&bodyDef);
+
+    EntityBodyUserData* userData = new EntityBodyUserData();
+    userData->entity = entity;
+    base.body->GetUserData().pointer =
+        reinterpret_cast<uintptr_t>(userData);
+
+    // Create box collider
+    b2PolygonShape boxShape;
+    boxShape.SetAsBox(meters(50.0f), meters(50.0f));
+
+    b2FixtureDef fixtureDef;
+    fixtureDef.shape = &boxShape;
+    fixtureDef.density = 1.0f;
+    fixtureDef.friction = 0.0f;
+    fixtureDef.restitution = 0.0f;
+    fixtureDef.filter.categoryBits = CAT_WALL;
+    fixtureDef.filter.maskBits = MASK_PLAYER_MOVE | MASK_BULLET;
+
+    base.body->CreateFixture(&fixtureDef);
+
+    return entity;
+}
+
+entt::entity EntityManager::createFence(float x, float y) {
+    entt::entity entity = m_registry.create();
+
+    auto& base = m_registry.emplace<EntityBase>(entity, EntityTypes::FENCE);
+    m_registry.emplace<Networked>(entity);
+
+    // Create Box2D body (static)
+    b2BodyDef bodyDef;
+    bodyDef.type = b2_staticBody;
+    bodyDef.position.Set(meters(x), meters(y));
+
+    base.body = m_gameServer.m_physicsWorld.m_world->CreateBody(&bodyDef);
+
+    EntityBodyUserData* userData = new EntityBodyUserData();
+    userData->entity = entity;
+    base.body->GetUserData().pointer =
+        reinterpret_cast<uintptr_t>(userData);
+
+    // Create box collider (blocks bullets, not players)
+    b2PolygonShape boxShape;
+    boxShape.SetAsBox(meters(40.0f), meters(10.0f));
+
+    b2FixtureDef fixtureDef;
+    fixtureDef.shape = &boxShape;
+    fixtureDef.density = 0.0f;
+    fixtureDef.friction = 0.0f;
+    fixtureDef.restitution = 0.0f;
+    fixtureDef.isSensor = false;
+    fixtureDef.filter.categoryBits = CAT_COVER;
+    fixtureDef.filter.maskBits = MASK_BULLET;  // Only blocks bullets
+
+    base.body->CreateFixture(&fixtureDef);
+
+    return entity;
+}
+
+entt::entity EntityManager::createTree(float x, float y) {
+    entt::entity entity = m_registry.create();
+
+    auto& base = m_registry.emplace<EntityBase>(entity, EntityTypes::TREE);
+    base.variant = getRandomVariant(EntityTypes::TREE);
+    m_registry.emplace<Networked>(entity);
+
+    // Create Box2D body (static)
+    b2BodyDef bodyDef;
+    bodyDef.type = b2_staticBody;
+    bodyDef.position.Set(meters(x), meters(y));
+
+    base.body = m_gameServer.m_physicsWorld.m_world->CreateBody(&bodyDef);
+
+    EntityBodyUserData* userData = new EntityBodyUserData();
+    userData->entity = entity;
+    base.body->GetUserData().pointer =
+        reinterpret_cast<uintptr_t>(userData);
+
+    // Create circle collider
+    b2CircleShape circleShape;
+    circleShape.m_radius = meters(30.0f);
+
+    b2FixtureDef fixtureDef;
+    fixtureDef.shape = &circleShape;
+    fixtureDef.density = 0.0f;
+    fixtureDef.friction = 0.0f;
+    fixtureDef.restitution = 0.0f;
+    fixtureDef.isSensor = false;
+    fixtureDef.filter.categoryBits = CAT_WALL;
+    fixtureDef.filter.maskBits = MASK_PLAYER_MOVE | MASK_BULLET;
 
     base.body->CreateFixture(&fixtureDef);
 

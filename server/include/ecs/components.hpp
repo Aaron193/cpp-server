@@ -81,4 +81,20 @@ struct Health {
     }
 };
 
+struct Destructible {
+    float maxHealth;
+    float currentHealth;
+    bool destroyed = false;
+
+    void damage(float amount) {
+        currentHealth -= amount;
+        if (currentHealth <= 0.0f) {
+            currentHealth = 0.0f;
+            destroyed = true;
+        }
+    }
+
+    bool isDestroyed() const { return destroyed; }
+};
+
 };  // namespace Components

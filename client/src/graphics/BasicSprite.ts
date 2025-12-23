@@ -7,8 +7,9 @@ export class BasicSprite extends Entity {
     client: GameClient
     shadow: PIXI.Sprite
     sprite: PIXI.Sprite
+    debugLabel?: PIXI.Text
 
-    constructor(client: GameClient, texture: PIXI.Texture) {
+    constructor(client: GameClient, texture: PIXI.Texture, debugText?: string) {
         super()
 
         this.client = client
@@ -27,6 +28,22 @@ export class BasicSprite extends Entity {
 
         this.addChild(this.shadow)
         this.addChild(this.sprite)
+
+        // Add debug label if provided
+        if (debugText) {
+            this.debugLabel = new PIXI.Text({
+                text: debugText,
+                style: new PIXI.TextStyle({
+                    fontFamily: 'Arial',
+                    fontSize: 12,
+                    fill: 0xffffff,
+                    stroke: { color: 0x000000, width: 2 },
+                }),
+            })
+            this.debugLabel.anchor.set(0.5, 1)
+            this.debugLabel.position.y = -30
+            this.addChild(this.debugLabel)
+        }
 
         this.client.world.renderer.foreground.addChild(this)
     }

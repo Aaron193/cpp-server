@@ -9,6 +9,7 @@
 #include <unordered_set>
 
 #include "GameServer.hpp"
+#include "WorldGenerator.hpp"
 #include "common/enums.hpp"
 #include "ecs/EntityManager.hpp"
 #include "ecs/components.hpp"
@@ -24,6 +25,26 @@ Client::Client(GameServer& gameServer,
     // send server tps
     m_writer.writeU8(ServerHeader::TPS);
     m_writer.writeU8(m_gameServer.m_tps);
+
+    // Send map initialization data
+    if (m_gameServer.m_worldGenerator) {
+        m_writer.writeU8(ServerHeader::MAP_INIT);
+        m_writer.writeU32(m_gameServer.m_worldGenerator->GetSeed());
+        m_writer.writeU16(m_gameServer.m_worldGenerator->GetWorldSize());
+
+        // Send rivers
+        const auto& rivers = m_gameServer.m_worldGenerator->GetRivers();
+        m_writer.writeU16(static_cast<uint16_t>(rivers.size()));
+        std::cout << "Sending " << rivers.size() << " rivers to client " << m_id << std::endl;
+        for (const auto& river : rivers) {
+            std::cout << "  River with " << river.path.size() << " points" << std::endl;
+            m_writer.writeU16(static_cast<uint16_t>(river.path.size()));
+            for (const auto& [x, y] : river.path) {
+                m_writer.writeU16(static_cast<uint16_t>(x));
+                m_writer.writeU16(static_cast<uint16_t>(y));
+            }
+        }
+    }
 
     // tell our player about others
     for (auto& [id, client] : m_gameServer.m_clients) {
@@ -200,6 +221,9 @@ void Client::writeGameState() {
         currentlyVisibleEntities.insert(entity);
     }
 
+    auto baseView = reg.view<Components::EntityBase>();
+    auto stateView = reg.view<Components::State>();
+
     // most of these entities are going to go into the update list
     createEntities.reserve(currentlyVisibleEntities.size());
     updateEntities.reserve(currentlyVisibleEntities.size());
@@ -209,7 +233,11 @@ void Client::writeGameState() {
             m_previousVisibleEntities.end()) {
             createEntities.push_back(entity);
         } else {
-            updateEntities.push_back(entity);
+            // Only send updates for dynamic bodies (skip static structures)
+            auto& base = baseView.get<Components::EntityBase>(entity);
+            if (base.body && base.body->GetType() != b2_staticBody) {
+                updateEntities.push_back(entity);
+            }
         }
     }
 
@@ -219,9 +247,6 @@ void Client::writeGameState() {
             removeEntities.push_back(entity);
         }
     }
-
-    auto baseView = reg.view<Components::EntityBase>();
-    auto stateView = reg.view<Components::State>();
 
     if (!createEntities.empty()) {
         m_writer.writeU8(ServerHeader::ENTITY_CREATE);

@@ -4,7 +4,7 @@
 #include <entt/entt.hpp>
 #include <unordered_map>
 
-enum EntityTypes : uint8_t { SPECTATOR, PLAYER, CRATE, BUSH, ROCK };
+enum EntityTypes : uint8_t { SPECTATOR, PLAYER, CRATE, BUSH, ROCK, WALL, FENCE, TREE };
 enum Variant : uint8_t { NONE, VARIANT_1, VARIANT_2, VARIANT_3 };
 
 enum EntityStates : uint8_t {
@@ -38,6 +38,9 @@ class EntityManager {
     entt::entity createCrate();
     entt::entity createBush();
     entt::entity createRock();
+    entt::entity createWall(float x, float y, bool destructible = false);
+    entt::entity createFence(float x, float y);
+    entt::entity createTree(float x, float y);
 
     void scheduleForRemoval(entt::entity entity);
     void removeEntities();

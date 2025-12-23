@@ -125,6 +125,11 @@ export class GameClient {
                 case 'ArrowRight':
                     this.currentDirection |= 8
                     break
+                case 'm':
+                case 'M':
+                    // Toggle minimap
+                    this.world.renderer.hud.minimap.toggle()
+                    break
             }
     }
 

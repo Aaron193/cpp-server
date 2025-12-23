@@ -17,6 +17,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(box2d CONFIG REQUIRED)
 find_package(unofficial-uwebsockets CONFIG REQUIRED)
 find_package(EnTT CONFIG REQUIRED)
+find_package(glm CONFIG REQUIRED)
 
 file(GLOB_RECURSE SOURCES
     "src/*.cpp"
@@ -28,6 +29,7 @@ target_link_libraries(server PRIVATE
     box2d::box2d
     unofficial::uwebsockets::uwebsockets
     EnTT::EnTT
+    glm::glm
 )
 
 target_include_directories(server PRIVATE

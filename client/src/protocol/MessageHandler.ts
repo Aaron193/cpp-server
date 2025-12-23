@@ -8,12 +8,35 @@ import { Crate } from '../graphics/Crate'
 import { BasicSprite } from '../graphics/BasicSprite'
 import { NewsType } from '../enums/NewsType'
 import { AssetLoader } from '../graphics/utils/AssetLoader'
+import { TerrainGenerator } from '../TerrainGenerator'
 
 export class MessageHandler {
     static handle(reader: PacketReader, client: GameClient): void {
         const messageType = reader.readU8()
 
         switch (messageType) {
+            case ServerHeader.MAP_INIT: {
+                console.log('Map init')
+                const seed = reader.readU32()
+                const worldSize = reader.readU16()
+                const riverCount = reader.readU16()
+                console.log('Received seed:', seed, 'worldSize:', worldSize, 'riverCount:', riverCount)
+
+                const rivers: Array<{ x: number; y: number }> = []
+                for (let i = 0; i < riverCount; i++) {
+                    const pointCount = reader.readU16()
+                    console.log(`River ${i + 1}: ${pointCount} points`)
+                    for (let j = 0; j < pointCount; j++) {
+                        const x = reader.readU16()
+                        const y = reader.readU16()
+                        rivers.push({ x, y })
+                    }
+                }
+
+                // Initialize terrain generator
+                client.world.initializeTerrain(seed, worldSize, rivers)
+                break
+            }
             case ServerHeader.SPAWN_SUCCESS: {
                 console.log('Spawn success')
                 const entity = reader.readU32()
@@ -41,6 +64,10 @@ export class MessageHandler {
 
                     let entity: Entity
 
+                    // Get entity type name for debug labels
+                    const typeNames = ['SPECTATOR', 'PLAYER', 'CRATE', 'BUSH', 'ROCK', 'WALL', 'FENCE', 'TREE']
+                    const typeName = typeNames[type] || `TYPE_${type}`
+
                     switch (type) {
                         case EntityTypes.PLAYER: {
                             entity = new Player(client, { id })
@@ -51,10 +78,15 @@ export class MessageHandler {
                             break
                         }
                         case EntityTypes.BUSH:
-                        case EntityTypes.ROCK: {
+                        case EntityTypes.ROCK:
+                        case EntityTypes.WALL:
+                        case EntityTypes.FENCE:
+                        case EntityTypes.TREE: {
+                            const debugLabel = `${typeName}\nID:${id}`
                             entity = new BasicSprite(
                                 client,
-                                AssetLoader.getTextureFromType(type, variant)
+                                AssetLoader.getTextureFromType(type, variant),
+                                debugLabel
                             )
                             console.log('creating from type: ', type)
                             break
@@ -228,6 +260,65 @@ export class MessageHandler {
                 const entity = client.world.entities.get(id)! as Player
                 entity.receivedChat(message)
 
+                break
+            }
+            case ServerHeader.STRUCTURE_CREATE: {
+                console.log('Structure create')
+                const count = reader.readU16()
+
+                for (let i = 0; i < count; i++) {
+                    const id = reader.readU32()
+                    const type = reader.readU8()
+                    const variant = reader.readU8()
+                    const x = reader.readFloat()
+                    const y = reader.readFloat()
+                    const angle = reader.readFloat()
+
+                    let entity: Entity
+
+                    const typeNames = ['SPECTATOR', 'PLAYER', 'CRATE', 'BUSH', 'ROCK', 'WALL', 'FENCE', 'TREE']
+                    const typeName = typeNames[type] || `TYPE_${type}`
+                    const debugLabel = `${typeName}\nID:${id}`
+
+                    switch (type) {
+                        case EntityTypes.WALL:
+                        case EntityTypes.FENCE:
+                        case EntityTypes.TREE: {
+                            entity = new BasicSprite(
+                                client,
+                                AssetLoader.getTextureFromType(type, variant),
+                                debugLabel
+                            )
+                            break
+                        }
+                        default: {
+                            console.warn('Unknown structure type:', type)
+                            continue
+                        }
+                    }
+
+                    entity._id = id
+                    entity._x = x
+                    entity._y = y
+                    entity.position.x = x
+                    entity.position.y = y
+                    entity.rotation = angle
+
+                    client.world.entities.set(id, entity)
+                    client.world.renderer.middleground.addChild(entity)
+                }
+                break
+            }
+            case ServerHeader.STRUCTURE_DESTROY: {
+                console.log('Structure destroy')
+                const id = reader.readU32()
+
+                const entity = client.world.entities.get(id)
+                if (entity) {
+                    client.world.entities.delete(id)
+                    client.world.renderer.middleground.removeChild(entity)
+                    entity.destroy()
+                }
                 break
             }
             default:

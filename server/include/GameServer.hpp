@@ -2,8 +2,11 @@
 
 #include <uwebsockets/Loop.h>
 
+#include <memory>
 #include <mutex>
 
+#include "RaycastSystem.hpp"
+#include "WorldGenerator.hpp"
 #include "client/Client.hpp"
 #include "ecs/EntityManager.hpp"
 #include "physics/PhysicsWorld.hpp"
@@ -22,6 +25,8 @@ class GameServer {
 
     EntityManager m_entityManager;
     PhysicsWorld m_physicsWorld;
+    std::unique_ptr<WorldGenerator> m_worldGenerator;
+    std::unique_ptr<RaycastSystem> m_raycastSystem;
     std::unordered_map<uint32_t, Client*> m_clients;
 
     // incoming network messages

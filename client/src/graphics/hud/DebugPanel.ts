@@ -35,9 +35,25 @@ export class DebugPanel extends PIXI.Container {
 
         if (world.entities.has(world.cameraEntityId)) {
             const myEntity = world.entities.get(world.cameraEntityId)!
-            this.panel.text = `X: ${myEntity._x.toFixed(
-                2
-            )} Y: ${myEntity._y.toFixed(2)}`
+            
+            let debugText = `X: ${myEntity._x.toFixed(2)} Y: ${myEntity._y.toFixed(2)}`
+            
+            // Add terrain info if available
+            if (world.terrainGenerator) {
+                const tileX = Math.floor(myEntity._x / 64)
+                const tileY = Math.floor(myEntity._y / 64)
+                const tile = world.terrainGenerator.getTile(tileX, tileY)
+                
+                if (tile) {
+                    const biomeNames = ['Ocean', 'Beach', 'Plains', 'Forest', 'Desert', 'Snow', 'Mountain', 'Swamp']
+                    debugText += `\nTile: ${tileX},${tileY} | Biome: ${biomeNames[tile.biome]} | Height: ${tile.height}`
+                    if (tile.isWater) {
+                        debugText += ' [WATER]'
+                    }
+                }
+            }
+            
+            this.panel.text = debugText
         } else {
             console.log('my entity does not exist')
         }

@@ -5,8 +5,8 @@
 
 void PacketWriter::writeU8(uint8_t x) { writeBytes<uint8_t>(x); }
 
-void PacketWriter::writeU16(uint8_t x) {
-    writeBytes<uint16_t>(static_cast<uint16_t>(x));
+void PacketWriter::writeU16(uint16_t x) {
+    writeBytes<uint16_t>(x);
 }
 
 void PacketWriter::writeU32(uint32_t x) { writeBytes<uint32_t>(x); }

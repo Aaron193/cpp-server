@@ -16,6 +16,8 @@
 #include <stdexcept>
 #include <thread>
 
+#include "RaycastSystem.hpp"
+#include "WorldGenerator.hpp"
 #include "client/Client.hpp"
 #include "common/enums.hpp"
 #include "ecs/EntityManager.hpp"
@@ -23,16 +25,112 @@
 #include "physics/PhysicsWorld.hpp"
 #include "util/units.hpp"
 
-// @TODO: make sure we have more C++ that typescript in thie project i dont want
-// typescript to show on the git repo as the main language :C
-
 GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {
-    // Setup world
-    for (int i = 0; i < 10; i++) {
-        m_entityManager.createCrate();
-        m_entityManager.createBush();
-        m_entityManager.createRock();
+    std::cout << "Initializing GameServer..." << std::endl;
+
+    // Initialize world generator
+    m_worldGenerator = std::make_unique<WorldGenerator>(*this);
+
+    // Generate world
+    WorldGenParams params;
+    params.seed = 12345;
+    params.worldSizeChunks = 16;  // 16x16 chunks = 1024x1024 tiles = 65,536x65,536 pixels
+    params.numRivers = 15;
+    params.structureDensity = 0.015f;  // 1.5% density for more structures
+    params.minCoverDensity = 0.05f;
+
+    m_worldGenerator->GenerateWorld(params);
+
+    // Initialize raycast system
+    m_raycastSystem = std::make_unique<RaycastSystem>(
+        m_entityManager.getRegistry(), *m_physicsWorld.m_world);
+
+    // Spawn structures as entities
+    std::cout << "Spawning structures..." << std::endl;
+    const auto& structures = m_worldGenerator->GetStructures();
+    constexpr float TILE_SIZE = 64.0f; // Each tile is 64x64 pixels
+    
+    for (const auto& structure : structures) {
+        entt::entity entity = entt::null;
+        
+        // Convert tile coordinates to pixel coordinates
+        float pixelX = structure.x * TILE_SIZE;
+        float pixelY = structure.y * TILE_SIZE;
+
+        switch (structure.type) {
+            case StructureType::House:
+            case StructureType::Wall:
+                entity = m_entityManager.createWall(pixelX, pixelY,
+                                                    structure.destructible);
+                break;
+            case StructureType::Fence:
+                entity = m_entityManager.createFence(pixelX, pixelY);
+                break;
+            case StructureType::Rock:
+                entity = m_entityManager.createRock();
+                // Position it
+                if (auto* base =
+                        m_entityManager.getRegistry().try_get<Components::EntityBase>(
+                            entity)) {
+                    if (base->body) {
+                        base->body->SetTransform(
+                            b2Vec2(meters(pixelX),
+                                   meters(pixelY)),
+                            0);
+                    }
+                }
+                break;
+            case StructureType::Bush:
+                entity = m_entityManager.createBush();
+                // Position it
+                if (auto* base =
+                        m_entityManager.getRegistry().try_get<Components::EntityBase>(
+                            entity)) {
+                    if (base->body) {
+                        base->body->SetTransform(
+                            b2Vec2(meters(pixelX),
+                                   meters(pixelY)),
+                            0);
+                    }
+                }
+                // Mark as destructible if specified
+                if (structure.destructible) {
+                    Components::Destructible dest;
+                    dest.maxHealth = 20.0f;
+                    dest.currentHealth = 20.0f;
+                    m_entityManager.getRegistry().emplace<Components::Destructible>(
+                        entity, dest);
+                }
+                break;
+            case StructureType::Tree:
+                entity = m_entityManager.createTree(pixelX, pixelY);
+                break;
+            case StructureType::Crate:
+                entity = m_entityManager.createCrate();
+                // Position it
+                if (auto* base =
+                        m_entityManager.getRegistry().try_get<Components::EntityBase>(
+                            entity)) {
+                    if (base->body) {
+                        base->body->SetTransform(
+                            b2Vec2(meters(pixelX),
+                                   meters(pixelY)),
+                            0);
+                    }
+                }
+                // Mark as destructible if specified
+                if (structure.destructible) {
+                    Components::Destructible dest;
+                    dest.maxHealth = 50.0f;
+                    dest.currentHealth = 50.0f;
+                    m_entityManager.getRegistry().emplace<Components::Destructible>(
+                        entity, dest);
+                }
+                break;
+        }
     }
+
+    std::cout << "GameServer initialization complete!" << std::endl;
 }
 
 void GameServer::run() {
@@ -297,8 +395,26 @@ void GameServer::Die(entt::entity entity) {
 
     EntityTypes type = reg.get<Components::EntityBase>(entity).type;
 
+    // Check if this is a destructible entity (structures)
+    if (reg.all_of<Components::Destructible>(entity)) {
+        auto& destructible = reg.get<Components::Destructible>(entity);
+        if (destructible.isDestroyed()) {
+            // Broadcast structure destruction to all clients
+            for (auto& [id, client] : m_clients) {
+                client->m_writer.writeU8(ServerHeader::STRUCTURE_DESTROY);
+                client->m_writer.writeU32(static_cast<uint32_t>(entity));
+            }
+            
+            // Schedule for removal
+            m_entityManager.scheduleForRemoval(entity);
+            return;
+        }
+    }
+
     // Entities cannot be 'killed' unless they have a health component
-    assert(reg.all_of<Components::Health>(entity));
+    if (!reg.all_of<Components::Health>(entity)) {
+        return;
+    }
 
     switch (type) {
         case EntityTypes::PLAYER: {
@@ -325,8 +441,8 @@ void GameServer::Die(entt::entity entity) {
         }
 
         default:
-            std::cout << "Did not implement case for " << type << std::endl;
-            assert(false);
+            // For other entities with health, just remove them
+            m_entityManager.scheduleForRemoval(entity);
             break;
     }
 }
