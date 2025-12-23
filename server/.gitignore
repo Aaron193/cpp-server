@@ -3,3 +3,4 @@ build/
 
 .cache
 run-notes.txt
+compile_commands.json
