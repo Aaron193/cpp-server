@@ -8,16 +8,49 @@ const MINIMAP_SIZE = 200 // Size of minimap in pixels
 const MINIMAP_PADDING = 10 // Padding from edge of screen
 const MINIMAP_ALPHA = 0.85
 
-// Biome colors for minimap (slightly different for better visibility)
-const MINIMAP_BIOME_COLORS: Record<Biome, number> = {
-    [Biome.Ocean]: 0x1a2f4a,
-    [Biome.Beach]: 0xc9b896,
-    [Biome.Plains]: 0x6b9e3a,
-    [Biome.Forest]: 0x1e5f21,
-    [Biome.Desert]: 0xe0c030,
-    [Biome.Snow]: 0xe8e8e8,
-    [Biome.Mountain]: 0x4a4a4a,
-    [Biome.Swamp]: 0x4a7528,
+// Height-based color map inspired by volcanic island generation
+// Maps normalized height (0-1) to RGB colors
+interface ColorRGB {
+    r: number
+    g: number
+    b: number
+}
+
+const HEIGHT_COLOR_MAP: Record<number, ColorRGB> = {
+    1.0: { r: 61, g: 70, b: 41 },      // Dark green (high mountains/forest)
+    0.8: { r: 118, g: 133, b: 78 },    // Green (hills)
+    0.69: { r: 153, g: 146, b: 78 },   // Tan (plains)
+    0.68: { r: 161, g: 164, b: 77 },   // Light tan (plains)
+    0.545: { r: 197, g: 192, b: 111 }, // Pale tan (highlands)
+    0.53: { r: 225, g: 209, b: 132 },  // Sand (upper beach)
+    0.51: { r: 248, g: 238, b: 202 },  // Light sand (beach)
+    0.5: { r: 219, g: 187, b: 130 },   // Brown sand (beach edge)
+    0.49: { r: 10, g: 194, b: 182 },   // Cyan (shallow water)
+    0.48: { r: 8, g: 139, b: 151 },    // Blue-cyan (water)
+    0.46: { r: 0, g: 91, b: 130 },     // Blue (deeper water)
+    0.35: { r: 0, g: 39, b: 100 },    // Dark blue (deep ocean)
+    0.25: { r: 7, g: 16, b: 59 },      // Very dark blue (deeper ocean)
+    0.15: { r: 7, g: 16, b: 59 },      // Very dark blue
+    0.0: { r: 11, g: 10, b: 42 },      // Darkest blue (deepest ocean)
+}
+
+// Get color for a given normalized height value (0-1)
+function getHeightColor(normalizedHeight: number): ColorRGB {
+    const keys = Object.keys(HEIGHT_COLOR_MAP).map(Number).sort((a, b) => b - a)
+    
+    // Find closest key
+    let closestKey = keys[0]
+    let minDiff = Math.abs(normalizedHeight - closestKey)
+    
+    for (const key of keys) {
+        const diff = Math.abs(normalizedHeight - key)
+        if (diff < minDiff) {
+            minDiff = diff
+            closestKey = key
+        }
+    }
+    
+    return HEIGHT_COLOR_MAP[closestKey]
 }
 
 export class Minimap extends PIXI.Container {
@@ -102,17 +135,13 @@ export class Minimap extends PIXI.Container {
                 const tile = terrainGen.getTile(x, y)
                 if (!tile) continue
 
-                const color = MINIMAP_BIOME_COLORS[tile.biome]
+                // Normalize height to 0-1 range
+                const normalizedHeight = tile.height / 255
                 
-                // Apply height-based shading (darker for lower elevation)
-                const heightFactor = tile.height / 255
-                const shadeFactor = 0.6 + heightFactor * 0.4
-                
-                const r = ((color >> 16) & 0xff) * shadeFactor
-                const g = ((color >> 8) & 0xff) * shadeFactor
-                const b = (color & 0xff) * shadeFactor
+                // Get color based on height
+                const color = getHeightColor(normalizedHeight)
 
-                ctx.fillStyle = `rgb(${r},${g},${b})`
+                ctx.fillStyle = `rgb(${color.r},${color.g},${color.b})`
                 ctx.fillRect(
                     x * pixelsPerTile,
                     y * pixelsPerTile,

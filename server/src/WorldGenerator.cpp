@@ -79,28 +79,59 @@ void WorldGenerator::GenerateWorld(const WorldGenParams& params) {
 }
 
 void WorldGenerator::GenerateHeight() {
-    // Use fractal noise with 3 octaves at 0.002 frequency to match client
-    const float frequency = 0.002f;
-    const int octaves = 3;
-    const float persistence = 0.5f;
+    // Multi-layer noise for organic island generation
+    // Create noise generators with offset seeds for variety
+    PerlinNoise noiseA(m_seed);
+    PerlinNoise noiseA2(m_seed + 1);
+    PerlinNoise noiseB(m_seed + 2);
+    PerlinNoise noiseB2(m_seed + 3);
+    PerlinNoise noiseC(m_seed + 4);
+    PerlinNoise noiseC2(m_seed + 5);
+    
+    // Pre-compute constants for efficiency
+    const float centerX = m_worldSize * 0.5f;
+    const float centerY = m_worldSize * 0.5f;
+    const float islandRadius = m_worldSize * 0.5f;
+    const float islandRadiusSquared = islandRadius * islandRadius;
+    const float invRadiusSquared = 1.0f / islandRadiusSquared;
+    
+    // Frequency divisors for noise sampling
+    const float freq64 = 1.0f / 64.0f;
+    const float freq100 = 1.0f / 100.0f;
+    const float freq216 = 1.0f / 216.0f;
 
     for (int y = 0; y < m_worldSize; y++) {
         for (int x = 0; x < m_worldSize; x++) {
             int idx = WorldToTileIndex(x, y);
             
-            // Get fractal noise value in range [-1, 1]
-            float h = m_heightNoise.fractal(
-                static_cast<float>(x) * frequency,
-                static_cast<float>(y) * frequency,
-                octaves,
-                persistence
-            );
+            // Sample 6 noise layers at different frequencies
+            // Each returns [-1, 1], normalize to [0, 255]
+            float fx = static_cast<float>(x);
+            float fy = static_cast<float>(y);
             
-            // Normalize from [-1, 1] to [0, 1]
-            h = h * 0.5f + 0.5f;
-            h = std::clamp(h, 0.0f, 1.0f);
-
-            m_height[idx] = static_cast<uint8_t>(h * 255.0f);
+            float n1 = (noiseA.noise(fx * freq64, fy * freq64) * 0.5f + 0.5f) * 255.0f;
+            float n2 = (noiseA2.noise(fx * freq64, fy * freq64) * 0.5f + 0.5f) * 255.0f;
+            float n3 = (noiseB.noise(fx * freq100, fy * freq100) * 0.5f + 0.5f) * 255.0f;
+            float n4 = (noiseB2.noise(fx * freq100, fy * freq100) * 0.5f + 0.5f) * 255.0f;
+            float n5 = (noiseC.noise(fx * freq216, fy * freq216) * 0.5f + 0.5f) * 255.0f;
+            float n6 = (noiseC2.noise(fx * freq216, fy * freq216) * 0.5f + 0.5f) * 255.0f;
+            
+            // Average all noise layers
+            float noiseAvg = (n1 + n2 + n3 + n4 + n5 + n6) * 0.166666667f; // 1/6
+            
+            // Compute spherical gradient (avoid sqrt by using squared distance)
+            float dx = fx - centerX;
+            float dy = fy - centerY;
+            float distSquared = dx * dx + dy * dy;
+            
+            // Invert gradient: center high, edges low
+            float sphereGrad = 255.0f - (distSquared * invRadiusSquared * 255.0f);
+            sphereGrad = std::clamp(sphereGrad, 0.0f, 255.0f);
+            
+            // Blend noise with gradient (50/50 mix)
+            float finalHeight = (noiseAvg + sphereGrad) * 0.5f;
+            
+            m_height[idx] = static_cast<uint8_t>(std::clamp(finalHeight, 0.0f, 255.0f));
         }
     }
 }
@@ -152,79 +183,79 @@ void WorldGenerator::GenerateBiomes() {
 }
 
 void WorldGenerator::GenerateRivers() {
-    std::mt19937 rng(m_seed);
-    std::uniform_int_distribution<int> dist(0, m_worldSize - 1);
-
-    for (int i = 0; i < m_params.numRivers; i++) {
-        River river;
-
-        // Find a high elevation starting point (mountains or hills)
-        int startX, startY;
-        int attempts = 0;
-        do {
-            startX = dist(rng);
-            startY = dist(rng);
-            attempts++;
-        } while (m_height[WorldToTileIndex(startX, startY)] < 130 &&  // Lower threshold
-                 attempts < 2000);  // More attempts
-
-        if (attempts >= 2000) {
-            std::cout << "River " << i << " failed to find start point after " << attempts << " attempts" << std::endl;
-            continue;
+    // Generate a single meandering river from west to east across the island
+    River river;
+    std::vector<std::pair<int, int>> pathWithFlow;
+    
+    // Use Perlin noise to guide river with gentle meanders
+    PerlinNoise riverNoise(m_seed + 100);
+    
+    // Start from west edge at middle height
+    int startX = 0;
+    int startY = m_worldSize / 2;
+    
+    // Target east edge with slight vertical offset for interest
+    int targetX = m_worldSize - 1;
+    int targetY = m_worldSize / 2 + m_worldSize / 8;  // Slight diagonal
+    
+    int x = startX;
+    int y = startY;
+    
+    const float noiseFreq = 0.05f;  // Low frequency for gentle curves
+    const float targetBias = 0.7f;  // Strong bias toward target (70%)
+    const float noiseBias = 0.3f;   // Weaker noise influence (30%)
+    
+    std::unordered_set<int64_t> visited;
+    
+    while (x < targetX && river.path.size() < 5000) {
+        int64_t key = (static_cast<int64_t>(x) << 32) | static_cast<uint32_t>(y);
+        if (visited.count(key)) break;
+        visited.insert(key);
+        
+        river.path.push_back({x, y});
+        pathWithFlow.push_back({x, y});
+        
+        // Calculate direction to target
+        float dx = static_cast<float>(targetX - x);
+        float dy = static_cast<float>(targetY - y);
+        float targetAngle = std::atan2(dy, dx);
+        
+        // Sample Perlin noise for meandering offset
+        float noiseValue = riverNoise.noise(
+            static_cast<float>(x) * noiseFreq,
+            static_cast<float>(y) * noiseFreq
+        );
+        float noiseAngle = noiseValue * M_PI;  // Range: [-π, π]
+        
+        // Blend target direction with noise
+        float angle = targetBias * targetAngle + noiseBias * noiseAngle;
+        
+        // Step in computed direction
+        int nextX = x + static_cast<int>(std::round(std::cos(angle) * 2.0f));
+        int nextY = y + static_cast<int>(std::round(std::sin(angle) * 2.0f));
+        
+        // Clamp to bounds
+        nextX = std::clamp(nextX, 0, m_worldSize - 1);
+        nextY = std::clamp(nextY, 0, m_worldSize - 1);
+        
+        // Always advance at least 1 tile east to guarantee progress
+        if (nextX <= x) {
+            nextX = x + 1;
         }
-
-        int x = startX, y = startY;
-        std::unordered_set<int64_t> visited;
-        std::vector<std::pair<int, int>> pathWithFlow;
-
-        // Flow downhill with channel digging
-        while (InBounds(x, y) && m_height[WorldToTileIndex(x, y)] >= SEA_LEVEL) {
-            int64_t key = (static_cast<int64_t>(x) << 32) | static_cast<uint32_t>(y);
-            if (visited.count(key)) break;
-            visited.insert(key);
-
-            river.path.push_back({x, y});
-            pathWithFlow.push_back({x, y});
-
-            auto [nextX, nextY] = FindLowestNeighbor(x, y);
-            
-            // If stuck, allow river to dig through slightly
-            if (nextX == x && nextY == y) {
-                // Find any neighbor lower than current + threshold
-                uint8_t currentHeight = m_height[WorldToTileIndex(x, y)];
-                for (int i = 0; i < 8; i++) {
-                    static const int dx[] = {-1, 0, 1, -1, 1, -1, 0, 1};
-                    static const int dy[] = {-1, -1, -1, 0, 0, 1, 1, 1};
-                    int nx = x + dx[i];
-                    int ny = y + dy[i];
-                    if (InBounds(nx, ny)) {
-                        uint8_t neighborHeight = m_height[WorldToTileIndex(nx, ny)];
-                        if (neighborHeight < currentHeight + 5) {  // Allow small uphill
-                            nextX = nx;
-                            nextY = ny;
-                            break;
-                        }
-                    }
-                }
-                if (nextX == x && nextY == y) break;  // Really stuck
-            }
-
-            x = nextX;
-            y = nextY;
-
-            if (river.path.size() > 2000) break;  // Safety limit
-        }
-
-        if (river.path.size() > 10) {
-            m_rivers.push_back(river);
-            std::cout << "River " << m_rivers.size() << " created with " << river.path.size() << " points" << std::endl;
-
-            // Now populate flow direction and create thick river with edges
-            ApplyRiverToMap(pathWithFlow);
-        } else {
-            std::cout << "River rejected - only " << river.path.size() << " points" << std::endl;
-        }
+        
+        x = nextX;
+        y = nextY;
     }
+    
+    // Add final segment to reach east edge
+    river.path.push_back({targetX, y});
+    pathWithFlow.push_back({targetX, y});
+    
+    m_rivers.push_back(river);
+    std::cout << "Main river created with " << river.path.size() << " points, splitting the island" << std::endl;
+    
+    // Apply river to map with width and flow direction
+    ApplyRiverToMap(pathWithFlow);
 }
 
 void WorldGenerator::ApplyRiverToMap(const std::vector<std::pair<int, int>>& path) {

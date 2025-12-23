@@ -77,18 +77,56 @@ export class TerrainGenerator {
     }
 
     private generateHeightmap() {
+        // Multi-layer noise for organic island generation
+        // Create noise generators with offset seeds for variety
+        const noiseA = new PerlinNoise(this.seed)
+        const noiseA2 = new PerlinNoise(this.seed + 1)
+        const noiseB = new PerlinNoise(this.seed + 2)
+        const noiseB2 = new PerlinNoise(this.seed + 3)
+        const noiseC = new PerlinNoise(this.seed + 4)
+        const noiseC2 = new PerlinNoise(this.seed + 5)
+        
+        // Pre-compute constants for efficiency
+        const centerX = this.worldSize * 0.5
+        const centerY = this.worldSize * 0.5
+        const islandRadius = this.worldSize * 0.5
+        const islandRadiusSquared = islandRadius * islandRadius
+        const invRadiusSquared = 1.0 / islandRadiusSquared
+        
+        // Frequency divisors for noise sampling
+        const freq64 = 1.0 / 64.0
+        const freq100 = 1.0 / 100.0
+        const freq216 = 1.0 / 216.0
+        
         for (let y = 0; y < this.worldSize; y++) {
             for (let x = 0; x < this.worldSize; x++) {
                 const idx = this.worldToTileIndex(x, y)
 
-                // Get fractal noise with 3 octaves to match server
-                let h = this.heightNoise.fractal(x * 0.002, y * 0.002, 3, 0.5)
+                // Sample 6 noise layers at different frequencies
+                // Each returns [-1, 1], normalize to [0, 255]
+                const n1 = (noiseA.noise(x * freq64, y * freq64) * 0.5 + 0.5) * 255
+                const n2 = (noiseA2.noise(x * freq64, y * freq64) * 0.5 + 0.5) * 255
+                const n3 = (noiseB.noise(x * freq100, y * freq100) * 0.5 + 0.5) * 255
+                const n4 = (noiseB2.noise(x * freq100, y * freq100) * 0.5 + 0.5) * 255
+                const n5 = (noiseC.noise(x * freq216, y * freq216) * 0.5 + 0.5) * 255
+                const n6 = (noiseC2.noise(x * freq216, y * freq216) * 0.5 + 0.5) * 255
+                
+                // Average all noise layers
+                const noiseAvg = (n1 + n2 + n3 + n4 + n5 + n6) * 0.166666667 // 1/6
+                
+                // Compute spherical gradient (avoid sqrt by using squared distance)
+                const dx = x - centerX
+                const dy = y - centerY
+                const distSquared = dx * dx + dy * dy
+                
+                // Invert gradient: center high, edges low
+                let sphereGrad = 255 - (distSquared * invRadiusSquared * 255)
+                sphereGrad = Math.max(0, Math.min(255, sphereGrad))
+                
+                // Blend noise with gradient (50/50 mix)
+                const finalHeight = (noiseAvg + sphereGrad) * 0.5
 
-                // Normalize from [-1, 1] to [0, 1]
-                h = h * 0.5 + 0.5
-                h = Math.max(0, Math.min(1, h))
-
-                const height = Math.floor(h * 255)
+                const height = Math.floor(Math.max(0, Math.min(255, finalHeight)))
                 this.height[idx] = height
             }
         }
