@@ -12,16 +12,40 @@
 
 class GameServer;
 
-// Biome types for map generation
+// Biome types for map generation (15-biome system + special cases)
 enum class Biome : uint8_t {
+    // Ocean biomes
     Ocean = 0,
+    TropicalOcean,
+    TemperateOcean,
+    ArcticOcean,
+    
+    // Special terrain
     Beach,
-    Plains,
-    Forest,
-    Desert,
-    Snow,
     Mountain,
-    Swamp,
+    Snow,
+    Glacier,
+    
+    // Hot biomes (temp > 0.25)
+    HotDesert,
+    HotSavanna,
+    TropicalFrontier,
+    TropicalForest,
+    TropicalRainforest,
+    
+    // Temperate biomes (-0.25 <= temp <= 0.25)
+    TemperateDesert,
+    TemperateGrassland,
+    TemperateFrontier,
+    TemperateForest,
+    TemperateRainforest,
+    
+    // Cold biomes (temp < -0.25)
+    ColdDesert,
+    Tundra,
+    TaigaFrontier,
+    Taiga,
+    TaigaRainforest,
 };
 
 // Tile flags for gameplay properties
@@ -47,7 +71,7 @@ enum class StructureType : uint8_t {
 // Single tile in the world
 struct Tile {
     uint8_t height = 128;  // 0-255 elevation (128 = sea level)
-    Biome biome = Biome::Plains;
+    Biome biome = Biome::TemperateGrassland;
     uint8_t flags = TileFlags::None;
 };
 
@@ -137,7 +161,10 @@ class WorldGenerator {
    private:
     // Generation phases
     void GenerateHeight();
+    void GeneratePrecipitation();
+    void GenerateTemperature();
     void GenerateBiomes();
+    void ApplyErosion();
     void GenerateRivers();
     void ApplyRiverToMap(const std::vector<std::pair<int, int>>& path);
     void GenerateLakes();
@@ -145,6 +172,13 @@ class WorldGenerator {
     void AnalyzePvPFairness();
     void BalanceMap();
     void GenerateSpawnPoints();
+    
+    // Helper functions for volcanic generation
+    void GenerateRadialGradient(std::vector<float>& output, float centerX, float centerY, float radius, float centerValue, float edgeValue);
+    void GenerateLinearGradient(std::vector<float>& output, float startValue, float endValue);
+    void GenerateFractalNoise(std::vector<float>& output, uint32_t seed, int octaves = 8);
+    void WeightedMean(std::vector<float>& output, const std::vector<float>& mapA, const std::vector<float>& mapB, float weight);
+    void Subtract(std::vector<float>& output, const std::vector<float>& mapA, const std::vector<float>& mapB);
 
     // Helper functions
     void BuildChunks();
@@ -179,6 +213,11 @@ class WorldGenerator {
     std::vector<uint8_t> m_biome;
     std::vector<uint8_t> m_flags;
     std::vector<uint8_t> m_flowDirection;  // Flow angle in 0-255 (0-360 degrees)
+    
+    // Intermediate float maps for generation
+    std::vector<float> m_heightFloat;
+    std::vector<float> m_precipitationFloat;
+    std::vector<float> m_temperatureFloat;
 
     // Final chunked data
     std::unordered_map<int64_t, Chunk> m_chunks;
