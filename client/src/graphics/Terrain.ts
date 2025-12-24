@@ -5,49 +5,61 @@ import { COLORS } from '../utils/constants'
 const TILE_SIZE = 64 // Size of each tile in pixels
 const CHUNK_SIZE = 64 // Number of tiles per chunk
 
-// Height-based color map inspired by volcanic island generation
-// Maps normalized height (0-1) to RGB colors - MUST MATCH MINIMAP COLORS
+// RGB color interface
 interface ColorRGB {
     r: number
     g: number
     b: number
 }
 
-const HEIGHT_COLOR_MAP: Record<number, ColorRGB> = {
-    1.0: { r: 61, g: 70, b: 41 },      // Dark green (high mountains/forest)
-    0.8: { r: 118, g: 133, b: 78 },    // Green (hills)
-    0.69: { r: 153, g: 146, b: 78 },   // Tan (plains)
-    0.68: { r: 161, g: 164, b: 77 },   // Light tan (plains)
-    0.545: { r: 197, g: 192, b: 111 }, // Pale tan (highlands)
-    0.53: { r: 225, g: 209, b: 132 },  // Sand (upper beach)
-    0.51: { r: 248, g: 238, b: 202 },  // Light sand (beach)
-    0.5: { r: 219, g: 187, b: 130 },   // Brown sand (beach edge)
-    0.49: { r: 10, g: 194, b: 182 },   // Cyan (shallow water)
-    0.48: { r: 8, g: 139, b: 151 },    // Blue-cyan (water)
-    0.46: { r: 0, g: 91, b: 130 },     // Blue (deeper water)
-    0.35: { r: 0, g: 39, b: 100 },     // Dark blue (deep ocean)
-    0.25: { r: 7, g: 16, b: 59 },      // Very dark blue (deeper ocean)
-    0.15: { r: 7, g: 16, b: 59 },      // Very dark blue
-    0.0: { r: 11, g: 10, b: 42 },      // Darkest blue (deepest ocean)
+// Biome-specific colors for the 15-biome volcanic system
+const BIOME_COLORS: Record<Biome, ColorRGB> = {
+    // Ocean biomes (depth-based blues)
+    [Biome.Ocean]: { r: 11, g: 10, b: 42 },              // Darkest blue (deepest ocean)
+    [Biome.TropicalOcean]: { r: 0, g: 91, b: 130 },      // Blue (tropical waters)
+    [Biome.TemperateOcean]: { r: 7, g: 16, b: 59 },      // Dark blue (temperate)
+    [Biome.ArcticOcean]: { r: 50, g: 70, b: 90 },        // Cold blue-gray
+    
+    // Special terrain
+    [Biome.Beach]: { r: 225, g: 209, b: 132 },           // Sand
+    [Biome.Mountain]: { r: 100, g: 100, b: 100 },        // Gray rock
+    [Biome.Snow]: { r: 240, g: 248, b: 255 },            // White snow
+    [Biome.Glacier]: { r: 200, g: 230, b: 255 },         // Ice blue
+    
+    // Hot biomes (yellows, oranges, greens)
+    [Biome.HotDesert]: { r: 230, g: 200, b: 140 },       // Sandy yellow
+    [Biome.HotSavanna]: { r: 210, g: 180, b: 100 },      // Dry grass
+    [Biome.TropicalFrontier]: { r: 140, g: 170, b: 80 }, // Light tropical green
+    [Biome.TropicalForest]: { r: 80, g: 140, b: 60 },    // Tropical green
+    [Biome.TropicalRainforest]: { r: 40, g: 100, b: 40 },// Dark jungle green
+    
+    // Temperate biomes (greens, tans)
+    [Biome.TemperateDesert]: { r: 200, g: 180, b: 130 }, // Tan desert
+    [Biome.TemperateGrassland]: { r: 161, g: 164, b: 77 },// Grass green
+    [Biome.TemperateFrontier]: { r: 153, g: 146, b: 78 },// Light forest
+    [Biome.TemperateForest]: { r: 90, g: 130, b: 60 },   // Forest green
+    [Biome.TemperateRainforest]: { r: 50, g: 110, b: 50 },// Dense green
+    
+    // Cold biomes (grays, dark greens)
+    [Biome.ColdDesert]: { r: 150, g: 150, b: 140 },      // Gray-tan
+    [Biome.Tundra]: { r: 140, g: 140, b: 120 },          // Gray-green
+    [Biome.TaigaFrontier]: { r: 100, g: 120, b: 80 },    // Light taiga
+    [Biome.Taiga]: { r: 70, g: 100, b: 60 },             // Dark taiga
+    [Biome.TaigaRainforest]: { r: 50, g: 80, b: 50 },    // Dense taiga
 }
 
-// Get color for a given normalized height value (0-1)
-function getHeightColor(normalizedHeight: number): ColorRGB {
-    const keys = Object.keys(HEIGHT_COLOR_MAP).map(Number).sort((a, b) => b - a)
+// Get biome color with optional height-based shading
+function getBiomeColor(biome: Biome, normalizedHeight: number): ColorRGB {
+    const baseColor = BIOME_COLORS[biome]
     
-    // Find closest key
-    let closestKey = keys[0]
-    let minDiff = Math.abs(normalizedHeight - closestKey)
+    // Apply subtle height-based shading (±15%)
+    const heightFactor = 0.85 + (normalizedHeight * 0.3)
     
-    for (const key of keys) {
-        const diff = Math.abs(normalizedHeight - key)
-        if (diff < minDiff) {
-            minDiff = diff
-            closestKey = key
-        }
+    return {
+        r: Math.max(0, Math.min(255, Math.floor(baseColor.r * heightFactor))),
+        g: Math.max(0, Math.min(255, Math.floor(baseColor.g * heightFactor))),
+        b: Math.max(0, Math.min(255, Math.floor(baseColor.b * heightFactor)))
     }
-    
-    return HEIGHT_COLOR_MAP[closestKey]
 }
 
 export class Terrain extends PIXI.Container {
@@ -123,9 +135,9 @@ export class Terrain extends PIXI.Container {
                 const tile = this.terrainGen.getTile(worldX, worldY)
                 if (!tile) continue
 
-                // Normalize height and get color from height-based map
+                // Get biome-specific color with height shading
                 const normalizedHeight = tile.height / 255
-                const colorRGB = getHeightColor(normalizedHeight)
+                const colorRGB = getBiomeColor(tile.biome, normalizedHeight)
                 
                 // Convert RGB to hex color
                 const color = (colorRGB.r << 16) | (colorRGB.g << 8) | colorRGB.b
@@ -133,14 +145,14 @@ export class Terrain extends PIXI.Container {
                 const x = tx * TILE_SIZE
                 const y = ty * TILE_SIZE
 
-                // Draw tile with height-based color
+                // Draw tile with biome color
                 graphics.rect(x, y, TILE_SIZE, TILE_SIZE)
                 graphics.fill({ color })
 
                 // Add subtle water reflection for water tiles
                 if (tile.isWater) {
                     graphics.rect(x, y, TILE_SIZE, TILE_SIZE)
-                    graphics.fill({ color: 0x1e88e5, alpha: 0.3 })
+                    graphics.fill({ color: 0x1e88e5, alpha: 0.2 })
                 }
             }
         }

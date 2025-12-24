@@ -82,6 +82,9 @@ entt::entity EntityManager::createPlayer() {
             spawnY = spawn.y * TILE_SIZE;
         }
     }
+
+    spawnX = 10000;
+    spawnY = 10000;
     
     bodyDef.position.Set(meters(spawnX), meters(spawnY));
     bodyDef.fixedRotation = true;
