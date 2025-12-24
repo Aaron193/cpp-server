@@ -12,6 +12,159 @@
 #include "GameServer.hpp"
 #include "ecs/EntityManager.hpp"
 
+// ============================================================================
+// SlopeMap Implementation
+// ============================================================================
+
+void SlopeMap::Compute(const std::vector<float>& heightMap) {
+    // Calculate gradients using central differences
+    for (int y = 0; y < m_worldSize; y++) {
+        for (int x = 0; x < m_worldSize; x++) {
+            const int idx = y * m_worldSize + x;
+            
+            // Central difference for X gradient
+            if (x > 0 && x < m_worldSize - 1) {
+                const float hLeft = heightMap[y * m_worldSize + (x - 1)];
+                const float hRight = heightMap[y * m_worldSize + (x + 1)];
+                m_slopeX[idx] = (hRight - hLeft) * 0.5f;
+            } else {
+                m_slopeX[idx] = 0.0f;
+            }
+            
+            // Central difference for Y gradient
+            if (y > 0 && y < m_worldSize - 1) {
+                const float hUp = heightMap[(y - 1) * m_worldSize + x];
+                const float hDown = heightMap[(y + 1) * m_worldSize + x];
+                m_slopeY[idx] = (hDown - hUp) * 0.5f;
+            } else {
+                m_slopeY[idx] = 0.0f;
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Eroder Implementation
+// ============================================================================
+
+void Eroder::Erode(std::vector<float>& heightMap, int numDroplets, int maxSteps) {
+    std::uniform_real_distribution<float> posDist(0.0f, static_cast<float>(m_worldSize - 1));
+    
+    // Pre-compute slope map for faster lookups
+    SlopeMap slopeMap(m_worldSize);
+    
+    for (int drop = 0; drop < numDroplets; drop++) {
+        // Recompute slopes periodically to reflect terrain changes
+        if (drop % 500 == 0) {
+            slopeMap.Compute(heightMap);
+        }
+        
+        // Spawn droplet at random position
+        Droplet d;
+        d.x = posDist(m_rng);
+        d.y = posDist(m_rng);
+        d.dx = 0.0f;
+        d.dy = 0.0f;
+        d.velocity = 1.0f;
+        d.water = 1.0f;
+        d.sediment = 0.0f;
+        
+        // Simulate droplet flow
+        for (int step = 0; step < maxSteps; step++) {
+            const int xi = static_cast<int>(d.x);
+            const int yi = static_cast<int>(d.y);
+            
+            // Out of bounds check
+            if (xi < 0 || xi >= m_worldSize - 1 || yi < 0 || yi >= m_worldSize - 1) {
+                break;
+            }
+            
+            const int idx = yi * m_worldSize + xi;
+            const float oldHeight = heightMap[idx];
+            
+            // Calculate gradient (downhill direction)
+            const float gradX = slopeMap.GetSlopeX(xi, yi);
+            const float gradY = slopeMap.GetSlopeY(xi, yi);
+            
+            // Update direction with inertia
+            d.dx = d.dx * INERTIA - gradX * (1.0f - INERTIA);
+            d.dy = d.dy * INERTIA - gradY * (1.0f - INERTIA);
+            
+            // Normalize direction
+            const float len = std::sqrt(d.dx * d.dx + d.dy * d.dy);
+            if (len < 0.001f) {
+                break;  // Stuck in local minimum
+            }
+            d.dx /= len;
+            d.dy /= len;
+            
+            // Move droplet
+            d.x += d.dx;
+            d.y += d.dy;
+            
+            // New position check
+            const int newXi = static_cast<int>(d.x);
+            const int newYi = static_cast<int>(d.y);
+            if (newXi < 0 || newXi >= m_worldSize || newYi < 0 || newYi >= m_worldSize) {
+                break;
+            }
+            
+            const int newIdx = newYi * m_worldSize + newXi;
+            const float newHeight = heightMap[newIdx];
+            const float heightDelta = newHeight - oldHeight;
+            
+            // Calculate sediment capacity
+            const float slope = std::max(MIN_SLOPE, -heightDelta);
+            const float capacity = std::max(-heightDelta, MIN_SLOPE) * d.velocity * d.water * CAPACITY;
+            
+            // Erode or deposit
+            if (d.sediment > capacity || heightDelta > 0.0f) {
+                // Deposit sediment
+                const float amountToDeposit = (heightDelta > 0.0f) 
+                    ? std::min(heightDelta, d.sediment) 
+                    : (d.sediment - capacity) * DEPOSITION;
+                
+                d.sediment -= amountToDeposit;
+                heightMap[idx] += amountToDeposit;
+            } else {
+                // Erode terrain
+                const float amountToErode = std::min((capacity - d.sediment) * EROSION, -heightDelta);
+                
+                // Erode with brush (distribute erosion)
+                for (int ey = -EROSION_RADIUS; ey <= EROSION_RADIUS; ey++) {
+                    for (int ex = -EROSION_RADIUS; ex <= EROSION_RADIUS; ex++) {
+                        const int erodeX = xi + ex;
+                        const int erodeY = yi + ey;
+                        
+                        if (erodeX >= 0 && erodeX < m_worldSize && erodeY >= 0 && erodeY < m_worldSize) {
+                            const float dist = std::sqrt(static_cast<float>(ex * ex + ey * ey));
+                            if (dist <= EROSION_RADIUS) {
+                                const float weight = 1.0f - (dist / EROSION_RADIUS);
+                                const int erodeIdx = erodeY * m_worldSize + erodeX;
+                                heightMap[erodeIdx] -= amountToErode * weight * 0.1f;
+                            }
+                        }
+                    }
+                }
+                
+                d.sediment += amountToErode;
+            }
+            
+            // Update velocity and evaporate water
+            d.velocity = std::sqrt(d.velocity * d.velocity + heightDelta * GRAVITY);
+            d.water *= (1.0f - EVAPORATION);
+            
+            if (d.water < 0.01f) {
+                break;  // Droplet dried up
+            }
+        }
+    }
+}
+
+// ============================================================================
+// WorldGenerator Implementation
+// ============================================================================
+
 WorldGenerator::WorldGenerator(GameServer& gameServer)
     : m_gameServer(gameServer),
       m_seed(0),
@@ -268,9 +421,26 @@ void WorldGenerator::GenerateBiomes() {
 }
 
 void WorldGenerator::ApplyErosion() {
-    // TODO: Implement hydraulic erosion
-    // For now, skip to maintain performance
-    std::cout << "  (Erosion pass skipped - not yet implemented)" << std::endl;
+    std::cout << "Applying hydraulic erosion..." << std::endl;
+    
+    // Compute slope map for fast gradient lookups
+    SlopeMap slopeMap(m_worldSize);
+    slopeMap.Compute(m_heightFloat);
+    
+    // Run erosion simulation
+    Eroder eroder(m_worldSize, m_seed + 3000);
+    const int numDroplets = 30000;  // More droplets = more erosion
+    const int maxSteps = 100;       // Max simulation steps per droplet
+    
+    eroder.Erode(m_heightFloat, numDroplets, maxSteps);
+    
+    // Convert float heightmap back to uint8
+    for (size_t i = 0; i < m_heightFloat.size(); i++) {
+        const float normalized = std::clamp((m_heightFloat[i] + 1.0f) * 0.5f, 0.0f, 1.0f);
+        m_height[i] = static_cast<uint8_t>(normalized * 255);
+    }
+    
+    std::cout << "  Erosion complete (30k droplets)" << std::endl;
 }
 
 // Helper Functions
@@ -584,23 +754,27 @@ void WorldGenerator::BuildChunks() {
 }
 
 void WorldGenerator::GenerateStructures() {
-    std::mt19937 rng(m_seed + 1000);
+    std::mt19937 rng(m_seed + 4000);  // Use structure seed
     std::uniform_real_distribution<float> chanceDist(0.0f, 1.0f);
     std::uniform_int_distribution<int> rotDist(0, 3);
 
-    // First pass: Create building clusters (towns)
+    // First pass: Create building clusters (towns) in suitable biomes
     for (int ty = 0; ty < 10; ty++) {
         for (int tx = 0; tx < 10; tx++) {
             if (chanceDist(rng) < 0.3f) { // 30% chance for a town
                 int centerX = 100 + tx * (m_worldSize / 10);
                 int centerY = 100 + ty * (m_worldSize / 10);
                 
-                // Check if location is suitable (plains or forest, not water)
+                // Check if location is suitable (grasslands/frontiers, not water)
                 int idx = WorldToTileIndex(centerX, centerY);
                 if (!InBounds(centerX, centerY)) continue;
                 Biome biome = static_cast<Biome>(m_biome[idx]);
                 if (m_flags[idx] & TileFlags::Water) continue;
-                if (biome != Biome::TemperateGrassland && biome != Biome::TemperateForest) continue;
+                
+                // Towns prefer temperate grasslands and frontiers
+                if (biome != Biome::TemperateGrassland && 
+                    biome != Biome::TemperateFrontier &&
+                    biome != Biome::HotSavanna) continue;
                 
                 // Create cluster of 5-12 houses
                 int numBuildings = 5 + (rng() % 8);
@@ -621,22 +795,28 @@ void WorldGenerator::GenerateStructures() {
         }
     }
 
-    // Second pass: Regular structure placement
+    // Second pass: Biome-specific structure placement
     for (int y = 10; y < m_worldSize - 10; y++) {
         for (int x = 10; x < m_worldSize - 10; x++) {
             int idx = WorldToTileIndex(x, y);
             Biome biome = static_cast<Biome>(m_biome[idx]);
             uint8_t h = m_height[idx];
 
-            // Skip water and mountains
+            // Skip water and extreme elevations
             if (h < SEA_LEVEL || h > MOUNTAIN_LEVEL) continue;
             if (m_flags[idx] & TileFlags::Water) continue;
 
             float chance = chanceDist(rng);
+            
+            // Get precipitation value (for tree density)
+            float precipitation = (idx < m_precipitationFloat.size()) 
+                ? m_precipitationFloat[idx] : 0.0f;
 
-            // Houses (less common outside towns)
+            // Houses (scattered, prefer grasslands)
             if (chance < m_params.structureDensity * 0.1f && IsFlat(x, y, 2)) {
-                if (biome == Biome::TemperateGrassland || biome == Biome::TemperateForest) {
+                if (biome == Biome::TemperateGrassland || 
+                    biome == Biome::TemperateFrontier ||
+                    biome == Biome::HotSavanna) {
                     Structure s;
                     s.type = StructureType::House;
                     s.x = x;
@@ -648,46 +828,81 @@ void WorldGenerator::GenerateStructures() {
                 }
             }
 
-            // Dense tree forests
-            if (chance < m_params.structureDensity * 8.0f) {
-                if (biome == Biome::TemperateForest) {
-                    Structure s;
-                    s.type = StructureType::Tree;
-                    s.x = x;
-                    s.y = y;
-                    s.rotation = 0;
-                    s.destructible = true;
-                    m_structures.push_back(s);
-                    continue;
-                }
+            // Trees: Density based on biome type and precipitation
+            float treeDensity = 0.0f;
+            
+            // Rainforests: very dense (8x)
+            if (biome == Biome::TemperateRainforest || 
+                biome == Biome::TropicalRainforest ||
+                biome == Biome::TaigaRainforest) {
+                treeDensity = m_params.structureDensity * 12.0f;
+            }
+            // Forests: dense (6x)
+            else if (biome == Biome::TemperateForest || 
+                     biome == Biome::TropicalForest ||
+                     biome == Biome::Taiga) {
+                treeDensity = m_params.structureDensity * 8.0f;
+            }
+            // Frontiers/Savannas: sparse (3x)
+            else if (biome == Biome::TemperateFrontier || 
+                     biome == Biome::TropicalFrontier ||
+                     biome == Biome::TaigaFrontier ||
+                     biome == Biome::HotSavanna) {
+                treeDensity = m_params.structureDensity * 3.0f;
+            }
+            
+            if (chance < treeDensity) {
+                Structure s;
+                s.type = StructureType::Tree;
+                s.x = x;
+                s.y = y;
+                s.rotation = 0;
+                s.destructible = true;
+                m_structures.push_back(s);
+                continue;
             }
 
-            // Rocks in mountains and scattered in plains
-            if (chance < m_params.structureDensity * 4.0f) {
-                if (biome == Biome::Mountain || (biome == Biome::TemperateGrassland && chanceDist(rng) < 0.3f)) {
-                    Structure s;
-                    s.type = StructureType::Rock;
-                    s.x = x;
-                    s.y = y;
-                    s.rotation = 0;
-                    s.destructible = false;
-                    m_structures.push_back(s);
-                    continue;
-                }
+            // Rocks: More common in mountains and deserts
+            float rockDensity = 0.0f;
+            if (biome == Biome::Mountain) {
+                rockDensity = m_params.structureDensity * 8.0f;
+            } else if (biome == Biome::HotDesert || 
+                       biome == Biome::TemperateDesert ||
+                       biome == Biome::ColdDesert) {
+                rockDensity = m_params.structureDensity * 5.0f;
+            } else if (h > BEACH_LEVEL + 50) {  // Highlands
+                rockDensity = m_params.structureDensity * 2.0f;
+            }
+            
+            if (chance < rockDensity) {
+                Structure s;
+                s.type = StructureType::Rock;
+                s.x = x;
+                s.y = y;
+                s.rotation = 0;
+                s.destructible = false;
+                m_structures.push_back(s);
+                continue;
             }
 
-            // Bushes in plains and forests
-            if (chance < m_params.structureDensity * 5.0f) {
-                if (biome == Biome::TemperateGrassland || biome == Biome::TemperateForest) {
-                    Structure s;
-                    s.type = StructureType::Bush;
-                    s.x = x;
-                    s.y = y;
-                    s.rotation = 0;
-                    s.destructible = true;
-                    m_structures.push_back(s);
-                    continue;
-                }
+            // Bushes: Common in grasslands, savannas, frontiers
+            float bushDensity = 0.0f;
+            if (biome == Biome::TemperateGrassland || 
+                biome == Biome::HotSavanna ||
+                biome == Biome::TemperateFrontier ||
+                biome == Biome::TropicalFrontier) {
+                bushDensity = m_params.structureDensity * 5.0f;
+            }
+            
+            if (chance < bushDensity) {
+                Structure s;
+                s.type = StructureType::Bush;
+                s.x = x;
+                s.y = y;
+                s.rotation = 0;
+                s.destructible = true;
+                m_structures.push_back(s);
+                continue;
             }
         }
     }

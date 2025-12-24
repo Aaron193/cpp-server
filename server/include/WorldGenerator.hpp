@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <entt/entt.hpp>
 #include <memory>
+#include <random>
 #include <unordered_map>
 #include <vector>
 
@@ -109,6 +110,62 @@ struct Rect {
 struct SpawnPoint {
     float x, y;         // World coordinates
     float safetyScore;  // Higher = safer
+};
+
+// SlopeMap: Pre-computed terrain gradients for erosion simulation
+class SlopeMap {
+public:
+    SlopeMap(int worldSize) : m_worldSize(worldSize) {
+        const size_t size = worldSize * worldSize;
+        m_slopeX.resize(size, 0.0f);
+        m_slopeY.resize(size, 0.0f);
+    }
+    
+    void Compute(const std::vector<float>& heightMap);
+    
+    float GetSlopeX(int x, int y) const {
+        return m_slopeX[y * m_worldSize + x];
+    }
+    
+    float GetSlopeY(int x, int y) const {
+        return m_slopeY[y * m_worldSize + x];
+    }
+    
+private:
+    int m_worldSize;
+    std::vector<float> m_slopeX;  // dx gradient
+    std::vector<float> m_slopeY;  // dy gradient
+};
+
+// Eroder: Simulates water droplet erosion
+class Eroder {
+public:
+    Eroder(int worldSize, uint32_t seed) 
+        : m_worldSize(worldSize), m_rng(seed) {}
+    
+    void Erode(std::vector<float>& heightMap, int numDroplets, int maxSteps);
+    
+private:
+    struct Droplet {
+        float x, y;          // Position
+        float dx, dy;        // Direction
+        float velocity;      // Speed
+        float water;         // Water volume
+        float sediment;      // Carried sediment
+    };
+    
+    int m_worldSize;
+    std::mt19937 m_rng;
+    
+    // Erosion parameters
+    static constexpr float INERTIA = 0.05f;        // How much droplet follows momentum
+    static constexpr float CAPACITY = 4.0f;        // Sediment capacity multiplier
+    static constexpr float DEPOSITION = 0.3f;      // Sediment deposition rate
+    static constexpr float EROSION = 0.3f;         // Terrain erosion rate
+    static constexpr float EVAPORATION = 0.01f;    // Water evaporation per step
+    static constexpr float GRAVITY = 4.0f;         // Gravity strength
+    static constexpr float MIN_SLOPE = 0.01f;      // Minimum slope for flow
+    static constexpr int EROSION_RADIUS = 3;       // Radius of erosion brush
 };
 
 // World generation parameters
