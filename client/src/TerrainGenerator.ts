@@ -70,6 +70,32 @@ export enum Biome {
     TaigaRainforest,
 }
 
+export const BIOME_NAMES: Record<Biome, string> = {
+    [Biome.Ocean]: 'Ocean',
+    [Biome.TropicalOcean]: 'Tropical Ocean',
+    [Biome.TemperateOcean]: 'Temperate Ocean',
+    [Biome.ArcticOcean]: 'Arctic Ocean',
+    [Biome.Beach]: 'Beach',
+    [Biome.Mountain]: 'Mountain',
+    [Biome.Snow]: 'Snow',
+    [Biome.Glacier]: 'Glacier',
+    [Biome.HotDesert]: 'Hot Desert',
+    [Biome.HotSavanna]: 'Hot Savanna',
+    [Biome.TropicalFrontier]: 'Tropical Frontier',
+    [Biome.TropicalForest]: 'Tropical Forest',
+    [Biome.TropicalRainforest]: 'Tropical Rainforest',
+    [Biome.TemperateDesert]: 'Temperate Desert',
+    [Biome.TemperateGrassland]: 'Temperate Grassland',
+    [Biome.TemperateFrontier]: 'Temperate Frontier',
+    [Biome.TemperateForest]: 'Temperate Forest',
+    [Biome.TemperateRainforest]: 'Temperate Rainforest',
+    [Biome.ColdDesert]: 'Cold Desert',
+    [Biome.Tundra]: 'Tundra',
+    [Biome.TaigaFrontier]: 'Taiga Frontier',
+    [Biome.Taiga]: 'Taiga',
+    [Biome.TaigaRainforest]: 'Taiga Rainforest',
+}
+
 export interface Tile {
     height: number // 0-255
     biome: Biome

@@ -3,7 +3,7 @@ import { Renderer } from '../Renderer'
 
 export class Grid extends PIXI.Graphics {
   renderer: Renderer
-  gridSize: number = 75
+  gridSize: number = 64
   gridColor: number = 0x000000
   gridAlpha: number = 0.10
   lineWidth: number = 5

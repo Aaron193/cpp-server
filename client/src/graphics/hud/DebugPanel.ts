@@ -1,5 +1,6 @@
 import * as PIXI from 'pixi.js'
 import { Hud } from './Hud'
+import { BIOME_NAMES } from '../../TerrainGenerator'
 
 export class DebugPanel extends PIXI.Container {
     hud: Hud
@@ -45,8 +46,7 @@ export class DebugPanel extends PIXI.Container {
                 const tile = world.terrainGenerator.getTile(tileX, tileY)
                 
                 if (tile) {
-                    const biomeNames = ['Ocean', 'Beach', 'Plains', 'Forest', 'Desert', 'Snow', 'Mountain', 'Swamp']
-                    debugText += `\nTile: ${tileX},${tileY} | Biome: ${biomeNames[tile.biome]} | Height: ${tile.height}`
+                    debugText += `\nTile: ${tileX},${tileY} | Biome: ${BIOME_NAMES[tile.biome]} | Height: ${tile.height}`
                     if (tile.isWater) {
                         debugText += ' [WATER]'
                     }
