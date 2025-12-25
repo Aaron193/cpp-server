@@ -1,47 +1,53 @@
 #pragma once
 
-#include <box2d/b2_world.h>
-
 #include <cstdint>
-#include <entt/entt.hpp>
-#include <memory>
+#include <map>
 #include <random>
 #include <unordered_map>
 #include <vector>
 
 #include "util/PerlinNoise.hpp"
 
+// Forward declarations
 class GameServer;
+namespace b2 {
+class World;
+}
+typedef class b2World b2World;
 
-// Biome types for map generation (15-biome system + special cases)
+// Constants
+constexpr int CHUNK_SIZE = 64;
+constexpr uint8_t SEA_LEVEL = 90;
+constexpr uint8_t BEACH_LEVEL = 100;
+constexpr uint8_t MOUNTAIN_LEVEL = 210;
+
+// Tile flags
+namespace TileFlags {
+    constexpr uint8_t Water = 1 << 0;
+    constexpr uint8_t Solid = 1 << 1;
+    constexpr uint8_t Cover = 1 << 2;
+}
+
+// Biomes
 enum class Biome : uint8_t {
-    // Ocean biomes
     Ocean = 0,
     TropicalOcean,
     TemperateOcean,
     ArcticOcean,
-    
-    // Special terrain
     Beach,
     Mountain,
     Snow,
     Glacier,
-    
-    // Hot biomes (temp > 0.25)
     HotDesert,
     HotSavanna,
     TropicalFrontier,
     TropicalForest,
     TropicalRainforest,
-    
-    // Temperate biomes (-0.25 <= temp <= 0.25)
     TemperateDesert,
     TemperateGrassland,
     TemperateFrontier,
     TemperateForest,
     TemperateRainforest,
-    
-    // Cold biomes (temp < -0.25)
     ColdDesert,
     Tundra,
     TaigaFrontier,
@@ -49,248 +55,223 @@ enum class Biome : uint8_t {
     TaigaRainforest,
 };
 
-// Tile flags for gameplay properties
-enum TileFlags : uint8_t {
-    None = 0,
-    Solid = 1 << 0,           // Blocks movement
-    Water = 1 << 1,           // Water tile
-    Cover = 1 << 2,           // Provides cover
-    DestructibleTile = 1 << 3  // Can be destroyed
-};
-
-// Structure types that can be placed on the map
-enum class StructureType : uint8_t {
-    House = 0,
-    Wall,
-    Fence,
-    Rock,
-    Tree,
-    Crate,
-    Bush,
-};
-
-// Single tile in the world
+// Tile structure
 struct Tile {
-    uint8_t height = 128;  // 0-255 elevation (128 = sea level)
-    Biome biome = Biome::TemperateGrassland;
-    uint8_t flags = TileFlags::None;
+    uint8_t height;
+    Biome biome;
+    uint8_t flags;
 };
 
-// Chunk of tiles (64x64)
-constexpr int CHUNK_SIZE = 64;
-
+// Chunk structure
 struct Chunk {
-    int cx = 0;      // Chunk X coordinate
-    int cy = 0;      // Chunk Y coordinate
+    int cx, cy;
     Tile tiles[CHUNK_SIZE * CHUNK_SIZE];
     bool physicsBuilt = false;
-    entt::entity terrainBody = entt::null;  // Static terrain collision body
 };
 
-// River path data
-struct River {
-    std::vector<std::pair<int, int>> path;  // World tile coordinates
-};
-
-// Structure instance
-struct Structure {
-    StructureType type;
-    int x, y;  // World tile coordinates
-    uint8_t rotation = 0;
-    bool destructible = false;
-    entt::entity entity = entt::null;  // ECS entity if spawned
-};
-
-// Rectangle for greedy merging
+// Rectangle for physics
 struct Rect {
     int x, y, w, h;
 };
 
-// Spawn point with safety score
+// River structure
+struct River {
+    std::vector<std::pair<int, int>> path;
+};
+
+// Structure types
+enum class StructureType {
+    House,
+    Tree,
+    Rock,
+    Bush,
+    Crate,
+    Wall,
+    Fence
+};
+
+// Structure
+struct Structure {
+    StructureType type;
+    int x, y;
+    int rotation;
+    bool destructible;
+};
+
+// Spawn point
 struct SpawnPoint {
-    float x, y;         // World coordinates
-    float safetyScore;  // Higher = safer
-};
-
-// SlopeMap: Pre-computed terrain gradients for erosion simulation
-class SlopeMap {
-public:
-    SlopeMap(int worldSize) : m_worldSize(worldSize) {
-        const size_t size = worldSize * worldSize;
-        m_slopeX.resize(size, 0.0f);
-        m_slopeY.resize(size, 0.0f);
-    }
-    
-    void Compute(const std::vector<float>& heightMap);
-    
-    float GetSlopeX(int x, int y) const {
-        return m_slopeX[y * m_worldSize + x];
-    }
-    
-    float GetSlopeY(int x, int y) const {
-        return m_slopeY[y * m_worldSize + x];
-    }
-    
-private:
-    int m_worldSize;
-    std::vector<float> m_slopeX;  // dx gradient
-    std::vector<float> m_slopeY;  // dy gradient
-};
-
-// Eroder: Simulates water droplet erosion
-class Eroder {
-public:
-    Eroder(int worldSize, uint32_t seed) 
-        : m_worldSize(worldSize), m_rng(seed) {}
-    
-    void Erode(std::vector<float>& heightMap, int numDroplets, int maxSteps);
-    
-private:
-    struct Droplet {
-        float x, y;          // Position
-        float dx, dy;        // Direction
-        float velocity;      // Speed
-        float water;         // Water volume
-        float sediment;      // Carried sediment
-    };
-    
-    int m_worldSize;
-    std::mt19937 m_rng;
-    
-    // Erosion parameters
-    static constexpr float INERTIA = 0.05f;        // How much droplet follows momentum
-    static constexpr float CAPACITY = 4.0f;        // Sediment capacity multiplier
-    static constexpr float DEPOSITION = 0.3f;      // Sediment deposition rate
-    static constexpr float EROSION = 0.3f;         // Terrain erosion rate
-    static constexpr float EVAPORATION = 0.01f;    // Water evaporation per step
-    static constexpr float GRAVITY = 4.0f;         // Gravity strength
-    static constexpr float MIN_SLOPE = 0.01f;      // Minimum slope for flow
-    static constexpr int EROSION_RADIUS = 3;       // Radius of erosion brush
+    int x, y;
+    float safetyScore;
 };
 
 // World generation parameters
 struct WorldGenParams {
-    uint32_t seed = 12345;
-    int worldSizeChunks = 32;  // 32x32 chunks = 2048x2048 tiles
-    int numRivers = 8;
-    float structureDensity = 0.002f;  // Chance per tile
-    int maxSightlineLength = 20;      // Tiles
-    float minCoverDensity = 0.15f;    // 15% of region should have cover
+    uint32_t seed;
+    int worldSizeChunks;
+    float structureDensity;
+    float minCoverDensity;
+    int numRivers;  // Added for compatibility
 };
 
+// ============================================================================
+// SlopeMap - Precomputed gradients for erosion
+// ============================================================================
+class SlopeMap {
+public:
+    SlopeMap(int worldSize) : m_worldSize(worldSize) {
+        const size_t total = worldSize * worldSize;
+        m_slopeX.resize(total);
+        m_slopeY.resize(total);
+    }
+
+    void Compute(const std::vector<float>& heightMap);
+
+    float GetSlopeX(int x, int y) const {
+        return m_slopeX[y * m_worldSize + x];
+    }
+
+    float GetSlopeY(int x, int y) const {
+        return m_slopeY[y * m_worldSize + x];
+    }
+
+private:
+    int m_worldSize;
+    std::vector<float> m_slopeX;
+    std::vector<float> m_slopeY;
+};
+
+// ============================================================================
+// Erosion droplet
+// ============================================================================
+struct Droplet {
+    float x, y;      // Position
+    float dx, dy;    // Direction
+    float velocity;  // Speed
+    float water;     // Water volume
+    float sediment;  // Carried sediment
+};
+
+// ============================================================================
+// Eroder - Hydraulic erosion simulation
+// ============================================================================
+class Eroder {
+public:
+    Eroder(int worldSize, uint32_t seed) 
+        : m_worldSize(worldSize), m_rng(seed) {}
+
+    void Erode(std::vector<float>& heightMap, int numDroplets, int maxSteps);
+
+private:
+    int m_worldSize;
+    std::mt19937 m_rng;
+};
+
+// ============================================================================
+// WorldGenerator - Main world generation class
+// ============================================================================
 class WorldGenerator {
-   public:
+public:
+    static constexpr uint8_t NO_FLOW = 255;
+
     WorldGenerator(GameServer& gameServer);
     ~WorldGenerator();
 
-    // Generate the entire world
     void GenerateWorld(const WorldGenParams& params);
 
-    // Get chunk (creates if not exists)
+    // Chunk access
     Chunk* GetChunk(int cx, int cy);
     const Chunk* GetChunk(int cx, int cy) const;
 
-    // Get tile at world coordinates
+    // Tile access
     Tile* GetTile(int x, int y);
     const Tile* GetTile(int x, int y) const;
 
-    // World info
+    // Physics
+    void BuildChunkPhysics(Chunk* chunk, b2World& physicsWorld);
+
+    // Getters
     uint32_t GetSeed() const { return m_seed; }
-    int GetWorldSize() const { return m_worldSize; }
     const std::vector<River>& GetRivers() const { return m_rivers; }
-    const std::vector<Structure>& GetStructures() const {
-        return m_structures;
-    }
-    const std::vector<SpawnPoint>& GetSpawnPoints() const {
-        return m_spawnPoints;
-    }
+    const std::vector<Structure>& GetStructures() const { return m_structures; }
+    const std::vector<SpawnPoint>& GetSpawnPoints() const { return m_spawnPoints; }
+    int GetWorldSize() const { return m_worldSize; }
+    
     uint8_t GetFlowDirection(int x, int y) const {
         if (!InBounds(x, y)) return NO_FLOW;
         return m_flowDirection[WorldToTileIndex(x, y)];
     }
+    
+    const std::vector<uint8_t>& GetFlowDirectionArray() const { return m_flowDirection; }
 
-    // Build physics for a chunk
-    void BuildChunkPhysics(Chunk* chunk, b2World& physicsWorld);
+    int WorldToTileIndex(int x, int y) const;
+    bool InBounds(int x, int y) const;
 
-    // Constants
-    static constexpr uint8_t NO_FLOW = 255;
-
-   private:
-    // Generation phases
+private:
+    // Generation pipeline
     void GenerateHeight();
     void GeneratePrecipitation();
     void GenerateTemperature();
     void GenerateBiomes();
     void ApplyErosion();
     void GenerateRivers();
-    void ApplyRiverToMap(const std::vector<std::pair<int, int>>& path);
     void GenerateLakes();
+    void BuildChunks();
     void GenerateStructures();
     void AnalyzePvPFairness();
     void BalanceMap();
     void GenerateSpawnPoints();
-    
-    // Helper functions for volcanic generation
-    void GenerateRadialGradient(std::vector<float>& output, float centerX, float centerY, float radius, float centerValue, float edgeValue);
-    void GenerateLinearGradient(std::vector<float>& output, float startValue, float endValue);
-    void GenerateFractalNoise(std::vector<float>& output, uint32_t seed, int octaves = 8);
-    void WeightedMean(std::vector<float>& output, const std::vector<float>& mapA, const std::vector<float>& mapB, float weight);
-    void Subtract(std::vector<float>& output, const std::vector<float>& mapA, const std::vector<float>& mapB);
 
     // Helper functions
-    void BuildChunks();
-    int WorldToTileIndex(int x, int y) const;
-    bool InBounds(int x, int y) const;
+    void GenerateRadialGradient(std::vector<float>& output, float centerX, float centerY, 
+                                float radius, float centerValue, float edgeValue);
+    void GenerateLinearGradient(std::vector<float>& output, float startValue, float endValue);
+    void GenerateFractalNoise(std::vector<float>& output, uint32_t seed, int octaves);
+    void WeightedMean(std::vector<float>& output, const std::vector<float>& mapA, 
+                     const std::vector<float>& mapB, float weight);
+    void Subtract(std::vector<float>& output, const std::vector<float>& mapA, 
+                 const std::vector<float>& mapB);
+    
+    void ApplyRiverToMap(const std::vector<std::pair<int, int>>& path);
+    
     std::pair<int, int> FindLowestNeighbor(int x, int y) const;
-    bool IsFlat(int x, int y, int radius = 2) const;
-    bool NearWater(int x, int y, int radius = 5) const;
+    bool IsFlat(int x, int y, int radius) const;
+    bool NearWater(int x, int y, int radius) const;
     uint8_t ComputeTileFlags(int x, int y) const;
-
-    // Greedy collider merging
-    std::vector<Rect> GreedyMerge(const Chunk& chunk) const;
-
-    // LOS/Sightline analysis
     float ComputeSightlineLength(int x, int y, float angle) const;
     float ComputeCoverDensity(int x, int y, int radius) const;
+    
+    std::vector<Rect> GreedyMerge(const Chunk& chunk) const;
+    
+    // Chunk key helper
+    static uint64_t ChunkKey(int cx, int cy) {
+        return (static_cast<uint64_t>(cx) << 32) | static_cast<uint32_t>(cy);
+    }
 
-   private:
+    // Members
     GameServer& m_gameServer;
-
-    uint32_t m_seed;
     WorldGenParams m_params;
-    int m_worldSize;  // Width and height in tiles
+    uint32_t m_seed;
+    int m_worldSize;
 
     // Noise generators
     PerlinNoise m_heightNoise;
     PerlinNoise m_moistureNoise;
     PerlinNoise m_temperatureNoise;
 
-    // Full world data (for generation only)
+    // World data
     std::vector<uint8_t> m_height;
     std::vector<uint8_t> m_biome;
     std::vector<uint8_t> m_flags;
-    std::vector<uint8_t> m_flowDirection;  // Flow angle in 0-255 (0-360 degrees)
-    
-    // Intermediate float maps for generation
+    std::vector<uint8_t> m_flowDirection;
+
+    // Float working buffers
     std::vector<float> m_heightFloat;
     std::vector<float> m_precipitationFloat;
     std::vector<float> m_temperatureFloat;
 
-    // Final chunked data
-    std::unordered_map<int64_t, Chunk> m_chunks;
-
-    // World features
+    // Generated content
+    std::unordered_map<uint64_t, Chunk> m_chunks;
     std::vector<River> m_rivers;
     std::vector<Structure> m_structures;
     std::vector<SpawnPoint> m_spawnPoints;
-
-    // Constants
-    static constexpr uint8_t SEA_LEVEL = 90;
-    static constexpr uint8_t BEACH_LEVEL = 100;
-    static constexpr uint8_t MOUNTAIN_LEVEL = 210;
 };
-
-// Helper to convert chunk coords to hash key
-inline int64_t ChunkKey(int cx, int cy) {
-    return (static_cast<int64_t>(cx) << 32) | static_cast<uint32_t>(cy);
-}

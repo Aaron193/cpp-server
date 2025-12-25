@@ -5,7 +5,6 @@
 
 /**
  * Perlin Noise implementation with seeded random generation
- * Matches the client-side TypeScript implementation for deterministic terrain
  */
 class PerlinNoise {
    public:
@@ -18,7 +17,7 @@ class PerlinNoise {
     float fractal(float x, float y, int octaves, float persistence) const;
 
    private:
-    std::vector<int> permutation;
+    std::vector<uint8_t> permutation;
 
     // Generate deterministic permutation table from seed
     void generatePermutation(uint32_t seed);

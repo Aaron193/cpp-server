@@ -1,5 +1,40 @@
 import { PerlinNoise } from './utils/PerlinNoise'
 
+// match WorldGeneratorConstants.hpp
+const ISLAND_CENTER_X_RATIO = 0.5
+const ISLAND_CENTER_Y_RATIO = 0.5
+const ISLAND_RADIUS_RATIO = 0.44
+const HEIGHT_GRADIENT_WEIGHT = 1.33
+
+const RAIN_SHADOW_RADIUS_RATIO = 0.33
+const WIND_OFFSET_RANGE = 0.08
+const PRECIPITATION_NOISE_WEIGHT = 2.5
+
+const TEMPERATURE_GRADIENT_WEIGHT = 1.5
+const ELEVATION_COOLING_FACTOR = 1.0
+const ELEVATION_COOLING_OFFSET = 0.16
+
+const SEA_LEVEL_NORMALIZED = 0.0
+const BEACH_LEVEL_NORMALIZED = 0.18
+const MOUNTAIN_LEVEL_NORMALIZED = 0.75
+const TEMP_COLD_THRESHOLD = -0.25
+const TEMP_HOT_THRESHOLD = 0.25
+const TEMP_GLACIER_THRESHOLD = -0.66
+const TEMP_SNOW_THRESHOLD = -0.55
+const PRECIP_LOW = -0.25
+const PRECIP_MED_LOW = 0.0
+const PRECIP_MED = 0.25
+const PRECIP_HIGH = 0.5
+
+const FRACTAL_OCTAVES = 8
+const FRACTAL_FREQUENCIES = [1/128, 1/64, 1/32, 1/16, 1/8, 1/4, 1/2, 1]
+const FRACTAL_WEIGHTS = [1/128, 1/128, 1/64, 1/32, 1/16, 1/8, 1/4, 1/2]
+
+const SEA_LEVEL = 90
+const BEACH_LEVEL = 100
+const MOUNTAIN_LEVEL = 210
+const RIVER_WIDTH = 3
+
 export enum Biome {
     // Ocean biomes
     Ocean = 0,
@@ -46,28 +81,22 @@ export interface River {
     path: Array<{ x: number; y: number }>
 }
 
-const SEA_LEVEL = 90
-const BEACH_LEVEL = 100
-const MOUNTAIN_LEVEL = 210
-const RIVER_WIDTH = 3
-
 export class TerrainGenerator {
     private seed: number
     private worldSize: number
     private heightNoise: PerlinNoise
     private moistureNoise: PerlinNoise
     private temperatureNoise: PerlinNoise
-    private tiles: Tile[] = []
     private rivers: River[] = []
-    private height: number[] = []
-    private biome: Biome[] = []
-    private flags: number[] = []  // TileFlags: Water = 1, Cover = 2
-    private flowDirection: number[] = []
     
-    // Float working buffers for volcanic generation
-    private heightFloat: number[] = []
-    private precipitationFloat: number[] = []
-    private temperatureFloat: number[] = []
+    private height: Uint8Array
+    private biome: Uint8Array
+    private flags: Uint8Array
+    private flowDirection: Uint8Array
+    
+    private heightFloat: Float32Array
+    private precipitationFloat: Float32Array
+    private temperatureFloat: Float32Array
 
     constructor(seed: number, worldSize: number) {
         this.seed = seed
@@ -79,16 +108,15 @@ export class TerrainGenerator {
         this.temperatureNoise = new PerlinNoise(seed + 2000)
 
         const totalTiles = worldSize * worldSize
-        this.tiles = new Array(totalTiles)
-        this.height = new Array(totalTiles)
-        this.biome = new Array(totalTiles)
-        this.flags = new Array(totalTiles).fill(0)
-        this.flowDirection = new Array(totalTiles).fill(0)
         
-        // Allocate float buffers
-        this.heightFloat = new Array(totalTiles)
-        this.precipitationFloat = new Array(totalTiles)
-        this.temperatureFloat = new Array(totalTiles)
+        this.height = new Uint8Array(totalTiles)
+        this.biome = new Uint8Array(totalTiles)
+        this.flags = new Uint8Array(totalTiles)
+        this.flowDirection = new Uint8Array(totalTiles)
+        
+        this.heightFloat = new Float32Array(totalTiles)
+        this.precipitationFloat = new Float32Array(totalTiles)
+        this.temperatureFloat = new Float32Array(totalTiles)
     }
 
     generate(rivers?: Array<{path: Array<{x: number, y: number}>}>) {
@@ -100,7 +128,6 @@ export class TerrainGenerator {
         this.generateBiomes()
         
         if (rivers) {
-            // Use server-provided river data
             console.log('Using server river data:', rivers.length, 'rivers')
             this.rivers = rivers
             for (const river of rivers) {
@@ -108,29 +135,18 @@ export class TerrainGenerator {
             }
         }
         
-        this.buildTiles()
-        
-        // Free float buffers
-        this.heightFloat = []
-        this.precipitationFloat = []
-        this.temperatureFloat = []
     }
 
     private generateHeightmap() {
-        // Volcanic Island Generation Method (matches C++)
-        // Step 1: Create radial gradient
-        const centerX = this.worldSize * 0.5
-        const centerY = this.worldSize * 0.5
-        const radius = this.worldSize * 0.44
+        const centerX = this.worldSize * ISLAND_CENTER_X_RATIO
+        const centerY = this.worldSize * ISLAND_CENTER_Y_RATIO
+        const radius = this.worldSize * ISLAND_RADIUS_RATIO
         const radialGradient = this.generateRadialGradient(centerX, centerY, radius, 1.0, -1.0)
         
-        // Step 2: Create fractal noise
-        const fractalNoise = this.generateFractalNoise(this.seed, 8)
+        const fractalNoise = this.generateFractalNoise(this.seed, FRACTAL_OCTAVES)
         
-        // Step 3: Weighted mean (57% gradient, 43% noise)
-        this.heightFloat = this.weightedMean(radialGradient, fractalNoise, 1.33)
+        this.weightedMean(this.heightFloat, radialGradient, fractalNoise, HEIGHT_GRADIENT_WEIGHT)
         
-        // Convert float [-1,1] to uint8 [0,255]
         for (let i = 0; i < this.heightFloat.length; i++) {
             const normalized = Math.max(0, Math.min(1, (this.heightFloat[i] + 1.0) * 0.5))
             this.height[i] = Math.floor(normalized * 255)
@@ -138,50 +154,38 @@ export class TerrainGenerator {
     }
     
     private generatePrecipitation() {
-        // Rain Shadow Effect (matches C++)
-        const centerX = this.worldSize * 0.5
-        const centerY = this.worldSize * 0.5
-        const radius = this.worldSize * 0.33
+        const centerX = this.worldSize * ISLAND_CENTER_X_RATIO
+        const centerY = this.worldSize * ISLAND_CENTER_Y_RATIO
+        const radius = this.worldSize * RAIN_SHADOW_RADIUS_RATIO
         
-        // Random wind direction (using seed + 3000)
-        const rng = this.seededRandom(this.seed + 3000)
-        const windX = (rng() - 0.5) * this.worldSize * 0.16
-        const windY = (rng() - 0.5) * this.worldSize * 0.16
+        const mt = new MersenneTwisterRNG(this.seed + 3000)
+        const windX = (mt.random() - 0.5) * this.worldSize * WIND_OFFSET_RANGE * 2
+        const windY = (mt.random() - 0.5) * this.worldSize * WIND_OFFSET_RANGE * 2
         
         const gradient1 = this.generateRadialGradient(centerX, centerY, radius, 1.0, 0.0)
         const gradient2 = this.generateRadialGradient(centerX + windX, centerY + windY, radius, 1.0, 0.0)
         
-        // Subtract gradients
         const rainShadow = this.subtract(gradient1, gradient2)
+        const fractalNoise = this.generateFractalNoise(this.seed + 1000, FRACTAL_OCTAVES)
         
-        // Add fractal noise
-        const fractalNoise = this.generateFractalNoise(this.seed + 1000, 8)
-        
-        // Weighted mean (71% noise, 29% rain shadow)
-        this.precipitationFloat = this.weightedMean(rainShadow, fractalNoise, 2.5)
+        this.weightedMean(this.precipitationFloat, rainShadow, fractalNoise, PRECIPITATION_NOISE_WEIGHT)
     }
     
     private generateTemperature() {
-        // North-South gradient + elevation cooling (matches C++)
         const linearGradient = this.generateLinearGradient(-1.0, 1.0)
-        const fractalNoise = this.generateFractalNoise(this.seed + 2000, 8)
+        const fractalNoise = this.generateFractalNoise(this.seed + 2000, FRACTAL_OCTAVES)
         
-        // Weighted mean (60% gradient, 40% noise)
-        this.temperatureFloat = this.weightedMean(linearGradient, fractalNoise, 1.5)
+        this.weightedMean(this.temperatureFloat, linearGradient, fractalNoise, TEMPERATURE_GRADIENT_WEIGHT)
         
-        // Adjust for elevation
-        const elevationCooling = 1.0
-        const elevationOffset = 0.16
         for (let i = 0; i < this.temperatureFloat.length; i++) {
             if (this.heightFloat[i] > 0.0) {
-                this.temperatureFloat[i] -= (this.heightFloat[i] - elevationOffset) * elevationCooling
+                this.temperatureFloat[i] -= (this.heightFloat[i] - ELEVATION_COOLING_OFFSET) * ELEVATION_COOLING_FACTOR
                 this.temperatureFloat[i] = Math.max(-1, Math.min(1, this.temperatureFloat[i]))
             }
         }
     }
 
     private generateBiomes() {
-        // 15-Biome System: Temperature (3) x Moisture (5) - matches C++
         for (let y = 0; y < this.worldSize; y++) {
             for (let x = 0; x < this.worldSize; x++) {
                 const idx = this.worldToTileIndex(x, y)
@@ -193,69 +197,62 @@ export class TerrainGenerator {
                 let biome: Biome
                 
                 // Ocean biomes
-                if (elevation < 0.0) {
-                    if (temperature > 0.25) {
+                if (elevation < SEA_LEVEL_NORMALIZED) {
+                    if (temperature > TEMP_HOT_THRESHOLD) {
                         biome = Biome.TropicalOcean
-                    } else if (temperature < -0.25) {
+                    } else if (temperature < TEMP_COLD_THRESHOLD) {
                         biome = Biome.ArcticOcean
                     } else {
                         biome = Biome.TemperateOcean
                     }
                     this.flags[idx] |= 1 // Mark as water
                 }
-                // Beach
-                else if (elevation < 0.18) {
+                else if (elevation < BEACH_LEVEL_NORMALIZED) {
                     biome = Biome.Beach
                 }
-                // Mountain (very high elevation)
-                else if (elevation > 0.75) {
+                else if (elevation > MOUNTAIN_LEVEL_NORMALIZED) {
                     biome = Biome.Mountain
                 }
-                // Glacier
-                else if (temperature < -0.66) {
+                else if (temperature < TEMP_GLACIER_THRESHOLD) {
                     biome = Biome.Glacier
                 }
-                // Snow
-                else if (temperature < -0.55) {
+                else if (temperature < TEMP_SNOW_THRESHOLD) {
                     biome = Biome.Snow
                 }
-                // Cold biomes
-                else if (temperature < -0.25) {
-                    if (precipitation < -0.25) {
+                else if (temperature < TEMP_COLD_THRESHOLD) {
+                    if (precipitation < PRECIP_LOW) {
                         biome = Biome.ColdDesert
-                    } else if (precipitation < 0.0) {
+                    } else if (precipitation < PRECIP_MED_LOW) {
                         biome = Biome.Tundra
-                    } else if (precipitation < 0.25) {
+                    } else if (precipitation < PRECIP_MED) {
                         biome = Biome.TaigaFrontier
-                    } else if (precipitation < 0.5) {
+                    } else if (precipitation < PRECIP_HIGH) {
                         biome = Biome.Taiga
                     } else {
                         biome = Biome.TaigaRainforest
                     }
                 }
-                // Hot biomes
-                else if (temperature > 0.25) {
-                    if (precipitation < -0.25) {
+                else if (temperature > TEMP_HOT_THRESHOLD) {
+                    if (precipitation < PRECIP_LOW) {
                         biome = Biome.HotDesert
-                    } else if (precipitation < 0.0) {
+                    } else if (precipitation < PRECIP_MED_LOW) {
                         biome = Biome.HotSavanna
-                    } else if (precipitation < 0.25) {
+                    } else if (precipitation < PRECIP_MED) {
                         biome = Biome.TropicalFrontier
-                    } else if (precipitation < 0.5) {
+                    } else if (precipitation < PRECIP_HIGH) {
                         biome = Biome.TropicalForest
                     } else {
                         biome = Biome.TropicalRainforest
                     }
                 }
-                // Temperate biomes
                 else {
-                    if (precipitation < -0.25) {
+                    if (precipitation < PRECIP_LOW) {
                         biome = Biome.TemperateDesert
-                    } else if (precipitation < 0.0) {
+                    } else if (precipitation < PRECIP_MED_LOW) {
                         biome = Biome.TemperateGrassland
-                    } else if (precipitation < 0.25) {
+                    } else if (precipitation < PRECIP_MED) {
                         biome = Biome.TemperateFrontier
-                    } else if (precipitation < 0.5) {
+                    } else if (precipitation < PRECIP_HIGH) {
                         biome = Biome.TemperateForest
                     } else {
                         biome = Biome.TemperateRainforest
@@ -267,8 +264,8 @@ export class TerrainGenerator {
         }
     }
 
-    private generateRadialGradient(centerX: number, centerY: number, radius: number, centerValue: number, edgeValue: number): number[] {
-        const output = new Array(this.worldSize * this.worldSize)
+    private generateRadialGradient(centerX: number, centerY: number, radius: number, centerValue: number, edgeValue: number): Float32Array {
+        const output = new Float32Array(this.worldSize * this.worldSize)
         const radiusSquared = radius * radius
         const invRadiusSquared = 1.0 / radiusSquared
         
@@ -288,8 +285,8 @@ export class TerrainGenerator {
         return output
     }
 
-    private generateLinearGradient(startValue: number, endValue: number): number[] {
-        const output = new Array(this.worldSize * this.worldSize)
+    private generateLinearGradient(startValue: number, endValue: number): Float32Array {
+        const output = new Float32Array(this.worldSize * this.worldSize)
         const scale = 1.0 / (this.worldSize - 1)
         
         for (let y = 0; y < this.worldSize; y++) {
@@ -305,42 +302,46 @@ export class TerrainGenerator {
         return output
     }
 
-    private generateFractalNoise(seed: number, octaves: number): number[] {
-        const output = new Array(this.worldSize * this.worldSize)
+    private generateFractalNoise(seed: number, octaves: number): Float32Array {
+        const output = new Float32Array(this.worldSize * this.worldSize)
         const noise = new PerlinNoise(seed)
         
-        const frequencies = [1/128, 1/64, 1/32, 1/16, 1/8, 1/4, 1/2, 1]
-        const weights = [1/128, 1/128, 1/64, 1/32, 1/16, 1/8, 1/4, 1/2]
+        // Cache-optimized tiled processing
+        const TILE_SIZE = 4
         
-        for (let y = 0; y < this.worldSize; y++) {
-            for (let x = 0; x < this.worldSize; x++) {
-                const idx = this.worldToTileIndex(x, y)
+        for (let ty = 0; ty < this.worldSize; ty += TILE_SIZE) {
+            for (let tx = 0; tx < this.worldSize; tx += TILE_SIZE) {
+                const maxY = Math.min(ty + TILE_SIZE, this.worldSize)
+                const maxX = Math.min(tx + TILE_SIZE, this.worldSize)
                 
-                let total = 0
-                for (let i = 0; i < octaves && i < 8; i++) {
-                    total += noise.noise(x * frequencies[i], y * frequencies[i]) * weights[i]
+                for (let y = ty; y < maxY; y++) {
+                    for (let x = tx; x < maxX; x++) {
+                        const idx = this.worldToTileIndex(x, y)
+                        
+                        let total = 0
+                        for (let i = 0; i < octaves && i < FRACTAL_OCTAVES; i++) {
+                            total += noise.noise(x * FRACTAL_FREQUENCIES[i], y * FRACTAL_FREQUENCIES[i]) * FRACTAL_WEIGHTS[i]
+                        }
+                        
+                        output[idx] = total
+                    }
                 }
-                
-                output[idx] = total
             }
         }
         
         return output
     }
 
-    private weightedMean(mapA: number[], mapB: number[], weight: number): number[] {
-        const output = new Array(mapA.length)
+    private weightedMean(output: Float32Array, mapA: Float32Array, mapB: Float32Array, weight: number): void {
         const invWeight = 1.0 / weight
         
         for (let i = 0; i < mapA.length; i++) {
             output[i] = ((mapA[i] * weight) + (mapB[i] * invWeight)) * 0.5
         }
-        
-        return output
     }
 
-    private subtract(mapA: number[], mapB: number[]): number[] {
-        const output = new Array(mapA.length)
+    private subtract(mapA: Float32Array, mapB: Float32Array): Float32Array {
+        const output = new Float32Array(mapA.length)
         
         for (let i = 0; i < mapA.length; i++) {
             output[i] = mapA[i] - mapB[i]
@@ -348,24 +349,14 @@ export class TerrainGenerator {
         
         return output
     }
-    
-    private seededRandom(seed: number): () => number {
-        let state = seed
-        return () => {
-            state = (state * 9301 + 49297) % 233280
-            return state / 233280
-        }
-    }
 
     private applyRiverToMap(path: Array<{ x: number; y: number }>) {
         if (path.length === 0) return
         
-        // Mark river tiles and calculate flow direction
         for (let i = 0; i < path.length; i++) {
             const x = path[i].x
             const y = path[i].y
 
-            // Calculate flow direction from this tile to next
             let nextX = x
             let nextY = y
             if (i + 1 < path.length) {
@@ -373,22 +364,18 @@ export class TerrainGenerator {
                 nextY = path[i + 1].y
             }
 
-            // Calculate angle in radians
             const dx = nextX - x
             const dy = nextY - y
             const angle = Math.atan2(dy, dx)
             
-            // Convert to 0-255 range (0-360 degrees)
             const flowDir = Math.floor(((angle + Math.PI) / (2 * Math.PI)) * 255)
 
-            // Mark the center tile as water and set flow direction
             if (this.inBounds(x, y)) {
                 const idx = this.worldToTileIndex(x, y)
-                this.flags[idx] |= 1 // Water flag
+                this.flags[idx] |= 1
                 this.flowDirection[idx] = flowDir
             }
 
-            // Expand river width
             for (let dy = -RIVER_WIDTH; dy <= RIVER_WIDTH; dy++) {
                 for (let dx = -RIVER_WIDTH; dx <= RIVER_WIDTH; dx++) {
                     const nx = x + dx
@@ -400,27 +387,24 @@ export class TerrainGenerator {
                     const dist = Math.sqrt(dx * dx + dy * dy)
 
                     if (dist <= RIVER_WIDTH) {
-                        this.flags[nIdx] |= 1 // Water flag
+                        this.flags[nIdx] |= 1
                         if (this.flowDirection[nIdx] === 0) {
                             this.flowDirection[nIdx] = flowDir
                         }
 
-                        // Mark edge tiles
                         if (dist > RIVER_WIDTH - 0.5) {
-                            this.flags[nIdx] |= 2 // Cover flag
+                            this.flags[nIdx] |= 2
                         }
                     }
                 }
             }
         }
 
-        // Post-process to add edge biomes
         for (let y = 0; y < this.worldSize; y++) {
             for (let x = 0; x < this.worldSize; x++) {
                 const idx = this.worldToTileIndex(x, y)
 
                 if (this.flags[idx] & 1) {
-                    // This is water
                     let isEdge = false
                     for (let dy = -1; dy <= 1; dy++) {
                         for (let dx = -1; dx <= 1; dx++) {
@@ -436,31 +420,14 @@ export class TerrainGenerator {
                         if (isEdge) break
                     }
 
-                    // Edge tiles get special biome treatment
                     if (isEdge && !(this.flags[idx] & 2)) {
                         const height = this.height[idx]
-                        // Water edges become beach or wetland depending on height
                         if (height < SEA_LEVEL + 15) {
                             this.biome[idx] = Biome.Beach
                         } else {
-                            // Use wetland biome (rainforest) for river edges
                             this.biome[idx] = Biome.TemperateRainforest
                         }
                     }
-                }
-            }
-        }
-    }
-
-    private buildTiles() {
-        for (let y = 0; y < this.worldSize; y++) {
-            for (let x = 0; x < this.worldSize; x++) {
-                const idx = this.worldToTileIndex(x, y)
-                this.tiles[idx] = {
-                    height: this.height[idx],
-                    biome: this.biome[idx],
-                    isWater: (this.flags[idx] & 1) !== 0,
-                    flowDirection: this.flowDirection[idx],
                 }
             }
         }
@@ -478,7 +445,13 @@ export class TerrainGenerator {
         if (x < 0 || x >= this.worldSize || y < 0 || y >= this.worldSize) {
             return null
         }
-        return this.tiles[y * this.worldSize + x]
+        const idx = y * this.worldSize + x
+        return {
+            height: this.height[idx],
+            biome: this.biome[idx],
+            isWater: (this.flags[idx] & 1) !== 0,
+            flowDirection: this.flowDirection[idx],
+        }
     }
 
     getWorldSize(): number {
@@ -487,5 +460,87 @@ export class TerrainGenerator {
 
     getRivers(): River[] {
         return this.rivers
+    }
+    
+    getHeightData(): Uint8Array {
+        return this.height
+    }
+    
+    getBiomeData(): Uint8Array {
+        return this.biome
+    }
+    
+    getFlagsData(): Uint8Array {
+        return this.flags
+    }
+}
+
+// Mersenne Twister RNG (same as before)
+class MersenneTwisterRNG {
+    private static readonly N = 624
+    private static readonly M = 397
+    private static readonly MATRIX_A = 0x9908b0df
+    private static readonly UPPER_MASK = 0x80000000
+    private static readonly LOWER_MASK = 0x7fffffff
+
+    private mt: Uint32Array
+    private mti: number
+
+    constructor(seed: number) {
+        this.mt = new Uint32Array(MersenneTwisterRNG.N)
+        this.mti = MersenneTwisterRNG.N + 1
+        this.init(seed >>> 0)
+    }
+
+    private init(seed: number): void {
+        this.mt[0] = seed >>> 0
+        for (this.mti = 1; this.mti < MersenneTwisterRNG.N; this.mti++) {
+            const s = this.mt[this.mti - 1] ^ (this.mt[this.mti - 1] >>> 30)
+            this.mt[this.mti] = 
+                (((((s & 0xffff0000) >>> 16) * 1812433253) << 16) + 
+                 (s & 0x0000ffff) * 1812433253 + this.mti) >>> 0
+        }
+    }
+
+    private next(): number {
+        let y: number
+        const mag01 = new Uint32Array([0, MersenneTwisterRNG.MATRIX_A])
+
+        if (this.mti >= MersenneTwisterRNG.N) {
+            let kk: number
+
+            for (kk = 0; kk < MersenneTwisterRNG.N - MersenneTwisterRNG.M; kk++) {
+                y = (this.mt[kk] & MersenneTwisterRNG.UPPER_MASK) | 
+                    (this.mt[kk + 1] & MersenneTwisterRNG.LOWER_MASK)
+                this.mt[kk] = this.mt[kk + MersenneTwisterRNG.M] ^ (y >>> 1) ^ mag01[y & 0x1]
+            }
+
+            for (; kk < MersenneTwisterRNG.N - 1; kk++) {
+                y = (this.mt[kk] & MersenneTwisterRNG.UPPER_MASK) | 
+                    (this.mt[kk + 1] & MersenneTwisterRNG.LOWER_MASK)
+                this.mt[kk] = this.mt[kk + (MersenneTwisterRNG.M - MersenneTwisterRNG.N)] ^ 
+                              (y >>> 1) ^ mag01[y & 0x1]
+            }
+
+            y = (this.mt[MersenneTwisterRNG.N - 1] & MersenneTwisterRNG.UPPER_MASK) | 
+                (this.mt[0] & MersenneTwisterRNG.LOWER_MASK)
+            this.mt[MersenneTwisterRNG.N - 1] = this.mt[MersenneTwisterRNG.M - 1] ^ 
+                                              (y >>> 1) ^ mag01[y & 0x1]
+
+            this.mti = 0
+        }
+
+        y = this.mt[this.mti++]
+
+        y ^= y >>> 11
+        y ^= (y << 7) & 0x9d2c5680
+        y ^= (y << 15) & 0xefc60000
+        y ^= y >>> 18
+
+        return y >>> 0
+    }
+
+    random(): number {
+        return this.next() / 0xffffffff
     }
 }

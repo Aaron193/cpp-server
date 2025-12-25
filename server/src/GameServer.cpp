@@ -34,7 +34,7 @@ GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {
 
     // Generate world
     WorldGenParams params;
-    params.seed = 99999;
+    params.seed = 834624467;
     params.worldSizeChunks = 8;  // 8x8 chunks = 512x512 tiles = 32,768x32,768 pixels
     params.numRivers = 15;
     params.structureDensity = 0.015f;  // 1.5% density for more structures

@@ -1,4 +1,6 @@
 #include "WorldGenerator.hpp"
+#include "WorldGeneratorConstants.hpp"
+#include "common/enums.hpp"
 
 #include <box2d/b2_body.h>
 #include <box2d/b2_fixture.h>
@@ -8,9 +10,12 @@
 #include <cmath>
 #include <iostream>
 #include <random>
+#include <unordered_set>
 
 #include "GameServer.hpp"
 #include "ecs/EntityManager.hpp"
+
+using namespace WorldGenConstants;
 
 // ============================================================================
 // SlopeMap Implementation
@@ -44,18 +49,42 @@ void SlopeMap::Compute(const std::vector<float>& heightMap) {
 }
 
 // ============================================================================
-// Eroder Implementation
+// ErosionBrush - Precomputed brush for performance
+// ============================================================================
+
+struct ErosionBrush {
+    std::vector<std::pair<int, float>> offsets;  // (offset, weight)
+    
+    ErosionBrush(int radius, int worldSize) {
+        for (int ey = -radius; ey <= radius; ey++) {
+            for (int ex = -radius; ex <= radius; ex++) {
+                const float dist = std::sqrt(static_cast<float>(ex * ex + ey * ey));
+                if (dist <= radius) {
+                    const float weight = 1.0f - (dist / radius);
+                    const int offset = ey * worldSize + ex;
+                    offsets.push_back({offset, weight});
+                }
+            }
+        }
+    }
+};
+
+// ============================================================================
+// Eroder Implementation - Optimized
 // ============================================================================
 
 void Eroder::Erode(std::vector<float>& heightMap, int numDroplets, int maxSteps) {
     std::uniform_real_distribution<float> posDist(0.0f, static_cast<float>(m_worldSize - 1));
+    
+    // Pre-compute erosion brush for performance
+    ErosionBrush brush(EROSION_BRUSH_RADIUS, m_worldSize);
     
     // Pre-compute slope map for faster lookups
     SlopeMap slopeMap(m_worldSize);
     
     for (int drop = 0; drop < numDroplets; drop++) {
         // Recompute slopes periodically to reflect terrain changes
-        if (drop % 500 == 0) {
+        if (drop % SLOPE_RECOMPUTE_INTERVAL == 0) {
             slopeMap.Compute(heightMap);
         }
         
@@ -87,8 +116,8 @@ void Eroder::Erode(std::vector<float>& heightMap, int numDroplets, int maxSteps)
             const float gradY = slopeMap.GetSlopeY(xi, yi);
             
             // Update direction with inertia
-            d.dx = d.dx * INERTIA - gradX * (1.0f - INERTIA);
-            d.dy = d.dy * INERTIA - gradY * (1.0f - INERTIA);
+            d.dx = d.dx * EROSION_INERTIA - gradX * (1.0f - EROSION_INERTIA);
+            d.dy = d.dy * EROSION_INERTIA - gradY * (1.0f - EROSION_INERTIA);
             
             // Normalize direction
             const float len = std::sqrt(d.dx * d.dx + d.dy * d.dy);
@@ -114,35 +143,35 @@ void Eroder::Erode(std::vector<float>& heightMap, int numDroplets, int maxSteps)
             const float heightDelta = newHeight - oldHeight;
             
             // Calculate sediment capacity
-            const float slope = std::max(MIN_SLOPE, -heightDelta);
-            const float capacity = std::max(-heightDelta, MIN_SLOPE) * d.velocity * d.water * CAPACITY;
+            const float slope = std::max(MIN_EROSION_SLOPE, -heightDelta);
+            const float capacity = std::max(-heightDelta, MIN_EROSION_SLOPE) * d.velocity * d.water * EROSION_CAPACITY;
             
             // Erode or deposit
             if (d.sediment > capacity || heightDelta > 0.0f) {
                 // Deposit sediment
                 const float amountToDeposit = (heightDelta > 0.0f) 
                     ? std::min(heightDelta, d.sediment) 
-                    : (d.sediment - capacity) * DEPOSITION;
+                    : (d.sediment - capacity) * DEPOSITION_RATE;
                 
                 d.sediment -= amountToDeposit;
                 heightMap[idx] += amountToDeposit;
             } else {
-                // Erode terrain
-                const float amountToErode = std::min((capacity - d.sediment) * EROSION, -heightDelta);
+                // Erode terrain with precomputed brush
+                const float amountToErode = std::min((capacity - d.sediment) * EROSION_RATE, -heightDelta);
                 
-                // Erode with brush (distribute erosion)
-                for (int ey = -EROSION_RADIUS; ey <= EROSION_RADIUS; ey++) {
-                    for (int ex = -EROSION_RADIUS; ex <= EROSION_RADIUS; ex++) {
-                        const int erodeX = xi + ex;
-                        const int erodeY = yi + ey;
+                // Apply erosion using precomputed brush
+                for (const auto& [offset, weight] : brush.offsets) {
+                    const int erodeIdx = idx + offset;
+                    
+                    // Bounds check
+                    if (erodeIdx >= 0 && erodeIdx < m_worldSize * m_worldSize) {
+                        const int erodeX = erodeIdx % m_worldSize;
+                        const int erodeY = erodeIdx / m_worldSize;
                         
-                        if (erodeX >= 0 && erodeX < m_worldSize && erodeY >= 0 && erodeY < m_worldSize) {
-                            const float dist = std::sqrt(static_cast<float>(ex * ex + ey * ey));
-                            if (dist <= EROSION_RADIUS) {
-                                const float weight = 1.0f - (dist / EROSION_RADIUS);
-                                const int erodeIdx = erodeY * m_worldSize + erodeX;
-                                heightMap[erodeIdx] -= amountToErode * weight * 0.1f;
-                            }
+                        // Additional bounds check for wrapped indices
+                        if (std::abs(erodeX - xi) <= EROSION_BRUSH_RADIUS &&
+                            std::abs(erodeY - yi) <= EROSION_BRUSH_RADIUS) {
+                            heightMap[erodeIdx] -= amountToErode * weight * 0.1f;
                         }
                     }
                 }
@@ -151,8 +180,8 @@ void Eroder::Erode(std::vector<float>& heightMap, int numDroplets, int maxSteps)
             }
             
             // Update velocity and evaporate water
-            d.velocity = std::sqrt(d.velocity * d.velocity + heightDelta * GRAVITY);
-            d.water *= (1.0f - EVAPORATION);
+            d.velocity = std::sqrt(d.velocity * d.velocity + heightDelta * EROSION_GRAVITY);
+            d.water *= (1.0f - EVAPORATION_RATE);
             
             if (d.water < 0.01f) {
                 break;  // Droplet dried up
@@ -181,11 +210,10 @@ void WorldGenerator::GenerateWorld(const WorldGenParams& params) {
     m_worldSize = params.worldSizeChunks * CHUNK_SIZE;
 
     std::cout << "Generating world with seed " << m_seed << std::endl;
-    std::cout << "World size: " << m_worldSize << "x" << m_worldSize << " tiles"
-              << std::endl;
+    std::cout << "World size: " << m_worldSize << "x" << m_worldSize << " tiles" << std::endl;
 
     // Allocate world arrays
-    size_t totalTiles = m_worldSize * m_worldSize;
+    const size_t totalTiles = m_worldSize * m_worldSize;
     m_height.resize(totalTiles);
     m_biome.resize(totalTiles);
     m_flags.resize(totalTiles);
@@ -211,11 +239,12 @@ void WorldGenerator::GenerateWorld(const WorldGenParams& params) {
     std::cout << "Generating temperature (latitude + elevation)..." << std::endl;
     GenerateTemperature();
     
-    std::cout << "Generating biomes (15-biome system)..." << std::endl;
-    GenerateBiomes();
-    
+    // !!Apply erosion BEFORE biome generation!!
     std::cout << "Applying hydraulic erosion..." << std::endl;
     ApplyErosion();
+    
+    std::cout << "Generating biomes (15-biome system)..." << std::endl;
+    GenerateBiomes();
 
     std::cout << "Generating rivers..." << std::endl;
     GenerateRivers();
@@ -257,17 +286,17 @@ void WorldGenerator::GenerateHeight() {
     // Volcanic Island Generation Method
     // Step 1: Create radial gradient (cone shape)
     std::vector<float> radialGradient(m_worldSize * m_worldSize);
-    const float centerX = m_worldSize * 0.5f;
-    const float centerY = m_worldSize * 0.5f;
-    const float radius = m_worldSize * 0.44f;
+    const float centerX = m_worldSize * ISLAND_CENTER_X_RATIO;
+    const float centerY = m_worldSize * ISLAND_CENTER_Y_RATIO;
+    const float radius = m_worldSize * ISLAND_RADIUS_RATIO;
     GenerateRadialGradient(radialGradient, centerX, centerY, radius, 1.0f, -1.0f);
     
     // Step 2: Create fractal noise (organic bumps)
     std::vector<float> fractalNoise(m_worldSize * m_worldSize);
-    GenerateFractalNoise(fractalNoise, m_seed, 8);
+    GenerateFractalNoise(fractalNoise, m_seed, FRACTAL_OCTAVES);
     
-    // Step 3: Blend with weighted mean (57% gradient, 43% noise)
-    WeightedMean(m_heightFloat, radialGradient, fractalNoise, 1.33f);
+    // Step 3: Blend with weighted mean
+    WeightedMean(m_heightFloat, radialGradient, fractalNoise, HEIGHT_GRADIENT_WEIGHT);
     
     // Convert float [-1,1] to uint8 [0,255]
     for (size_t i = 0; i < m_heightFloat.size(); i++) {
@@ -280,16 +309,18 @@ void WorldGenerator::GenerateHeight() {
 
 void WorldGenerator::GeneratePrecipitation() {
     // Rain Shadow Effect
-    // Step 1: Create two offset radial gradients
-    const float centerX = m_worldSize * 0.5f;
-    const float centerY = m_worldSize * 0.5f;
-    const float radius = m_worldSize * 0.33f;
+    const float centerX = m_worldSize * ISLAND_CENTER_X_RATIO;
+    const float centerY = m_worldSize * ISLAND_CENTER_Y_RATIO;
+    const float radius = m_worldSize * RAIN_SHADOW_RADIUS_RATIO;
     
     // Random wind direction
     std::mt19937 rng(m_seed + 3000);
-    std::uniform_real_distribution<float> dist(-m_worldSize * 0.08f, m_worldSize * 0.08f);
-    float windX = dist(rng);
-    float windY = dist(rng);
+    std::uniform_real_distribution<float> dist(
+        -m_worldSize * WIND_OFFSET_RANGE,
+        m_worldSize * WIND_OFFSET_RANGE
+    );
+    const float windX = dist(rng);
+    const float windY = dist(rng);
     
     std::vector<float> gradient1(m_worldSize * m_worldSize);
     std::vector<float> gradient2(m_worldSize * m_worldSize);
@@ -297,37 +328,34 @@ void WorldGenerator::GeneratePrecipitation() {
     GenerateRadialGradient(gradient1, centerX, centerY, radius, 1.0f, 0.0f);
     GenerateRadialGradient(gradient2, centerX + windX, centerY + windY, radius, 1.0f, 0.0f);
     
-    // Step 2: Subtract to create rain shadow
+    // Subtract to create rain shadow
     std::vector<float> rainShadow(m_worldSize * m_worldSize);
     Subtract(rainShadow, gradient1, gradient2);
     
-    // Step 3: Add fractal noise
+    // Add fractal noise
     std::vector<float> fractalNoise(m_worldSize * m_worldSize);
-    GenerateFractalNoise(fractalNoise, m_seed + 1000, 8);
+    GenerateFractalNoise(fractalNoise, m_seed + 1000, FRACTAL_OCTAVES);
     
-    // Step 4: Weighted mean (71% noise, 29% rain shadow)
-    WeightedMean(m_precipitationFloat, rainShadow, fractalNoise, 2.5f);
+    // Weighted mean
+    WeightedMean(m_precipitationFloat, rainShadow, fractalNoise, PRECIPITATION_NOISE_WEIGHT);
 }
 
 void WorldGenerator::GenerateTemperature() {
     // North-South Temperature Gradient + Elevation Cooling
-    // Step 1: Linear gradient (north = cold, south = hot)
     std::vector<float> linearGradient(m_worldSize * m_worldSize);
     GenerateLinearGradient(linearGradient, -1.0f, 1.0f);
     
-    // Step 2: Add fractal noise
+    // Add fractal noise
     std::vector<float> fractalNoise(m_worldSize * m_worldSize);
-    GenerateFractalNoise(fractalNoise, m_seed + 2000, 8);
+    GenerateFractalNoise(fractalNoise, m_seed + 2000, FRACTAL_OCTAVES);
     
-    // Step 3: Weighted mean (60% gradient, 40% noise)
-    WeightedMean(m_temperatureFloat, linearGradient, fractalNoise, 1.5f);
+    // Weighted mean
+    WeightedMean(m_temperatureFloat, linearGradient, fractalNoise, TEMPERATURE_GRADIENT_WEIGHT);
     
-    // Step 4: Adjust for elevation (mountains are cold)
-    const float elevationCooling = 1.0f;
-    const float elevationOffset = 0.16f;
+    // Adjust for elevation (mountains are cold)
     for (size_t i = 0; i < m_temperatureFloat.size(); i++) {
         if (m_heightFloat[i] > 0.0f) {
-            m_temperatureFloat[i] -= (m_heightFloat[i] - elevationOffset) * elevationCooling;
+            m_temperatureFloat[i] -= (m_heightFloat[i] - ELEVATION_COOLING_OFFSET) * ELEVATION_COOLING_FACTOR;
             m_temperatureFloat[i] = std::clamp(m_temperatureFloat[i], -1.0f, 1.0f);
         }
     }
@@ -337,19 +365,19 @@ void WorldGenerator::GenerateBiomes() {
     // 15-Biome System: Temperature (3) x Moisture (5)
     for (int y = 0; y < m_worldSize; y++) {
         for (int x = 0; x < m_worldSize; x++) {
-            int idx = WorldToTileIndex(x, y);
+            const int idx = WorldToTileIndex(x, y);
             
-            float elevation = m_heightFloat[idx];
-            float temperature = m_temperatureFloat[idx];
-            float precipitation = m_precipitationFloat[idx];
+            const float elevation = m_heightFloat[idx];
+            const float temperature = m_temperatureFloat[idx];
+            const float precipitation = m_precipitationFloat[idx];
             
             Biome biome;
             
             // Ocean biomes
-            if (elevation < 0.0f) {
-                if (temperature > 0.25f) {
+            if (elevation < SEA_LEVEL_NORMALIZED) {
+                if (temperature > TEMP_HOT_THRESHOLD) {
                     biome = Biome::TropicalOcean;
-                } else if (temperature < -0.25f) {
+                } else if (temperature < TEMP_COLD_THRESHOLD) {
                     biome = Biome::ArcticOcean;
                 } else {
                     biome = Biome::TemperateOcean;
@@ -357,58 +385,58 @@ void WorldGenerator::GenerateBiomes() {
                 m_flags[idx] |= TileFlags::Water;
             }
             // Special: Beach (just above sea level)
-            else if (elevation < 0.18f) {
+            else if (elevation < BEACH_LEVEL_NORMALIZED) {
                 biome = Biome::Beach;
             }
             // Special: Mountain (very high elevation)
-            else if (elevation > 0.75f) {
+            else if (elevation > MOUNTAIN_LEVEL_NORMALIZED) {
                 biome = Biome::Mountain;
             }
             // Special: Glacier
-            else if (temperature < -0.66f) {
+            else if (temperature < TEMP_GLACIER_THRESHOLD) {
                 biome = Biome::Glacier;
             }
             // Special: Snow
-            else if (temperature < -0.55f) {
+            else if (temperature < TEMP_SNOW_THRESHOLD) {
                 biome = Biome::Snow;
             }
-            // Cold biomes (temp < -0.25)
-            else if (temperature < -0.25f) {
-                if (precipitation < -0.25f) {
+            // Cold biomes
+            else if (temperature < TEMP_COLD_THRESHOLD) {
+                if (precipitation < PRECIP_LOW) {
                     biome = Biome::ColdDesert;
-                } else if (precipitation < 0.0f) {
+                } else if (precipitation < PRECIP_MED_LOW) {
                     biome = Biome::Tundra;
-                } else if (precipitation < 0.25f) {
+                } else if (precipitation < PRECIP_MED) {
                     biome = Biome::TaigaFrontier;
-                } else if (precipitation < 0.5f) {
+                } else if (precipitation < PRECIP_HIGH) {
                     biome = Biome::Taiga;
                 } else {
                     biome = Biome::TaigaRainforest;
                 }
             }
-            // Hot biomes (temp > 0.25)
-            else if (temperature > 0.25f) {
-                if (precipitation < -0.25f) {
+            // Hot biomes
+            else if (temperature > TEMP_HOT_THRESHOLD) {
+                if (precipitation < PRECIP_LOW) {
                     biome = Biome::HotDesert;
-                } else if (precipitation < 0.0f) {
+                } else if (precipitation < PRECIP_MED_LOW) {
                     biome = Biome::HotSavanna;
-                } else if (precipitation < 0.25f) {
+                } else if (precipitation < PRECIP_MED) {
                     biome = Biome::TropicalFrontier;
-                } else if (precipitation < 0.5f) {
+                } else if (precipitation < PRECIP_HIGH) {
                     biome = Biome::TropicalForest;
                 } else {
                     biome = Biome::TropicalRainforest;
                 }
             }
-            // Temperate biomes (-0.25 <= temp <= 0.25)
+            // Temperate biomes
             else {
-                if (precipitation < -0.25f) {
+                if (precipitation < PRECIP_LOW) {
                     biome = Biome::TemperateDesert;
-                } else if (precipitation < 0.0f) {
+                } else if (precipitation < PRECIP_MED_LOW) {
                     biome = Biome::TemperateGrassland;
-                } else if (precipitation < 0.25f) {
+                } else if (precipitation < PRECIP_MED) {
                     biome = Biome::TemperateFrontier;
-                } else if (precipitation < 0.5f) {
+                } else if (precipitation < PRECIP_HIGH) {
                     biome = Biome::TemperateForest;
                 } else {
                     biome = Biome::TemperateRainforest;
@@ -429,10 +457,8 @@ void WorldGenerator::ApplyErosion() {
     
     // Run erosion simulation
     Eroder eroder(m_worldSize, m_seed + 3000);
-    const int numDroplets = 30000;  // More droplets = more erosion
-    const int maxSteps = 100;       // Max simulation steps per droplet
     
-    eroder.Erode(m_heightFloat, numDroplets, maxSteps);
+    eroder.Erode(m_heightFloat, DEFAULT_DROPLET_COUNT, DEFAULT_MAX_STEPS);
     
     // Convert float heightmap back to uint8
     for (size_t i = 0; i < m_heightFloat.size(); i++) {
@@ -440,7 +466,7 @@ void WorldGenerator::ApplyErosion() {
         m_height[i] = static_cast<uint8_t>(normalized * 255);
     }
     
-    std::cout << "  Erosion complete (30k droplets)" << std::endl;
+    std::cout << "  Erosion complete (" << DEFAULT_DROPLET_COUNT << " droplets)" << std::endl;
 }
 
 // Helper Functions
@@ -451,14 +477,14 @@ void WorldGenerator::GenerateRadialGradient(std::vector<float>& output, float ce
     
     for (int y = 0; y < m_worldSize; y++) {
         for (int x = 0; x < m_worldSize; x++) {
-            int idx = WorldToTileIndex(x, y);
+            const int idx = WorldToTileIndex(x, y);
             
-            float dx = static_cast<float>(x) - centerX;
-            float dy = static_cast<float>(y) - centerY;
-            float distSquared = dx * dx + dy * dy;
+            const float dx = static_cast<float>(x) - centerX;
+            const float dy = static_cast<float>(y) - centerY;
+            const float distSquared = dx * dx + dy * dy;
             
             // Compute gradient value
-            float t = std::clamp(distSquared * invRadiusSquared, 0.0f, 1.0f);
+            const float t = std::clamp(distSquared * invRadiusSquared, 0.0f, 1.0f);
             output[idx] = centerValue + (edgeValue - centerValue) * t;
         }
     }
@@ -468,11 +494,11 @@ void WorldGenerator::GenerateLinearGradient(std::vector<float>& output, float st
     const float scale = 1.0f / static_cast<float>(m_worldSize - 1);
     
     for (int y = 0; y < m_worldSize; y++) {
-        float t = static_cast<float>(y) * scale;
-        float value = startValue + (endValue - startValue) * t;
+        const float t = static_cast<float>(y) * scale;
+        const float value = startValue + (endValue - startValue) * t;
         
         for (int x = 0; x < m_worldSize; x++) {
-            int idx = WorldToTileIndex(x, y);
+            const int idx = WorldToTileIndex(x, y);
             output[idx] = value;
         }
     }
@@ -481,25 +507,30 @@ void WorldGenerator::GenerateLinearGradient(std::vector<float>& output, float st
 void WorldGenerator::GenerateFractalNoise(std::vector<float>& output, uint32_t seed, int octaves) {
     PerlinNoise noise(seed);
     
-    // 8 octaves with specific frequency weighting
-    const float frequencies[] = {1.0f/128.0f, 1.0f/64.0f, 1.0f/32.0f, 1.0f/16.0f, 
-                                 1.0f/8.0f, 1.0f/4.0f, 1.0f/2.0f, 1.0f};
-    const float weights[] = {1.0f/128.0f, 1.0f/128.0f, 1.0f/64.0f, 1.0f/32.0f, 
-                            1.0f/16.0f, 1.0f/8.0f, 1.0f/4.0f, 1.0f/2.0f};
+    // Cache-optimized tiled processing
+    constexpr int TILE_SIZE = NOISE_TILE_SIZE;
     
-    for (int y = 0; y < m_worldSize; y++) {
-        for (int x = 0; x < m_worldSize; x++) {
-            int idx = WorldToTileIndex(x, y);
+    for (int ty = 0; ty < m_worldSize; ty += TILE_SIZE) {
+        for (int tx = 0; tx < m_worldSize; tx += TILE_SIZE) {
+            // Process tiles for better cache locality
+            const int maxY = std::min(ty + TILE_SIZE, m_worldSize);
+            const int maxX = std::min(tx + TILE_SIZE, m_worldSize);
             
-            float total = 0.0f;
-            float fx = static_cast<float>(x);
-            float fy = static_cast<float>(y);
-            
-            for (int i = 0; i < octaves && i < 8; i++) {
-                total += noise.noise(fx * frequencies[i], fy * frequencies[i]) * weights[i];
+            for (int y = ty; y < maxY; y++) {
+                for (int x = tx; x < maxX; x++) {
+                    const int idx = WorldToTileIndex(x, y);
+                    
+                    float total = 0.0f;
+                    const float fx = static_cast<float>(x);
+                    const float fy = static_cast<float>(y);
+                    
+                    for (int i = 0; i < octaves && i < FRACTAL_OCTAVES; i++) {
+                        total += noise.noise(fx * FRACTAL_FREQUENCIES[i], fy * FRACTAL_FREQUENCIES[i]) * FRACTAL_WEIGHTS[i];
+                    }
+                    
+                    output[idx] = total;
+                }
             }
-            
-            output[idx] = total;
         }
     }
 }
@@ -527,24 +558,22 @@ void WorldGenerator::GenerateRivers() {
     PerlinNoise riverNoise(m_seed + 100);
     
     // Start from west edge at middle height
-    int startX = 0;
-    int startY = m_worldSize / 2;
+    const int startX = 0;
+    const int startY = m_worldSize / 2;
     
     // Target east edge with slight vertical offset for interest
-    int targetX = m_worldSize - 1;
-    int targetY = m_worldSize / 2 + m_worldSize / 8;  // Slight diagonal
+    const int targetX = m_worldSize - 1;
+    const int targetY = m_worldSize / 2 + m_worldSize / 8;  // Slight diagonal
     
     int x = startX;
     int y = startY;
     
-    const float noiseFreq = 0.05f;  // Low frequency for gentle curves
-    const float targetBias = 0.7f;  // Strong bias toward target (70%)
-    const float noiseBias = 0.3f;   // Weaker noise influence (30%)
+    // Optimized: Use uint32_t packed keys for faster hash lookup
+    std::unordered_set<uint32_t> visited;
     
-    std::unordered_set<int64_t> visited;
-    
-    while (x < targetX && river.path.size() < 5000) {
-        int64_t key = (static_cast<int64_t>(x) << 32) | static_cast<uint32_t>(y);
+    while (x < targetX && river.path.size() < RIVER_MAX_LENGTH) {
+        // Pack x,y into single uint32_t (assumes worldSize < 65536)
+        const uint32_t key = (static_cast<uint32_t>(x) << 16) | static_cast<uint32_t>(y);
         if (visited.count(key)) break;
         visited.insert(key);
         
@@ -552,19 +581,19 @@ void WorldGenerator::GenerateRivers() {
         pathWithFlow.push_back({x, y});
         
         // Calculate direction to target
-        float dx = static_cast<float>(targetX - x);
-        float dy = static_cast<float>(targetY - y);
-        float targetAngle = std::atan2(dy, dx);
+        const float dx = static_cast<float>(targetX - x);
+        const float dy = static_cast<float>(targetY - y);
+        const float targetAngle = std::atan2(dy, dx);
         
         // Sample Perlin noise for meandering offset
-        float noiseValue = riverNoise.noise(
-            static_cast<float>(x) * noiseFreq,
-            static_cast<float>(y) * noiseFreq
+        const float noiseValue = riverNoise.noise(
+            static_cast<float>(x) * RIVER_NOISE_FREQUENCY,
+            static_cast<float>(y) * RIVER_NOISE_FREQUENCY
         );
-        float noiseAngle = noiseValue * M_PI;  // Range: [-π, π]
+        const float noiseAngle = noiseValue * static_cast<float>(M_PI);  // Range: [-π, π]
         
         // Blend target direction with noise
-        float angle = targetBias * targetAngle + noiseBias * noiseAngle;
+        const float angle = RIVER_TARGET_BIAS * targetAngle + RIVER_NOISE_BIAS * noiseAngle;
         
         // Step in computed direction
         int nextX = x + static_cast<int>(std::round(std::cos(angle) * 2.0f));
@@ -596,13 +625,11 @@ void WorldGenerator::GenerateRivers() {
 
 void WorldGenerator::ApplyRiverToMap(const std::vector<std::pair<int, int>>& path) {
     if (path.empty()) return;
-
-    constexpr int RIVER_WIDTH = 3;  // 3 tiles wide (center + 1 on each side)
     
     // Mark river tiles and calculate flow direction
     for (size_t i = 0; i < path.size(); i++) {
-        int x = path[i].first;
-        int y = path[i].second;
+        const int x = path[i].first;
+        const int y = path[i].second;
 
         // Calculate flow direction from this tile to next
         int nextX = x;
@@ -613,16 +640,16 @@ void WorldGenerator::ApplyRiverToMap(const std::vector<std::pair<int, int>>& pat
         }
 
         // Calculate angle in radians
-        float dx = static_cast<float>(nextX - x);
-        float dy = static_cast<float>(nextY - y);
-        float angle = std::atan2(dy, dx);
+        const float dx = static_cast<float>(nextX - x);
+        const float dy = static_cast<float>(nextY - y);
+        const float angle = std::atan2(dy, dx);
 
-        // Convert angle [-π, π] to 0-255 range (0 = -π, 128 = 0, 255 = π)
-        uint8_t flowDir = static_cast<uint8_t>(((angle + M_PI) / (2.0f * M_PI)) * 255.0f);
+        // Convert angle [-π, π] to 0-255 range
+        const uint8_t flowDir = static_cast<uint8_t>(((angle + static_cast<float>(M_PI)) / (2.0f * static_cast<float>(M_PI))) * 255.0f);
 
         // Mark the center tile as water and set flow direction
         if (InBounds(x, y)) {
-            int idx = WorldToTileIndex(x, y);
+            const int idx = WorldToTileIndex(x, y);
             m_flags[idx] |= TileFlags::Water;
             m_flowDirection[idx] = flowDir;
         }
@@ -630,15 +657,15 @@ void WorldGenerator::ApplyRiverToMap(const std::vector<std::pair<int, int>>& pat
         // Expand river width - create thick river
         for (int dy = -RIVER_WIDTH; dy <= RIVER_WIDTH; dy++) {
             for (int dx = -RIVER_WIDTH; dx <= RIVER_WIDTH; dx++) {
-                int nx = x + dx;
-                int ny = y + dy;
+                const int nx = x + dx;
+                const int ny = y + dy;
 
                 if (!InBounds(nx, ny)) continue;
 
-                int nIdx = WorldToTileIndex(nx, ny);
+                const int nIdx = WorldToTileIndex(nx, ny);
                 
                 // Distance from center
-                float dist = std::sqrt(static_cast<float>(dx * dx + dy * dy));
+                const float dist = std::sqrt(static_cast<float>(dx * dx + dy * dy));
 
                 // Mark water within radius
                 if (dist <= RIVER_WIDTH) {
@@ -659,7 +686,7 @@ void WorldGenerator::ApplyRiverToMap(const std::vector<std::pair<int, int>>& pat
     // Post-process to add edge biomes (Beach/Swamp transitions)
     for (int y = 0; y < m_worldSize; y++) {
         for (int x = 0; x < m_worldSize; x++) {
-            int idx = WorldToTileIndex(x, y);
+            const int idx = WorldToTileIndex(x, y);
 
             // If this is water, check neighbors for edge marking
             if (m_flags[idx] & TileFlags::Water) {
@@ -668,7 +695,7 @@ void WorldGenerator::ApplyRiverToMap(const std::vector<std::pair<int, int>>& pat
                 for (int dy = -1; dy <= 1; dy++) {
                     for (int dx = -1; dx <= 1; dx++) {
                         if (dx == 0 && dy == 0) continue;
-                        int nIdx = WorldToTileIndex(x + dx, y + dy);
+                        const int nIdx = WorldToTileIndex(x + dx, y + dy);
                         if (InBounds(x + dx, y + dy)) {
                             if (!(m_flags[nIdx] & TileFlags::Water)) {
                                 isEdge = true;
@@ -681,7 +708,7 @@ void WorldGenerator::ApplyRiverToMap(const std::vector<std::pair<int, int>>& pat
 
                 // Edge tiles get special biome treatment
                 if (isEdge && !(m_flags[idx] & TileFlags::Cover)) {
-                    uint8_t height = m_height[idx];
+                    const uint8_t height = m_height[idx];
                     // Water edges become beach or wetland depending on height
                     if (height < SEA_LEVEL + 15) {
                         m_biome[idx] = static_cast<uint8_t>(Biome::Beach);
@@ -699,8 +726,8 @@ void WorldGenerator::GenerateLakes() {
     // Simple lake generation: find low points and mark as water
     for (int y = 1; y < m_worldSize - 1; y++) {
         for (int x = 1; x < m_worldSize - 1; x++) {
-            int idx = WorldToTileIndex(x, y);
-            uint8_t h = m_height[idx];
+            const int idx = WorldToTileIndex(x, y);
+            const uint8_t h = m_height[idx];
 
             if (h >= SEA_LEVEL + 5 && h < SEA_LEVEL + 20) {
                 // Check if this is a local minimum
@@ -708,7 +735,7 @@ void WorldGenerator::GenerateLakes() {
                 for (int dy = -1; dy <= 1; dy++) {
                     for (int dx = -1; dx <= 1; dx++) {
                         if (dx == 0 && dy == 0) continue;
-                        int nIdx = WorldToTileIndex(x + dx, y + dy);
+                        const int nIdx = WorldToTileIndex(x + dx, y + dy);
                         if (m_height[nIdx] < h) {
                             isMinimum = false;
                             break;
@@ -726,7 +753,7 @@ void WorldGenerator::GenerateLakes() {
 }
 
 void WorldGenerator::BuildChunks() {
-    int numChunks = m_params.worldSizeChunks;
+    const int numChunks = m_params.worldSizeChunks;
 
     for (int cy = 0; cy < numChunks; cy++) {
         for (int cx = 0; cx < numChunks; cx++) {
@@ -736,14 +763,13 @@ void WorldGenerator::BuildChunks() {
 
             for (int ty = 0; ty < CHUNK_SIZE; ty++) {
                 for (int tx = 0; tx < CHUNK_SIZE; tx++) {
-                    int wx = cx * CHUNK_SIZE + tx;
-                    int wy = cy * CHUNK_SIZE + ty;
-                    int worldIdx = WorldToTileIndex(wx, wy);
-                    int chunkIdx = ty * CHUNK_SIZE + tx;
+                    const int wx = cx * CHUNK_SIZE + tx;
+                    const int wy = cy * CHUNK_SIZE + ty;
+                    const int worldIdx = WorldToTileIndex(wx, wy);
+                    const int chunkIdx = ty * CHUNK_SIZE + tx;
 
                     chunk.tiles[chunkIdx].height = m_height[worldIdx];
-                    chunk.tiles[chunkIdx].biome =
-                        static_cast<Biome>(m_biome[worldIdx]);
+                    chunk.tiles[chunkIdx].biome = static_cast<Biome>(m_biome[worldIdx]);
                     chunk.tiles[chunkIdx].flags = ComputeTileFlags(wx, wy);
                 }
             }
@@ -753,102 +779,106 @@ void WorldGenerator::BuildChunks() {
     }
 }
 
+// Structure generation with spatial grid for overlap prevention
+struct SpatialGrid {
+    std::unordered_map<uint32_t, bool> occupied;
+    int cellSize;
+    int worldSize;
+    
+    SpatialGrid(int worldSize, int cellSize) : worldSize(worldSize), cellSize(cellSize) {}
+    
+    uint32_t getKey(int x, int y) const {
+        const int cx = x / cellSize;
+        const int cy = y / cellSize;
+        return (static_cast<uint32_t>(cx) << 16) | static_cast<uint32_t>(cy);
+    }
+    
+    bool isOccupied(int x, int y, int radius) const {
+        for (int dy = -radius; dy <= radius; dy++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+                const uint32_t key = getKey(x + dx * cellSize, y + dy * cellSize);
+                if (occupied.count(key)) return true;
+            }
+        }
+        return false;
+    }
+    
+    void occupy(int x, int y) {
+        occupied[getKey(x, y)] = true;
+    }
+};
+
 void WorldGenerator::GenerateStructures() {
-    std::mt19937 rng(m_seed + 4000);  // Use structure seed
+    std::mt19937 rng(m_seed + 4000);
     std::uniform_real_distribution<float> chanceDist(0.0f, 1.0f);
     std::uniform_int_distribution<int> rotDist(0, 3);
 
-    // First pass: Create building clusters (towns) in suitable biomes
-    for (int ty = 0; ty < 10; ty++) {
-        for (int tx = 0; tx < 10; tx++) {
-            if (chanceDist(rng) < 0.3f) { // 30% chance for a town
-                int centerX = 100 + tx * (m_worldSize / 10);
-                int centerY = 100 + ty * (m_worldSize / 10);
-                
-                // Check if location is suitable (grasslands/frontiers, not water)
-                int idx = WorldToTileIndex(centerX, centerY);
-                if (!InBounds(centerX, centerY)) continue;
-                Biome biome = static_cast<Biome>(m_biome[idx]);
-                if (m_flags[idx] & TileFlags::Water) continue;
-                
-                // Towns prefer temperate grasslands and frontiers
-                if (biome != Biome::TemperateGrassland && 
-                    biome != Biome::TemperateFrontier &&
-                    biome != Biome::HotSavanna) continue;
-                
-                // Create cluster of 5-12 houses
-                int numBuildings = 5 + (rng() % 8);
-                for (int i = 0; i < numBuildings; i++) {
-                    int bx = centerX + (rng() % 30) - 15;
-                    int by = centerY + (rng() % 30) - 15;
-                    if (!InBounds(bx, by)) continue;
-                    
-                    Structure s;
-                    s.type = StructureType::House;
-                    s.x = bx;
-                    s.y = by;
-                    s.rotation = rotDist(rng);
-                    s.destructible = false;
-                    m_structures.push_back(s);
-                }
-            }
-        }
-    }
+    // Spatial grid for overlap prevention (10-tile cells)
+    SpatialGrid grid(m_worldSize, 10);
 
-    // Second pass: Biome-specific structure placement
+    // Combined pass: towns and biome-specific structures
     for (int y = 10; y < m_worldSize - 10; y++) {
         for (int x = 10; x < m_worldSize - 10; x++) {
-            int idx = WorldToTileIndex(x, y);
-            Biome biome = static_cast<Biome>(m_biome[idx]);
-            uint8_t h = m_height[idx];
+            const int idx = WorldToTileIndex(x, y);
+            const Biome biome = static_cast<Biome>(m_biome[idx]);
+            const uint8_t h = m_height[idx];
 
             // Skip water and extreme elevations
             if (h < SEA_LEVEL || h > MOUNTAIN_LEVEL) continue;
             if (m_flags[idx] & TileFlags::Water) continue;
-
-            float chance = chanceDist(rng);
             
-            // Get precipitation value (for tree density)
-            float precipitation = (idx < m_precipitationFloat.size()) 
-                ? m_precipitationFloat[idx] : 0.0f;
+            // Skip if occupied
+            if (grid.isOccupied(x, y, 1)) continue;
 
-            // Houses (scattered, prefer grasslands)
-            if (chance < m_params.structureDensity * 0.1f && IsFlat(x, y, 2)) {
+            const float chance = chanceDist(rng);
+            
+            // Towns (checked every 50 tiles for efficiency)
+            if (x % 50 == 0 && y % 50 == 0 && chance < TOWN_CHANCE) {
                 if (biome == Biome::TemperateGrassland || 
                     biome == Biome::TemperateFrontier ||
                     biome == Biome::HotSavanna) {
-                    Structure s;
-                    s.type = StructureType::House;
-                    s.x = x;
-                    s.y = y;
-                    s.rotation = rotDist(rng);
-                    s.destructible = false;
-                    m_structures.push_back(s);
+                    // Create cluster of buildings
+                    const int numBuildings = TOWN_MIN_BUILDINGS + (rng() % (TOWN_MAX_BUILDINGS - TOWN_MIN_BUILDINGS + 1));
+                    for (int i = 0; i < numBuildings; i++) {
+                        const int bx = x + (rng() % (TOWN_SPREAD_RADIUS * 2)) - TOWN_SPREAD_RADIUS;
+                        const int by = y + (rng() % (TOWN_SPREAD_RADIUS * 2)) - TOWN_SPREAD_RADIUS;
+                        if (!InBounds(bx, by) || grid.isOccupied(bx, by, 0)) continue;
+                        
+                        Structure s;
+                        s.type = StructureType::House;
+                        s.x = bx;
+                        s.y = by;
+                        s.rotation = rotDist(rng);
+                        s.destructible = false;
+                        m_structures.push_back(s);
+                        grid.occupy(bx, by);
+                    }
                     continue;
                 }
             }
 
-            // Trees: Density based on biome type and precipitation
+            // Get precipitation value (for tree density)
+            const float precipitation = (idx < m_precipitationFloat.size()) 
+                ? m_precipitationFloat[idx] : 0.0f;
+
+            // Trees: Density based on biome type
             float treeDensity = 0.0f;
             
-            // Rainforests: very dense (8x)
             if (biome == Biome::TemperateRainforest || 
                 biome == Biome::TropicalRainforest ||
                 biome == Biome::TaigaRainforest) {
-                treeDensity = m_params.structureDensity * 12.0f;
+                treeDensity = m_params.structureDensity * RAINFOREST_TREE_DENSITY;
             }
-            // Forests: dense (6x)
             else if (biome == Biome::TemperateForest || 
                      biome == Biome::TropicalForest ||
                      biome == Biome::Taiga) {
-                treeDensity = m_params.structureDensity * 8.0f;
+                treeDensity = m_params.structureDensity * FOREST_TREE_DENSITY;
             }
-            // Frontiers/Savannas: sparse (3x)
             else if (biome == Biome::TemperateFrontier || 
                      biome == Biome::TropicalFrontier ||
                      biome == Biome::TaigaFrontier ||
                      biome == Biome::HotSavanna) {
-                treeDensity = m_params.structureDensity * 3.0f;
+                treeDensity = m_params.structureDensity * FRONTIER_TREE_DENSITY;
             }
             
             if (chance < treeDensity) {
@@ -859,19 +889,20 @@ void WorldGenerator::GenerateStructures() {
                 s.rotation = 0;
                 s.destructible = true;
                 m_structures.push_back(s);
+                grid.occupy(x, y);
                 continue;
             }
 
             // Rocks: More common in mountains and deserts
             float rockDensity = 0.0f;
             if (biome == Biome::Mountain) {
-                rockDensity = m_params.structureDensity * 8.0f;
+                rockDensity = m_params.structureDensity * MOUNTAIN_ROCK_DENSITY;
             } else if (biome == Biome::HotDesert || 
                        biome == Biome::TemperateDesert ||
                        biome == Biome::ColdDesert) {
-                rockDensity = m_params.structureDensity * 5.0f;
-            } else if (h > BEACH_LEVEL + 50) {  // Highlands
-                rockDensity = m_params.structureDensity * 2.0f;
+                rockDensity = m_params.structureDensity * DESERT_ROCK_DENSITY;
+            } else if (h > BEACH_LEVEL + 50) {
+                rockDensity = m_params.structureDensity * HIGHLAND_ROCK_DENSITY;
             }
             
             if (chance < rockDensity) {
@@ -882,6 +913,7 @@ void WorldGenerator::GenerateStructures() {
                 s.rotation = 0;
                 s.destructible = false;
                 m_structures.push_back(s);
+                grid.occupy(x, y);
                 continue;
             }
 
@@ -891,7 +923,7 @@ void WorldGenerator::GenerateStructures() {
                 biome == Biome::HotSavanna ||
                 biome == Biome::TemperateFrontier ||
                 biome == Biome::TropicalFrontier) {
-                bushDensity = m_params.structureDensity * 5.0f;
+                bushDensity = m_params.structureDensity * GRASSLAND_BUSH_DENSITY;
             }
             
             if (chance < bushDensity) {
@@ -902,6 +934,7 @@ void WorldGenerator::GenerateStructures() {
                 s.rotation = 0;
                 s.destructible = true;
                 m_structures.push_back(s);
+                grid.occupy(x, y);
                 continue;
             }
         }
@@ -909,8 +942,8 @@ void WorldGenerator::GenerateStructures() {
 }
 
 void WorldGenerator::AnalyzePvPFairness() {
-    // This will be implemented with proper LOS checks
-    // For now, placeholder
+    // TODO
+    std::cout << "  PvP fairness analysis" << std::endl;
 }
 
 void WorldGenerator::BalanceMap() {
@@ -920,7 +953,7 @@ void WorldGenerator::BalanceMap() {
     // Scan for open regions and add crates/walls
     for (int y = 50; y < m_worldSize - 50; y += 30) {
         for (int x = 50; x < m_worldSize - 50; x += 30) {
-            float coverDensity = ComputeCoverDensity(x, y, 20);
+            const float coverDensity = ComputeCoverDensity(x, y, 20);
 
             if (coverDensity < m_params.minCoverDensity) {
                 // Add some cover structures
@@ -942,20 +975,21 @@ void WorldGenerator::GenerateSpawnPoints() {
     std::mt19937 rng(m_seed + 3000);
 
     // Generate spawn points in safe areas
-    int numSpawns = 5;
+    const int numSpawns = 5;
     for (int i = 0; i < numSpawns; i++) {
         int attempts = 0;
         while (attempts < 100) {
-            int x = rng() % m_worldSize;
-            int y = rng() % m_worldSize;
+            const int x = rng() % m_worldSize;
+            const int y = rng() % m_worldSize;
 
-            int idx = WorldToTileIndex(x, y);
-            uint8_t h = m_height[idx];
-            Biome biome = static_cast<Biome>(m_biome[idx]);
+            const int idx = WorldToTileIndex(x, y);
+            const uint8_t h = m_height[idx];
+            const Biome biome = static_cast<Biome>(m_biome[idx]);
 
             // Good spawn: plains, flat, not water
             if (h >= BEACH_LEVEL && h < MOUNTAIN_LEVEL - 30 &&
-                !(m_flags[idx] & TileFlags::Water) && biome == Biome::TemperateGrassland &&
+                !(m_flags[idx] & TileFlags::Water) && 
+                biome == Biome::TemperateGrassland &&
                 IsFlat(x, y, 5)) {
                 SpawnPoint sp;
                 sp.x = x;
@@ -989,10 +1023,10 @@ const Chunk* WorldGenerator::GetChunk(int cx, int cy) const {
 Tile* WorldGenerator::GetTile(int x, int y) {
     if (!InBounds(x, y)) return nullptr;
 
-    int cx = x / CHUNK_SIZE;
-    int cy = y / CHUNK_SIZE;
-    int tx = x % CHUNK_SIZE;
-    int ty = y % CHUNK_SIZE;
+    const int cx = x / CHUNK_SIZE;
+    const int cy = y / CHUNK_SIZE;
+    const int tx = x % CHUNK_SIZE;
+    const int ty = y % CHUNK_SIZE;
 
     Chunk* chunk = GetChunk(cx, cy);
     if (!chunk) return nullptr;
@@ -1003,10 +1037,10 @@ Tile* WorldGenerator::GetTile(int x, int y) {
 const Tile* WorldGenerator::GetTile(int x, int y) const {
     if (!InBounds(x, y)) return nullptr;
 
-    int cx = x / CHUNK_SIZE;
-    int cy = y / CHUNK_SIZE;
-    int tx = x % CHUNK_SIZE;
-    int ty = y % CHUNK_SIZE;
+    const int cx = x / CHUNK_SIZE;
+    const int cy = y / CHUNK_SIZE;
+    const int tx = x % CHUNK_SIZE;
+    const int ty = y % CHUNK_SIZE;
 
     const Chunk* chunk = GetChunk(cx, cy);
     if (!chunk) return nullptr;
@@ -1081,14 +1115,16 @@ void WorldGenerator::BuildChunkPhysics(Chunk* chunk, b2World& physicsWorld) {
 
     for (auto& r : rects) {
         b2PolygonShape shape;
-        float centerX = r.x + r.w * 0.5f;
-        float centerY = r.y + r.h * 0.5f;
+        const float centerX = r.x + r.w * 0.5f;
+        const float centerY = r.y + r.h * 0.5f;
         shape.SetAsBox(r.w * 0.5f, r.h * 0.5f, b2Vec2(centerX, centerY), 0);
 
         b2FixtureDef fixtureDef;
         fixtureDef.shape = &shape;
-        fixtureDef.filter.categoryBits = CAT_WALL;
-        fixtureDef.filter.maskBits = MASK_PLAYER_MOVE | MASK_BULLET;
+        // Use the collision categories from common/enums.hpp
+        fixtureDef.filter.categoryBits = static_cast<uint16_t>(CollisionCategory::CAT_WALL);
+        fixtureDef.filter.maskBits = static_cast<uint16_t>(CollisionMask::MASK_PLAYER_MOVE) | 
+                                     static_cast<uint16_t>(CollisionMask::MASK_BULLET);
 
         body->CreateFixture(&fixtureDef);
     }
@@ -1096,7 +1132,7 @@ void WorldGenerator::BuildChunkPhysics(Chunk* chunk, b2World& physicsWorld) {
     chunk->physicsBuilt = true;
 }
 
-// Helper functions
+// Inline helper functions
 
 int WorldGenerator::WorldToTileIndex(int x, int y) const {
     return y * m_worldSize + x;
@@ -1114,12 +1150,12 @@ std::pair<int, int> WorldGenerator::FindLowestNeighbor(int x, int y) const {
     uint8_t lowestHeight = m_height[WorldToTileIndex(x, y)];
 
     for (int i = 0; i < 8; i++) {
-        int nx = x + dx[i];
-        int ny = y + dy[i];
+        const int nx = x + dx[i];
+        const int ny = y + dy[i];
 
         if (!InBounds(nx, ny)) continue;
 
-        uint8_t h = m_height[WorldToTileIndex(nx, ny)];
+        const uint8_t h = m_height[WorldToTileIndex(nx, ny)];
         if (h < lowestHeight) {
             lowestHeight = h;
             bestX = nx;
@@ -1133,18 +1169,17 @@ std::pair<int, int> WorldGenerator::FindLowestNeighbor(int x, int y) const {
 bool WorldGenerator::IsFlat(int x, int y, int radius) const {
     if (!InBounds(x, y)) return false;
 
-    uint8_t centerHeight = m_height[WorldToTileIndex(x, y)];
+    const uint8_t centerHeight = m_height[WorldToTileIndex(x, y)];
     constexpr uint8_t threshold = 10;
 
     for (int dy = -radius; dy <= radius; dy++) {
         for (int dx = -radius; dx <= radius; dx++) {
-            int nx = x + dx;
-            int ny = y + dy;
+            const int nx = x + dx;
+            const int ny = y + dy;
             if (!InBounds(nx, ny)) continue;
 
-            uint8_t h = m_height[WorldToTileIndex(nx, ny)];
-            if (std::abs(static_cast<int>(h) - static_cast<int>(centerHeight)) >
-                threshold) {
+            const uint8_t h = m_height[WorldToTileIndex(nx, ny)];
+            if (std::abs(static_cast<int>(h) - static_cast<int>(centerHeight)) > threshold) {
                 return false;
             }
         }
@@ -1156,8 +1191,8 @@ bool WorldGenerator::IsFlat(int x, int y, int radius) const {
 bool WorldGenerator::NearWater(int x, int y, int radius) const {
     for (int dy = -radius; dy <= radius; dy++) {
         for (int dx = -radius; dx <= radius; dx++) {
-            int nx = x + dx;
-            int ny = y + dy;
+            const int nx = x + dx;
+            const int ny = y + dy;
             if (!InBounds(nx, ny)) continue;
 
             if (m_flags[WorldToTileIndex(nx, ny)] & TileFlags::Water) {
@@ -1172,7 +1207,7 @@ uint8_t WorldGenerator::ComputeTileFlags(int x, int y) const {
     uint8_t flags = m_flags[WorldToTileIndex(x, y)];
 
     // Add solid flag for mountains and high terrain
-    uint8_t h = m_height[WorldToTileIndex(x, y)];
+    const uint8_t h = m_height[WorldToTileIndex(x, y)];
     if (h > MOUNTAIN_LEVEL - 20) {
         flags |= TileFlags::Solid;
     }
@@ -1182,6 +1217,7 @@ uint8_t WorldGenerator::ComputeTileFlags(int x, int y) const {
 
 float WorldGenerator::ComputeSightlineLength(int x, int y, float angle) const {
     // TODO: Implement proper raycasting
+    // This is a placeholder for future LOS analysis
     return 0.0f;
 }
 
@@ -1191,12 +1227,12 @@ float WorldGenerator::ComputeCoverDensity(int x, int y, int radius) const {
 
     for (int dy = -radius; dy <= radius; dy++) {
         for (int dx = -radius; dx <= radius; dx++) {
-            int nx = x + dx;
-            int ny = y + dy;
+            const int nx = x + dx;
+            const int ny = y + dy;
             if (!InBounds(nx, ny)) continue;
 
             total++;
-            uint8_t flags = m_flags[WorldToTileIndex(nx, ny)];
+            const uint8_t flags = m_flags[WorldToTileIndex(nx, ny)];
             if (flags & (TileFlags::Solid | TileFlags::Cover)) {
                 coverCount++;
             }
