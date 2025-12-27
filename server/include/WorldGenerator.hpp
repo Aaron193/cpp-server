@@ -231,6 +231,12 @@ private:
     void Subtract(std::vector<float>& output, const std::vector<float>& mapA, 
                  const std::vector<float>& mapB);
     
+    // Debug visualization
+    void SaveMapImage(const std::string& filename) const;
+    void SaveHeightMapImage(const std::string& filename) const;
+    void SavePrecipitationMapImage(const std::string& filename) const;
+    void SaveTemperatureMapImage(const std::string& filename) const;
+    
     void ApplyRiverToMap(const std::vector<std::pair<int, int>>& path);
     
     std::pair<int, int> FindLowestNeighbor(int x, int y) const;

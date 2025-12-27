@@ -8,12 +8,16 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <iostream>
 #include <random>
 #include <unordered_set>
 
 #include "GameServer.hpp"
 #include "ecs/EntityManager.hpp"
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "external/stb_image_write.h"
 
 using namespace WorldGenConstants;
 
@@ -266,6 +270,13 @@ void WorldGenerator::GenerateWorld(const WorldGenParams& params) {
 
     std::cout << "Generating spawn points..." << std::endl;
     GenerateSpawnPoints();
+    
+    // Save debug images before freeing float buffers
+    std::cout << "Saving debug images..." << std::endl;
+    SaveMapImage("map_biomes.png");
+    SaveHeightMapImage("map_height.png");
+    SavePrecipitationMapImage("map_precipitation.png");
+    SaveTemperatureMapImage("map_temperature.png");
     
     // Free float buffers after generation
     m_heightFloat.clear();
@@ -1240,4 +1251,133 @@ float WorldGenerator::ComputeCoverDensity(int x, int y, int radius) const {
     }
 
     return total > 0 ? static_cast<float>(coverCount) / total : 0.0f;
+}
+
+// ============================================================================
+// Debug Visualization - Save maps as PPM images
+// ============================================================================
+
+struct RGB {
+    uint8_t r, g, b;
+};
+
+// Biome colors matching the client
+static RGB GetBiomeColor(Biome biome) {
+    switch (biome) {
+        // Ocean biomes
+        case Biome::Ocean: return {11, 10, 42};
+        case Biome::TropicalOcean: return {103, 201, 200};
+        case Biome::TemperateOcean: return {103, 162, 201};
+        case Biome::ArcticOcean: return {56, 89, 181};
+        
+        // Special terrain
+        case Biome::Beach: return {225, 209, 132};
+        case Biome::Mountain: return {100, 100, 100};
+        case Biome::Snow: return {238, 238, 238};
+        case Biome::Glacier: return {255, 255, 255};
+        
+        // Hot biomes
+        case Biome::HotDesert: return {232, 222, 153};
+        case Biome::HotSavanna: return {210, 219, 164};
+        case Biome::TropicalFrontier: return {182, 219, 116};
+        case Biome::TropicalForest: return {140, 201, 79};
+        case Biome::TropicalRainforest: return {132, 214, 49};
+        
+        // Temperate biomes
+        case Biome::TemperateDesert: return {234, 242, 179};
+        case Biome::TemperateGrassland: return {187, 212, 125};
+        case Biome::TemperateFrontier: return {165, 191, 99};
+        case Biome::TemperateForest: return {131, 161, 55};
+        case Biome::TemperateRainforest: return {114, 138, 54};
+        
+        // Cold biomes
+        case Biome::ColdDesert: return {204, 230, 220};
+        case Biome::Tundra: return {179, 189, 162};
+        case Biome::TaigaFrontier: return {125, 138, 96};
+        case Biome::Taiga: return {70, 107, 51};
+        case Biome::TaigaRainforest: return {38, 87, 13};
+        
+        default: return {255, 0, 255}; // Hot pink for missing biomes
+    }
+}
+
+static void WritePNG(const std::string& filename, int width, int height, const std::vector<RGB>& pixels) {
+    // stb_image_write expects RGBA or RGB data as unsigned char*
+    const unsigned char* data = reinterpret_cast<const unsigned char*>(pixels.data());
+    
+    if (stbi_write_png(filename.c_str(), width, height, 3, data, width * 3)) {
+        std::cout << "Saved map image to: " << filename << std::endl;
+    } else {
+        std::cerr << "Failed to save image: " << filename << std::endl;
+    }
+}
+
+void WorldGenerator::SaveMapImage(const std::string& filename) const {
+    std::vector<RGB> pixels(m_worldSize * m_worldSize);
+    
+    for (int y = 0; y < m_worldSize; y++) {
+        for (int x = 0; x < m_worldSize; x++) {
+            const int idx = WorldToTileIndex(x, y);
+            const Biome biome = static_cast<Biome>(m_biome[idx]);
+            pixels[idx] = GetBiomeColor(biome);
+        }
+    }
+    
+    WritePNG(filename, m_worldSize, m_worldSize, pixels);
+}
+
+void WorldGenerator::SaveHeightMapImage(const std::string& filename) const {
+    std::vector<RGB> pixels(m_worldSize * m_worldSize);
+    
+    for (int y = 0; y < m_worldSize; y++) {
+        for (int x = 0; x < m_worldSize; x++) {
+            const int idx = WorldToTileIndex(x, y);
+            const uint8_t h = m_height[idx];
+            pixels[idx] = {h, h, h};
+        }
+    }
+    
+    WritePNG(filename, m_worldSize, m_worldSize, pixels);
+}
+
+void WorldGenerator::SavePrecipitationMapImage(const std::string& filename) const {
+    std::vector<RGB> pixels(m_worldSize * m_worldSize);
+    
+    for (int y = 0; y < m_worldSize; y++) {
+        for (int x = 0; x < m_worldSize; x++) {
+            const int idx = WorldToTileIndex(x, y);
+            const float p = m_precipitationFloat[idx];
+            
+            // Map [-1, 1] to color gradient: blue (wet) to yellow (dry)
+            const float normalized = (p + 1.0f) * 0.5f; // [0, 1]
+            const uint8_t r = static_cast<uint8_t>(std::clamp((1.0f - normalized) * 255.0f, 0.0f, 255.0f));
+            const uint8_t g = static_cast<uint8_t>(std::clamp(normalized * 255.0f, 0.0f, 255.0f));
+            const uint8_t b = static_cast<uint8_t>(std::clamp(normalized * 128.0f, 0.0f, 255.0f));
+            
+            pixels[idx] = {r, g, b};
+        }
+    }
+    
+    WritePNG(filename, m_worldSize, m_worldSize, pixels);
+}
+
+void WorldGenerator::SaveTemperatureMapImage(const std::string& filename) const {
+    std::vector<RGB> pixels(m_worldSize * m_worldSize);
+    
+    for (int y = 0; y < m_worldSize; y++) {
+        for (int x = 0; x < m_worldSize; x++) {
+            const int idx = WorldToTileIndex(x, y);
+            const float t = m_temperatureFloat[idx];
+            
+            // Map [-1, 1] to color gradient: blue (cold) to red (hot)
+            const float normalized = (t + 1.0f) * 0.5f; // [0, 1]
+            const uint8_t r = static_cast<uint8_t>(std::clamp(normalized * 255.0f, 0.0f, 255.0f));
+            const uint8_t g = 0;
+            const uint8_t b = static_cast<uint8_t>(std::clamp((1.0f - normalized) * 255.0f, 0.0f, 255.0f));
+            
+            pixels[idx] = {r, g, b};
+        }
+    }
+    
+    WritePNG(filename, m_worldSize, m_worldSize, pixels);
 }
