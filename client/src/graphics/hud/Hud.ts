@@ -27,6 +27,7 @@ export class Hud extends PIXI.Container {
 
     resize() {
         this.healthBar.resize()
+        this.debugPanel.resize()
         this.newsFeed.resize()
         this.minimap.resize()
     }
