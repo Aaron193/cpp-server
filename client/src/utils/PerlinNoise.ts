@@ -15,12 +15,12 @@ export class PerlinNoise {
             p[i] = i
         }
 
-        // Shuffle using Mersenne Twister (matching C++ std::mt19937)
-        const mt = new MersenneTwister(seed)
-        
+        // Shuffle using seeded random
+        const rng = new XorShift32(seed)
+
         // Fisher-Yates shuffle
         for (let i = 255; i > 0; i--) {
-            const j = Math.floor(mt.random() * (i + 1))
+            const j = rng.randomInt(i + 1)
             const temp = p[i]
             p[i] = p[j]
             p[j] = temp
@@ -92,79 +92,26 @@ export class PerlinNoise {
 }
 
 
-// TODO: just implement this or somethign different on C++ too so we can match 100% the same
-
-// Matches C++ std::mt19937 behavior
-class MersenneTwister {
-    private static readonly N = 624
-    private static readonly M = 397
-    private static readonly MATRIX_A = 0x9908b0df
-    private static readonly UPPER_MASK = 0x80000000
-    private static readonly LOWER_MASK = 0x7fffffff
-
-    private mt: Uint32Array
-    private mti: number
+// Lightweight xorshift RNG shared with server implementation
+class XorShift32 {
+    private state: number
 
     constructor(seed: number) {
-        this.mt = new Uint32Array(MersenneTwister.N)
-        this.mti = MersenneTwister.N + 1
-        this.init(seed >>> 0)
+        const s = seed >>> 0
+        this.state = s === 0 ? 0x6d2b79f5 : s
     }
 
-    private init(seed: number): void {
-        this.mt[0] = seed >>> 0
-        for (this.mti = 1; this.mti < MersenneTwister.N; this.mti++) {
-            const s = this.mt[this.mti - 1] ^ (this.mt[this.mti - 1] >>> 30)
-            this.mt[this.mti] = 
-                (((((s & 0xffff0000) >>> 16) * 1812433253) << 16) + 
-                 (s & 0x0000ffff) * 1812433253 + this.mti) >>> 0
-        }
+    private nextUint32(): number {
+        let x = this.state
+        x ^= x << 13
+        x ^= x >>> 17
+        x ^= x << 5
+        this.state = x >>> 0
+        return this.state
     }
 
-    private next(): number {
-        let y: number
-        const mag01 = new Uint32Array([0, MersenneTwister.MATRIX_A])
-
-        if (this.mti >= MersenneTwister.N) {
-            let kk: number
-
-            for (kk = 0; kk < MersenneTwister.N - MersenneTwister.M; kk++) {
-                y = (this.mt[kk] & MersenneTwister.UPPER_MASK) | 
-                    (this.mt[kk + 1] & MersenneTwister.LOWER_MASK)
-                this.mt[kk] = this.mt[kk + MersenneTwister.M] ^ (y >>> 1) ^ mag01[y & 0x1]
-            }
-
-            for (; kk < MersenneTwister.N - 1; kk++) {
-                y = (this.mt[kk] & MersenneTwister.UPPER_MASK) | 
-                    (this.mt[kk + 1] & MersenneTwister.LOWER_MASK)
-                this.mt[kk] = this.mt[kk + (MersenneTwister.M - MersenneTwister.N)] ^ 
-                              (y >>> 1) ^ mag01[y & 0x1]
-            }
-
-            y = (this.mt[MersenneTwister.N - 1] & MersenneTwister.UPPER_MASK) | 
-                (this.mt[0] & MersenneTwister.LOWER_MASK)
-            this.mt[MersenneTwister.N - 1] = this.mt[MersenneTwister.M - 1] ^ 
-                                              (y >>> 1) ^ mag01[y & 0x1]
-
-            this.mti = 0
-        }
-
-        y = this.mt[this.mti++]
-
-        // Tempering
-        y ^= y >>> 11
-        y ^= (y << 7) & 0x9d2c5680
-        y ^= (y << 15) & 0xefc60000
-        y ^= y >>> 18
-
-        return y >>> 0
-    }
-
-    random(): number {
-        return this.next() / 0xffffffff
-    }
-
-    randomInt(max: number): number {
-        return Math.floor(this.random() * max)
+    randomInt(maxExclusive: number): number {
+        if (maxExclusive <= 0) return 0
+        return this.nextUint32() % maxExclusive
     }
 }

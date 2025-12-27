@@ -2,7 +2,29 @@
 
 #include <algorithm>
 #include <cmath>
-#include <random>
+
+namespace {
+class XorShift32 {
+   public:
+    explicit XorShift32(uint32_t seed) : state(seed ? seed : 0x6d2b79f5u) {}
+
+    uint32_t nextUint32() {
+        uint32_t x = state;
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        state = x;
+        return state;
+    }
+
+    uint32_t randomInt(uint32_t maxExclusive) {
+        return maxExclusive == 0 ? 0u : nextUint32() % maxExclusive;
+    }
+
+   private:
+    uint32_t state;
+};
+}  // namespace
 
 PerlinNoise::PerlinNoise(uint32_t seed) {
     generatePermutation(seed);
@@ -17,8 +39,12 @@ void PerlinNoise::generatePermutation(uint32_t seed) {
     }
 
     // Shuffle using seeded random
-    std::mt19937 rng(seed);
-    std::shuffle(p.begin(), p.end(), rng);
+    XorShift32 rng(seed);
+
+    for (int i = 255; i > 0; i--) {
+        const uint32_t j = rng.randomInt(static_cast<uint32_t>(i + 1));
+        std::swap(p[i], p[j]);
+    }
 
     permutation = std::move(p);
 }
