@@ -236,47 +236,63 @@ void WorldGenerator::GenerateWorld(const WorldGenParams& params) {
     // Generation pipeline - Volcanic Island Method
     std::cout << "Generating heightmap (volcanic island)..." << std::endl;
     GenerateHeight();
+    std::cout << "Saving debug image..." << std::endl;
+    SaveHeightMapImage("step_00_height.png");
 
     std::cout << "Generating precipitation (rain shadow)..." << std::endl;
     GeneratePrecipitation();
+    std::cout << "Saving debug image..." << std::endl;
+    SavePrecipitationMapImage("step_01_precipitation.png");
     
     std::cout << "Generating temperature (latitude + elevation)..." << std::endl;
     GenerateTemperature();
+    std::cout << "Saving debug image..." << std::endl;
+    SaveTemperatureMapImage("step_02_temperature.png");
     
     // !!Apply erosion BEFORE biome generation!!
     std::cout << "Applying hydraulic erosion..." << std::endl;
     ApplyErosion();
+    std::cout << "Saving debug image..." << std::endl;
+    SaveHeightMapImage("step_03_erosion_height.png");
     
     std::cout << "Generating biomes (15-biome system)..." << std::endl;
     GenerateBiomes();
+    std::cout << "Saving debug image..." << std::endl;
+    SaveMapImage("step_04_biomes.png");
 
     std::cout << "Generating rivers..." << std::endl;
     GenerateRivers();
+    std::cout << "Saving debug image..." << std::endl;
+    SaveMapImage("step_05_rivers.png");
 
     std::cout << "Generating lakes..." << std::endl;
     GenerateLakes();
+    std::cout << "Saving debug image..." << std::endl;
+    SaveMapImage("step_06_lakes.png");
 
     std::cout << "Building chunks..." << std::endl;
     BuildChunks();
 
     std::cout << "Generating structures..." << std::endl;
     GenerateStructures();
+    std::cout << "Saving debug image..." << std::endl;
+    SaveStructureOverlayImage("step_07_structures.png");
 
     std::cout << "Analyzing PvP fairness..." << std::endl;
     AnalyzePvPFairness();
 
     std::cout << "Balancing map..." << std::endl;
     BalanceMap();
+    std::cout << "Saving debug image..." << std::endl;
+    SaveStructureOverlayImage("step_08_balanced.png");
 
     std::cout << "Generating spawn points..." << std::endl;
     GenerateSpawnPoints();
     
-    // Save debug images before freeing float buffers
-    std::cout << "Saving debug images..." << std::endl;
-    SaveMapImage("map_biomes.png");
-    SaveHeightMapImage("map_height.png");
-    SavePrecipitationMapImage("map_precipitation.png");
-    SaveTemperatureMapImage("map_temperature.png");
+    // Save final debug images
+    std::cout << "Saving final debug images..." << std::endl;
+    SaveMapImage("step_09_final_biomes.png");
+    SaveHeightMapImage("step_09_final_height.png");
     
     // Free float buffers after generation
     m_heightFloat.clear();
@@ -302,12 +318,21 @@ void WorldGenerator::GenerateHeight() {
     const float radius = m_worldSize * ISLAND_RADIUS_RATIO;
     GenerateRadialGradient(radialGradient, centerX, centerY, radius, 1.0f, -1.0f);
     
+    // Debug: Save radial gradient
+    SaveFloatMapImage("debug_00a_radial_gradient.png", radialGradient, -1.0f, 1.0f);
+    
     // Step 2: Create fractal noise (organic bumps)
     std::vector<float> fractalNoise(m_worldSize * m_worldSize);
     GenerateFractalNoise(fractalNoise, m_seed, FRACTAL_OCTAVES);
     
+    // Debug: Save fractal noise
+    SaveFloatMapImage("debug_00b_fractal_noise.png", fractalNoise, -1.0f, 1.0f);
+    
     // Step 3: Blend with weighted mean
     WeightedMean(m_heightFloat, radialGradient, fractalNoise, HEIGHT_GRADIENT_WEIGHT);
+    
+    // Debug: Save weighted mean result
+    SaveFloatMapImage("debug_00c_weighted_mean.png", m_heightFloat, -1.0f, 1.0f);
     
     // Convert float [-1,1] to uint8 [0,255]
     for (size_t i = 0; i < m_heightFloat.size(); i++) {
@@ -486,6 +511,9 @@ void WorldGenerator::GenerateRadialGradient(std::vector<float>& output, float ce
     const float radiusSquared = radius * radius;
     const float invRadiusSquared = 1.0f / radiusSquared;
     
+    float minVal = 999999.0f;
+    float maxVal = -999999.0f;
+    
     for (int y = 0; y < m_worldSize; y++) {
         for (int x = 0; x < m_worldSize; x++) {
             const int idx = WorldToTileIndex(x, y);
@@ -497,8 +525,13 @@ void WorldGenerator::GenerateRadialGradient(std::vector<float>& output, float ce
             // Compute gradient value
             const float t = std::clamp(distSquared * invRadiusSquared, 0.0f, 1.0f);
             output[idx] = centerValue + (edgeValue - centerValue) * t;
+            
+            minVal = std::min(minVal, output[idx]);
+            maxVal = std::max(maxVal, output[idx]);
         }
     }
+    
+    std::cout << "  Radial gradient range: [" << minVal << ", " << maxVal << "]" << std::endl;
 }
 
 void WorldGenerator::GenerateLinearGradient(std::vector<float>& output, float startValue, float endValue) {
@@ -521,6 +554,9 @@ void WorldGenerator::GenerateFractalNoise(std::vector<float>& output, uint32_t s
     // Cache-optimized tiled processing
     constexpr int TILE_SIZE = NOISE_TILE_SIZE;
     
+    float minVal = 999999.0f;
+    float maxVal = -999999.0f;
+    
     for (int ty = 0; ty < m_worldSize; ty += TILE_SIZE) {
         for (int tx = 0; tx < m_worldSize; tx += TILE_SIZE) {
             // Process tiles for better cache locality
@@ -536,22 +572,42 @@ void WorldGenerator::GenerateFractalNoise(std::vector<float>& output, uint32_t s
                     const float fy = static_cast<float>(y);
                     
                     for (int i = 0; i < octaves && i < FRACTAL_OCTAVES; i++) {
-                        total += noise.noise(fx * FRACTAL_FREQUENCIES[i], fy * FRACTAL_FREQUENCIES[i]) * FRACTAL_WEIGHTS[i];
+                        // Scale frequency and add per-octave offset to avoid grid alignment
+                        const float freq = FRACTAL_FREQUENCIES[i];
+                        const float offsetPerOctave = 0.5f / freq;  // Scale offset with frequency
+                        const float sampleX = (fx + offsetPerOctave) * freq;
+                        const float sampleY = (fy + offsetPerOctave) * freq;
+                        
+                        const float noiseVal = noise.noise(sampleX, sampleY);
+                        const float weightedVal = noiseVal * FRACTAL_WEIGHTS[i];
+                        total += weightedVal;
                     }
                     
                     output[idx] = total;
+                    minVal = std::min(minVal, total);
+                    maxVal = std::max(maxVal, total);
                 }
             }
         }
     }
+    
+    // Debug output
+    std::cout << "  Fractal noise range: [" << minVal << ", " << maxVal << "]" << std::endl;
 }
 
 void WorldGenerator::WeightedMean(std::vector<float>& output, const std::vector<float>& mapA, const std::vector<float>& mapB, float weight) {
     const float invWeight = 1.0f / weight;
     
+    float minVal = 999999.0f;
+    float maxVal = -999999.0f;
+    
     for (size_t i = 0; i < mapA.size(); i++) {
         output[i] = ((mapA[i] * weight) + (mapB[i] * invWeight)) * 0.5f;
+        minVal = std::min(minVal, output[i]);
+        maxVal = std::max(maxVal, output[i]);
     }
+    
+    std::cout << "  Weighted mean (w=" << weight << ") range: [" << minVal << ", " << maxVal << "]" << std::endl;
 }
 
 void WorldGenerator::Subtract(std::vector<float>& output, const std::vector<float>& mapA, const std::vector<float>& mapB) {
@@ -1376,6 +1432,73 @@ void WorldGenerator::SaveTemperatureMapImage(const std::string& filename) const 
             const uint8_t b = static_cast<uint8_t>(std::clamp((1.0f - normalized) * 255.0f, 0.0f, 255.0f));
             
             pixels[idx] = {r, g, b};
+        }
+    }
+    
+    WritePNG(filename, m_worldSize, m_worldSize, pixels);
+}
+
+void WorldGenerator::SaveStructureOverlayImage(const std::string& filename) const {
+    std::vector<RGB> pixels(m_worldSize * m_worldSize);
+    
+    // Start with biome colors
+    for (int y = 0; y < m_worldSize; y++) {
+        for (int x = 0; x < m_worldSize; x++) {
+            const int idx = WorldToTileIndex(x, y);
+            const Biome biome = static_cast<Biome>(m_biome[idx]);
+            pixels[idx] = GetBiomeColor(biome);
+        }
+    }
+    
+    // Overlay structures with distinct colors
+    for (const auto& structure : m_structures) {
+        if (!InBounds(structure.x, structure.y)) continue;
+        const int idx = WorldToTileIndex(structure.x, structure.y);
+        
+        // Color structures based on type
+        switch (structure.type) {
+            case StructureType::House:
+                pixels[idx] = {200, 0, 0};  // Red houses
+                break;
+            case StructureType::Tree:
+                pixels[idx] = {34, 139, 34};  // Forest green
+                break;
+            case StructureType::Rock:
+                pixels[idx] = {128, 128, 128};  // Gray
+                break;
+            case StructureType::Bush:
+                pixels[idx] = {107, 142, 35};  // Olive
+                break;
+            case StructureType::Crate:
+                pixels[idx] = {210, 105, 30};  // Chocolate
+                break;
+            case StructureType::Wall:
+                pixels[idx] = {139, 69, 19};  // Saddle brown
+                break;
+            case StructureType::Fence:
+                pixels[idx] = {184, 134, 11};  // Dark goldenrod
+                break;
+        }
+    }
+    
+    WritePNG(filename, m_worldSize, m_worldSize, pixels);
+}
+
+void WorldGenerator::SaveFloatMapImage(const std::string& filename, const std::vector<float>& data, float minVal, float maxVal) const {
+    std::vector<RGB> pixels(m_worldSize * m_worldSize);
+    
+    const float range = maxVal - minVal;
+    
+    for (int y = 0; y < m_worldSize; y++) {
+        for (int x = 0; x < m_worldSize; x++) {
+            const int idx = WorldToTileIndex(x, y);
+            
+            // Normalize to [0, 1]
+            const float normalized = (data[idx] - minVal) / range;
+            const float clamped = std::clamp(normalized, 0.0f, 1.0f);
+            const uint8_t value = static_cast<uint8_t>(clamped * 255.0f);
+            
+            pixels[idx] = {value, value, value};
         }
     }
     

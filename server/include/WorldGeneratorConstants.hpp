@@ -68,12 +68,12 @@ namespace WorldGenConstants {
     // Noise octaves and frequencies
     constexpr int FRACTAL_OCTAVES = 8;
     constexpr float FRACTAL_FREQUENCIES[8] = {
-        1.0f/128.0f, 1.0f/64.0f, 1.0f/32.0f, 1.0f/16.0f,
-        1.0f/8.0f, 1.0f/4.0f, 1.0f/2.0f, 1.0f
+        1.0f, 2.0f, 4.0f, 8.0f,
+        16.0f, 32.0f, 64.0f, 128.0f
     };
     constexpr float FRACTAL_WEIGHTS[8] = {
-        1.0f/128.0f, 1.0f/128.0f, 1.0f/64.0f, 1.0f/32.0f,
-        1.0f/16.0f, 1.0f/8.0f, 1.0f/4.0f, 1.0f/2.0f
+        1.0f/2.0f, 1.0f/4.0f, 1.0f/8.0f, 1.0f/16.0f,
+        1.0f/32.0f, 1.0f/64.0f, 1.0f/128.0f, 1.0f/256.0f
     };
     
     // Tiling for cache optimization

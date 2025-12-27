@@ -236,6 +236,8 @@ private:
     void SaveHeightMapImage(const std::string& filename) const;
     void SavePrecipitationMapImage(const std::string& filename) const;
     void SaveTemperatureMapImage(const std::string& filename) const;
+    void SaveStructureOverlayImage(const std::string& filename) const;
+    void SaveFloatMapImage(const std::string& filename, const std::vector<float>& data, float minVal, float maxVal) const;
     
     void ApplyRiverToMap(const std::vector<std::pair<int, int>>& path);
     

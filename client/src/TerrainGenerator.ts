@@ -346,7 +346,12 @@ export class TerrainGenerator {
                         
                         let total = 0
                         for (let i = 0; i < octaves && i < FRACTAL_OCTAVES; i++) {
-                            total += noise.noise(x * FRACTAL_FREQUENCIES[i], y * FRACTAL_FREQUENCIES[i]) * FRACTAL_WEIGHTS[i]
+                            // Scale frequency and add per-octave offset to avoid grid alignment
+                            const freq = FRACTAL_FREQUENCIES[i]
+                            const offsetPerOctave = 0.5 / freq
+                            const sampleX = (x + offsetPerOctave) * freq
+                            const sampleY = (y + offsetPerOctave) * freq
+                            total += noise.noise(sampleX, sampleY) * FRACTAL_WEIGHTS[i]
                         }
                         
                         output[idx] = total

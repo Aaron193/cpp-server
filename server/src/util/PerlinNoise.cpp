@@ -59,11 +59,16 @@ float PerlinNoise::lerp(float t, float a, float b) const {
 }
 
 float PerlinNoise::grad(int hash, float x, float y) const {
-    // Convert hash to one of 16 gradient directions
+    // Use 16 predefined gradient vectors
+    static const float gradients[16][2] = {
+        { 1,  1}, { -1,  1}, { 1, -1}, { -1, -1},
+        { 1,  0}, { -1,  0}, { 1,  0}, { -1,  0},
+        { 0,  1}, {  0, -1}, { 0,  1}, {  0, -1},
+        { 1,  1}, { -1,  1}, { 0, -1}, {  0,  1}
+    };
+    
     const int h = hash & 15;
-    const float u = h < 8 ? x : y;
-    const float v = h < 4 ? y : (h == 12 || h == 14 ? x : 0.0f);
-    return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
+    return gradients[h][0] * x + gradients[h][1] * y;
 }
 
 float PerlinNoise::noise(float x, float y) const {
