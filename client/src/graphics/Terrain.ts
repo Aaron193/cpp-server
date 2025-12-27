@@ -12,40 +12,40 @@ interface ColorRGB {
     b: number
 }
 
-// Biome-specific colors for the 15-biome volcanic system
+// Biome-specific colors for the 15-biome volcanic system (matching demo)
 const BIOME_COLORS: Record<Biome, ColorRGB> = {
-    // Ocean biomes (depth-based blues)
+    // Ocean biomes
     [Biome.Ocean]: { r: 11, g: 10, b: 42 },
-    [Biome.TropicalOcean]: { r: 0, g: 91, b: 130 },
-    [Biome.TemperateOcean]: { r: 7, g: 16, b: 59 },
-    [Biome.ArcticOcean]: { r: 50, g: 70, b: 90 },
+    [Biome.TropicalOcean]: { r: 103, g: 201, b: 200 },   // #67C9C8
+    [Biome.TemperateOcean]: { r: 103, g: 162, b: 201 },  // #67A2C9
+    [Biome.ArcticOcean]: { r: 56, g: 89, b: 181 },       // #3859B5
     
     // Special terrain
     [Biome.Beach]: { r: 225, g: 209, b: 132 },
     [Biome.Mountain]: { r: 100, g: 100, b: 100 },
-    [Biome.Snow]: { r: 240, g: 248, b: 255 },
-    [Biome.Glacier]: { r: 200, g: 230, b: 255 },
+    [Biome.Snow]: { r: 238, g: 238, b: 238 },            // #EEE
+    [Biome.Glacier]: { r: 255, g: 255, b: 255 },         // white
     
     // Hot biomes
-    [Biome.HotDesert]: { r: 230, g: 200, b: 140 },
-    [Biome.HotSavanna]: { r: 210, g: 180, b: 100 },
-    [Biome.TropicalFrontier]: { r: 140, g: 170, b: 80 },
-    [Biome.TropicalForest]: { r: 80, g: 140, b: 60 },
-    [Biome.TropicalRainforest]: { r: 40, g: 100, b: 40 },
+    [Biome.HotDesert]: { r: 232, g: 222, b: 153 },       // #E8DE99
+    [Biome.HotSavanna]: { r: 210, g: 219, b: 164 },      // #D2DBA4
+    [Biome.TropicalFrontier]: { r: 182, g: 219, b: 116 },// #B6DB74
+    [Biome.TropicalForest]: { r: 140, g: 201, b: 79 },   // #8CC94F
+    [Biome.TropicalRainforest]: { r: 132, g: 214, b: 49 },// #84D631
     
     // Temperate biomes
-    [Biome.TemperateDesert]: { r: 200, g: 180, b: 130 },
-    [Biome.TemperateGrassland]: { r: 161, g: 164, b: 77 },
-    [Biome.TemperateFrontier]: { r: 153, g: 146, b: 78 },
-    [Biome.TemperateForest]: { r: 90, g: 130, b: 60 },
-    [Biome.TemperateRainforest]: { r: 50, g: 110, b: 50 },
+    [Biome.TemperateDesert]: { r: 234, g: 242, b: 179 }, // #EAF2B3
+    [Biome.TemperateGrassland]: { r: 187, g: 212, b: 125 },// #BBD47D
+    [Biome.TemperateFrontier]: { r: 165, g: 191, b: 99 },// #A5BF63
+    [Biome.TemperateForest]: { r: 131, g: 161, b: 55 },  // #83A137
+    [Biome.TemperateRainforest]: { r: 114, g: 138, b: 54 },// #728A36
     
     // Cold biomes
-    [Biome.ColdDesert]: { r: 150, g: 150, b: 140 },
-    [Biome.Tundra]: { r: 140, g: 140, b: 120 },
-    [Biome.TaigaFrontier]: { r: 100, g: 120, b: 80 },
-    [Biome.Taiga]: { r: 70, g: 100, b: 60 },
-    [Biome.TaigaRainforest]: { r: 50, g: 80, b: 50 },
+    [Biome.ColdDesert]: { r: 204, g: 230, b: 220 },      // #CCE6DC
+    [Biome.Tundra]: { r: 179, g: 189, b: 162 },          // #B3BDA2
+    [Biome.TaigaFrontier]: { r: 125, g: 138, b: 96 },    // #7D8A60
+    [Biome.Taiga]: { r: 70, g: 107, b: 51 },             // #466B33
+    [Biome.TaigaRainforest]: { r: 38, g: 87, b: 13 },    // #26570D
 }
 
 // Get biome color with optional height-based shading
