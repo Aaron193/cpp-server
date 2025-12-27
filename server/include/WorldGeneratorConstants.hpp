@@ -4,7 +4,7 @@ namespace WorldGenConstants {
     // Heightmap generation
     constexpr float ISLAND_CENTER_X_RATIO = 0.5f;
     constexpr float ISLAND_CENTER_Y_RATIO = 0.5f;
-    constexpr float ISLAND_RADIUS_RATIO = 0.44f;
+    constexpr float ISLAND_RADIUS_RATIO = 0.66f;
     constexpr float HEIGHT_GRADIENT_WEIGHT = 1.33f;  // 57% gradient, 43% noise
     
     // Precipitation
@@ -65,15 +65,15 @@ namespace WorldGenConstants {
     constexpr float HIGHLAND_ROCK_DENSITY = 2.0f;
     constexpr float GRASSLAND_BUSH_DENSITY = 5.0f;
     
-    // Noise octaves and frequencies
+    // Noise octaves and frequencies (matching JavaScript implementation)
     constexpr int FRACTAL_OCTAVES = 8;
     constexpr float FRACTAL_FREQUENCIES[8] = {
-        1.0f, 2.0f, 4.0f, 8.0f,
-        16.0f, 32.0f, 64.0f, 128.0f
+        1.0f, 0.5f, 0.25f, 0.125f,
+        0.0625f, 0.03125f, 0.015625f, 0.0078125f
     };
     constexpr float FRACTAL_WEIGHTS[8] = {
-        1.0f/2.0f, 1.0f/4.0f, 1.0f/8.0f, 1.0f/16.0f,
-        1.0f/32.0f, 1.0f/64.0f, 1.0f/128.0f, 1.0f/256.0f
+        2.0f/128.0f, 2.0f/128.0f, 2.0f/64.0f, 2.0f/32.0f,
+        2.0f/16.0f, 2.0f/8.0f, 2.0f/4.0f, 2.0f/2.0f
     };
     
     // Tiling for cache optimization

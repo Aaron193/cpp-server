@@ -4,6 +4,9 @@ set -e
 BUILD_TYPE=Release
 RUN_AFTER_BUILD=0
 
+VCPKG_ROOT="$HOME/vcpkg"
+VCPKG_TOOLCHAIN="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+
 for arg in "$@"; do
     case $arg in
         --debug)
@@ -23,17 +26,31 @@ for arg in "$@"; do
     esac
 done
 
+# Check prerequisites
+if [[ ! -f "$VCPKG_TOOLCHAIN" ]]; then
+    echo "ERROR: vcpkg toolchain not found!"
+    echo "Expected: $VCPKG_TOOLCHAIN"
+    echo "Is vcpkg installed in $VCPKG_ROOT ?"
+    exit 1
+fi
+
+if ! command -v cmake >/dev/null; then
+    echo "ERROR: cmake not installed"
+    exit 1
+fi
+
+# Build
 mkdir -p build
 cd build
-cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE ..
+
+cmake \
+    -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+    -DCMAKE_TOOLCHAIN_FILE="$VCPKG_TOOLCHAIN" \
+    ..
+
 cmake --build . --parallel
 
+# Run 
 if [[ $RUN_AFTER_BUILD -eq 1 ]]; then
     ./server
 fi
-
-# Usage:
-# ./build.sh --release :       builds in Release mode
-# ./build.sh --debug :         builds in Debug mode
-# ./build.sh --release --run : builds in Release mode and runs
-# ./build.sh --debug --run :   builds in Debug mode and runs

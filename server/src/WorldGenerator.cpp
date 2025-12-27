@@ -518,12 +518,22 @@ void WorldGenerator::GenerateRadialGradient(std::vector<float>& output, float ce
         for (int x = 0; x < m_worldSize; x++) {
             const int idx = WorldToTileIndex(x, y);
             
+            output[idx] = edgeValue;
+            
+            // Calculate distance from this tile to the center
             const float dx = static_cast<float>(x) - centerX;
             const float dy = static_cast<float>(y) - centerY;
-            const float distSquared = dx * dx + dy * dy;
+            const float distance = std::sqrt(dx * dx + dy * dy);
             
-            // Compute gradient value
-            const float t = std::clamp(distSquared * invRadiusSquared, 0.0f, 1.0f);
+            // Skip if outside radius
+            if (distance > radius) {
+                minVal = std::min(minVal, edgeValue);
+                maxVal = std::max(maxVal, edgeValue);
+                continue;
+            }
+            
+            // Scale from centerValue to edgeValue as distance goes from 0 to radius
+            const float t = distance / radius;
             output[idx] = centerValue + (edgeValue - centerValue) * t;
             
             minVal = std::min(minVal, output[idx]);
@@ -570,13 +580,11 @@ void WorldGenerator::GenerateFractalNoise(std::vector<float>& output, uint32_t s
                     float total = 0.0f;
                     const float fx = static_cast<float>(x);
                     const float fy = static_cast<float>(y);
-                    
+
                     for (int i = 0; i < octaves && i < FRACTAL_OCTAVES; i++) {
-                        // Scale frequency and add per-octave offset to avoid grid alignment
                         const float freq = FRACTAL_FREQUENCIES[i];
-                        const float offsetPerOctave = 0.5f / freq;  // Scale offset with frequency
-                        const float sampleX = (fx + offsetPerOctave) * freq;
-                        const float sampleY = (fy + offsetPerOctave) * freq;
+                        const float sampleX = fx * freq;
+                        const float sampleY = fy * freq;
                         
                         const float noiseVal = noise.noise(sampleX, sampleY);
                         const float weightedVal = noiseVal * FRACTAL_WEIGHTS[i];
@@ -600,7 +608,7 @@ void WorldGenerator::WeightedMean(std::vector<float>& output, const std::vector<
     
     float minVal = 999999.0f;
     float maxVal = -999999.0f;
-    
+
     for (size_t i = 0; i < mapA.size(); i++) {
         output[i] = ((mapA[i] * weight) + (mapB[i] * invWeight)) * 0.5f;
         minVal = std::min(minVal, output[i]);
