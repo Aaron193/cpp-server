@@ -23,6 +23,7 @@ export class Hud extends PIXI.Container {
         this.addChild(this.debugPanel)
         this.addChild(this.newsFeed)
         this.addChild(this.minimap)
+        this.resize()
     }
 
     resize() {

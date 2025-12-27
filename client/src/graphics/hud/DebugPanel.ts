@@ -20,7 +20,6 @@ export class DebugPanel extends PIXI.Container {
         })
 
         this.addChild(this.panel)
-        this.resize()
     }
 
     resize(): void {
@@ -46,7 +45,7 @@ export class DebugPanel extends PIXI.Container {
                 const tile = world.terrainGenerator.getTile(tileX, tileY)
                 
                 if (tile) {
-                    debugText += `\nTile: ${tileX},${tileY} | Biome: ${BIOME_NAMES[tile.biome]} | Height: ${tile.height}`
+                     debugText += `\nTile: ${tileX},${tileY} | Biome: ${BIOME_NAMES[tile.biome]} | Height: ${tile.height}`
                     if (tile.isWater) {
                         debugText += ' [WATER]'
                     }
@@ -54,8 +53,6 @@ export class DebugPanel extends PIXI.Container {
             }
             
             this.panel.text = debugText
-        } else {
-            console.log('my entity does not exist')
         }
     }
 }

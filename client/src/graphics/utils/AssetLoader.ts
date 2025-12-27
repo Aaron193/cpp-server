@@ -47,11 +47,9 @@ export class AssetLoader {
         
         switch (type) {
             case EntityTypes.BUSH:
-                console.log('registering bush variant: ', variant)
                 key = `bush_${variant}`
                 break
             case EntityTypes.ROCK:
-                console.log('registering rock variant: ', variant)
                 key = `rock_${variant}`
                 break
             case EntityTypes.WALL:
