@@ -4,7 +4,10 @@
 #include <cstdint>
 #include <deque>
 #include "external/FastNoiseLite.h"
-#include "external/stb_image_write.h"
+
+// Forward declarations for Box2D
+class b2World;
+class b2Body;
 
 struct Color {
     uint8_t r, g, b;
@@ -37,15 +40,30 @@ struct TerrainMesh {
     std::vector<uint32_t> indices; // triangles (triples)
 };
 
-class VolcanicWorld {
+// Spawn point for player spawning
+struct SpawnPoint {
+    int x, y;
+    float safetyScore;
+};
+
+class World {
 public:
-    VolcanicWorld();
+    World();
     
     void generateIsland(int width, int height, const std::string& outputDir);
     
     // New mesh-based terrain generation
     std::vector<TerrainMesh> buildTerrainMeshes();
     void saveTerrainMeshesJSON(const std::vector<TerrainMesh>& meshes, const std::string& filename);
+
+    // Box2D physics integration
+    void BuildMeshPhysics(const std::vector<TerrainMesh>& meshes, b2World& physicsWorld);
+
+    // Game integration
+    void generateSpawnPoints();
+    const std::vector<SpawnPoint>& GetSpawnPoints() const { return m_spawnPoints; }
+    uint32_t GetSeed() const { return m_seed; }
+    int GetWorldSize() const { return width; }
 
     void setIslandSize(float size) {
         islandSize = std::max(0.1f, std::min(size, 1.5f)); 
@@ -57,6 +75,7 @@ public:
     
     void setMasterSeed(int seed) {
         masterSeed = seed;
+        m_seed = seed;
     }
 
 private:
@@ -65,12 +84,14 @@ private:
     float islandSize;
     int numNoiseLayers;
     int masterSeed;
+    uint32_t m_seed;
     
     std::vector<float> radialGradient;
     std::vector<float> organicNoise;
     std::vector<float> heightmap;
     
     std::string outputDirectory;
+    std::vector<SpawnPoint> m_spawnPoints;
 
     void createOutputDirectory();
     uint8_t floatToUint8(float value);

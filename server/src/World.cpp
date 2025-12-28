@@ -1,4 +1,4 @@
-#include "VolcanicWorld.hpp"
+#include "World.hpp"
 #include <cmath>
 #include <algorithm>
 #include <iostream>
@@ -6,15 +6,24 @@
 #include <filesystem>
 #include <unordered_set>
 #include <array>
+#include <random>
 #include "external/earcut.hpp"
+#include <box2d/b2_body.h>
+#include <box2d/b2_polygon_shape.h>
+#include <box2d/b2_chain_shape.h>
+#include <box2d/b2_fixture.h>
+#include <box2d/b2_world.h>
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "external/stb_image_write.h"
 
 namespace fs = std::filesystem;
 
-VolcanicWorld::VolcanicWorld()
-    : width(0), height(0), islandSize(1.0f), numNoiseLayers(3), masterSeed(42) {
+World::World()
+    : width(0), height(0), islandSize(1.0f), numNoiseLayers(3), masterSeed(42), m_seed(42) {
 }
 
-void VolcanicWorld::createOutputDirectory() {
+void World::createOutputDirectory() {
     if (!outputDirectory.empty()) {
         try {
             fs::create_directories(outputDirectory);
@@ -24,12 +33,12 @@ void VolcanicWorld::createOutputDirectory() {
     }
 }
 
-uint8_t VolcanicWorld::floatToUint8(float v) {
+uint8_t World::floatToUint8(float v) {
     v = std::clamp(v, 0.0f, 1.0f);
     return static_cast<uint8_t>(v * 255.0f);
 }
 
-void VolcanicWorld::saveFloatImageAsGrayscale(
+void World::saveFloatImageAsGrayscale(
     const std::string& filename,
     const std::vector<float>& data
 ) {
@@ -51,7 +60,7 @@ void VolcanicWorld::saveFloatImageAsGrayscale(
 /* ============================================================
    COLOR UTILITIES
    ============================================================ */
-Color VolcanicWorld::lerpColor(const Color& a, const Color& b, float t) {
+Color World::lerpColor(const Color& a, const Color& b, float t) {
     t = std::clamp(t, 0.0f, 1.0f);
     return Color(
         static_cast<uint8_t>(std::round(a.r + (b.r - a.r) * t)),
@@ -60,7 +69,7 @@ Color VolcanicWorld::lerpColor(const Color& a, const Color& b, float t) {
     );
 }
 
-Color VolcanicWorld::getTerrainColor(float height) {
+Color World::getTerrainColor(float height) {
     // Colors sampled from aerial photos of volcanic islands
     // Deep water -> Shallow water -> Beach -> Grass -> Mountain -> Peak
     
@@ -115,7 +124,7 @@ Color VolcanicWorld::getTerrainColor(float height) {
     }
 }
 
-void VolcanicWorld::saveColoredImage(
+void World::saveColoredImage(
     const std::string& filename,
     const std::vector<float>& heightData
 ) {
@@ -141,7 +150,7 @@ void VolcanicWorld::saveColoredImage(
 /* ============================================================
    PSEUDORANDOM SEED GENERATOR
    ============================================================ */
-int VolcanicWorld::generateSeed(int index) {
+int World::generateSeed(int index) {
     // Simple Linear Congruential Generator (LCG)
     // Using constants from Numerical Recipes
     long long x = masterSeed + index;
@@ -153,7 +162,7 @@ int VolcanicWorld::generateSeed(int index) {
 /* ============================================================
    STEP 1: RADIAL GRADIENT (CONE SHAPE)
    ============================================================ */
-void VolcanicWorld::generateRadialGradient() {
+void World::generateRadialGradient() {
     radialGradient.assign(width * height, 0.0f);
     
     float cx = width * 0.5f;
@@ -188,7 +197,7 @@ void VolcanicWorld::generateRadialGradient() {
 /* ============================================================
    STEP 2: ORGANIC NOISE (MULTIPLE LAYERS)
    ============================================================ */
-void VolcanicWorld::generateOrganicNoise() {
+void World::generateOrganicNoise() {
     organicNoise.assign(width * height, 0.0f);
     
     std::vector<std::vector<float>> noiseLayers_data;
@@ -257,7 +266,7 @@ void VolcanicWorld::generateOrganicNoise() {
 /* ============================================================
    STEP 3: AVERAGE THEM TOGETHER
    ============================================================ */
-void VolcanicWorld::averageTogether() {
+void World::averageTogether() {
     heightmap.assign(width * height, 0.0f);
     
     for (int i = 0; i < width * height; ++i) {
@@ -276,7 +285,7 @@ void VolcanicWorld::averageTogether() {
 /* ============================================================
    NORMALIZE (OPTIONAL - ENSURE 0-1 RANGE)
    ============================================================ */
-void VolcanicWorld::normalizeHeightmap() {
+void World::normalizeHeightmap() {
     float minH = 1.0f;
     float maxH = 0.0f;
     
@@ -296,7 +305,7 @@ void VolcanicWorld::normalizeHeightmap() {
 /* ============================================================
    MAIN PIPELINE
    ============================================================ */
-void VolcanicWorld::generateIsland(
+void World::generateIsland(
     int w,
     int h,
     const std::string& outputDir
@@ -326,7 +335,7 @@ void VolcanicWorld::generateIsland(
 /* ============================================================
    BIOME CLASSIFICATION
    ============================================================ */
-BiomeType VolcanicWorld::getBiomeType(float height) {
+BiomeType World::getBiomeType(float height) {
     if (height < 0.30f) return BIOME_DEEP_WATER;
     else if (height < 0.38f) return BIOME_SHALLOW_WATER;
     else if (height < 0.42f) return BIOME_BEACH;
@@ -336,7 +345,7 @@ BiomeType VolcanicWorld::getBiomeType(float height) {
     else return BIOME_PEAK;
 }
 
-const char* VolcanicWorld::getBiomeName(BiomeType type) {
+const char* World::getBiomeName(BiomeType type) {
     switch(type) {
         case BIOME_DEEP_WATER: return "Deep Water";
         case BIOME_SHALLOW_WATER: return "Shallow Water";
@@ -349,7 +358,7 @@ const char* VolcanicWorld::getBiomeName(BiomeType type) {
     }
 }
 
-void VolcanicWorld::classifyBiomes(std::vector<BiomeType>& biomeMap) {
+void World::classifyBiomes(std::vector<BiomeType>& biomeMap) {
     biomeMap.resize(width * height);
     
     for (int i = 0; i < width * height; ++i) {
@@ -360,7 +369,7 @@ void VolcanicWorld::classifyBiomes(std::vector<BiomeType>& biomeMap) {
 /* ============================================================
    GET BIOME COLOR (FLAT COLORS FOR BIOMES)
    ============================================================ */
-Color VolcanicWorld::getBiomeColor(BiomeType type) {
+Color World::getBiomeColor(BiomeType type) {
     switch(type) {
         case BIOME_DEEP_WATER:
             return Color(20, 40, 100);      // Dark blue
@@ -525,7 +534,7 @@ static std::vector<Vec2> traceContour(
 }
 
 // Updated buildTerrainMeshes using the fixed contour tracing
-std::vector<TerrainMesh> VolcanicWorld::buildTerrainMeshes() {
+std::vector<TerrainMesh> World::buildTerrainMeshes() {
     std::vector<TerrainMesh> meshes;
 
     if (heightmap.empty()) {
@@ -649,7 +658,7 @@ std::vector<TerrainMesh> VolcanicWorld::buildTerrainMeshes() {
    SAVE TERRAIN MESHES TO JSON
    ============================================================ */
 
-void VolcanicWorld::saveTerrainMeshesJSON(
+void World::saveTerrainMeshesJSON(
     const std::vector<TerrainMesh>& meshes,
     const std::string& filename
 ) {
@@ -695,4 +704,148 @@ void VolcanicWorld::saveTerrainMeshesJSON(
 
     out.close();
     std::cout << "Saved terrain meshes to " << filename << "\n";
+}
+
+/* ============================================================
+   BOX2D PHYSICS INTEGRATION
+   ============================================================ */
+
+void World::BuildMeshPhysics(const std::vector<TerrainMesh>& meshes, b2World& physicsWorld) {
+    std::cout << "Building Box2D physics from terrain meshes...\n";
+    
+    // Create a single static body to hold all terrain fixtures
+    b2BodyDef bodyDef;
+    bodyDef.type = b2_staticBody;
+    bodyDef.position.Set(0.0f, 0.0f);
+    b2Body* terrainBody = physicsWorld.CreateBody(&bodyDef);
+    
+    int totalFixtures = 0;
+    
+    // Only create physics for solid terrain (not water)
+    for (const auto& mesh : meshes) {
+        // Skip water biomes - only create collision for land
+        if (mesh.biome == BIOME_DEEP_WATER || mesh.biome == BIOME_SHALLOW_WATER) {
+            continue;
+        }
+        
+        // Create triangles from the mesh indices
+        for (size_t i = 0; i < mesh.indices.size(); i += 3) {
+            uint32_t idx0 = mesh.indices[i];
+            uint32_t idx1 = mesh.indices[i + 1];
+            uint32_t idx2 = mesh.indices[i + 2];
+            
+            // Validate indices
+            if (idx0 >= mesh.vertices.size() || idx1 >= mesh.vertices.size() || idx2 >= mesh.vertices.size()) {
+                continue;
+            }
+            
+            const Vec2& v0 = mesh.vertices[idx0];
+            const Vec2& v1 = mesh.vertices[idx1];
+            const Vec2& v2 = mesh.vertices[idx2];
+            
+            // Create polygon shape for this triangle
+            b2PolygonShape triangleShape;
+            b2Vec2 vertices[3];
+            vertices[0].Set(v0.x, v0.y);
+            vertices[1].Set(v1.x, v1.y);
+            vertices[2].Set(v2.x, v2.y);
+            triangleShape.Set(vertices, 3);
+            
+            // Create fixture
+            b2FixtureDef fixtureDef;
+            fixtureDef.shape = &triangleShape;
+            fixtureDef.friction = 0.5f;
+            fixtureDef.restitution = 0.0f;
+            // Set collision filtering if needed (using default for now)
+            
+            terrainBody->CreateFixture(&fixtureDef);
+            totalFixtures++;
+        }
+    }
+    
+    std::cout << "Created " << totalFixtures << " physics fixtures from terrain meshes\n";
+}
+
+/* ============================================================
+   SPAWN POINT GENERATION
+   ============================================================ */
+
+void World::generateSpawnPoints() {
+    m_spawnPoints.clear();
+    
+    if (heightmap.empty()) {
+        std::cerr << "Cannot generate spawn points: heightmap is empty\n";
+        return;
+    }
+    
+    std::cout << "Generating spawn points...\n";
+    
+    std::vector<BiomeType> biomeMap;
+    classifyBiomes(biomeMap);
+    
+    // Find suitable spawn locations (on land, relatively flat)
+    std::random_device rd;
+    std::mt19937 rng(m_seed);
+    std::uniform_int_distribution<int> distX(width / 4, 3 * width / 4);
+    std::uniform_int_distribution<int> distY(height / 4, 3 * height / 4);
+    
+    const int maxAttempts = 1000;
+    const int targetSpawnPoints = 10;
+    
+    for (int attempt = 0; attempt < maxAttempts && m_spawnPoints.size() < targetSpawnPoints; ++attempt) {
+        int x = distX(rng);
+        int y = distY(rng);
+        int idx = y * width + x;
+        
+        if (idx < 0 || idx >= biomeMap.size()) continue;
+        
+        BiomeType biome = biomeMap[idx];
+        float height = heightmap[idx];
+        
+        // Only spawn on land (not water, not too high)
+        if (biome == BIOME_DEEP_WATER || biome == BIOME_SHALLOW_WATER) {
+            continue;
+        }
+        if (biome == BIOME_PEAK || biome == BIOME_MOUNTAIN) {
+            continue;
+        }
+        
+        // Check if area is relatively flat (check neighbors)
+        bool isFlat = true;
+        const int checkRadius = 5;
+        for (int dy = -checkRadius; dy <= checkRadius && isFlat; ++dy) {
+            for (int dx = -checkRadius; dx <= checkRadius && isFlat; ++dx) {
+                int nx = x + dx;
+                int ny = y + dy;
+                if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+                
+                int nidx = ny * width + nx;
+                float nheight = heightmap[nidx];
+                
+                // Height difference too large
+                if (std::abs(nheight - height) > 0.1f) {
+                    isFlat = false;
+                }
+            }
+        }
+        
+        if (!isFlat) continue;
+        
+        // Calculate safety score (higher is safer)
+        float safetyScore = 1.0f;
+        
+        // Prefer grassland/forest over beach
+        if (biome == BIOME_BEACH) safetyScore *= 0.8f;
+        if (biome == BIOME_GRASSLAND) safetyScore *= 1.2f;
+        if (biome == BIOME_FOREST) safetyScore *= 1.1f;
+        
+        SpawnPoint sp;
+        sp.x = x;
+        sp.y = y;
+        sp.safetyScore = safetyScore;
+        
+        m_spawnPoints.push_back(sp);
+    }
+    
+    std::cout << "Generated " << m_spawnPoints.size() << " spawn points\n";
 }

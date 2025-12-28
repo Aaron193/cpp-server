@@ -6,7 +6,7 @@
 #include <mutex>
 
 #include "RaycastSystem.hpp"
-#include "WorldGenerator.hpp"
+#include "World.hpp"
 #include "client/Client.hpp"
 #include "ecs/EntityManager.hpp"
 #include "physics/PhysicsWorld.hpp"
@@ -25,7 +25,7 @@ class GameServer {
 
     EntityManager m_entityManager;
     PhysicsWorld m_physicsWorld;
-    std::unique_ptr<WorldGenerator> m_worldGenerator;
+    std::unique_ptr<World> m_worldGenerator;
     std::unique_ptr<RaycastSystem> m_raycastSystem;
     std::unordered_map<uint32_t, Client*> m_clients;
 
@@ -43,7 +43,6 @@ class GameServer {
     void meleeSystem(double delta);
     void cameraSystem();
     void healthSystem(double delta);
-    void applyRiverFlow(double delta);
 
     void Hit(entt::entity entity, b2Vec2& meleePos, int radius);
     void Die(entt::entity entity);

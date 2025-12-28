@@ -9,7 +9,7 @@
 #include <unordered_set>
 
 #include "GameServer.hpp"
-#include "WorldGenerator.hpp"
+#include "World.hpp"
 #include "common/enums.hpp"
 #include "ecs/EntityManager.hpp"
 #include "ecs/components.hpp"
@@ -32,17 +32,8 @@ Client::Client(GameServer& gameServer,
         m_writer.writeU32(m_gameServer.m_worldGenerator->GetSeed());
         m_writer.writeU16(m_gameServer.m_worldGenerator->GetWorldSize());
         
-        // Send river data so client matches server exactly
-        const auto& rivers = m_gameServer.m_worldGenerator->GetRivers();
-        m_writer.writeU16(static_cast<uint16_t>(rivers.size()));
-        
-        for (const auto& river : rivers) {
-            m_writer.writeU16(static_cast<uint16_t>(river.path.size()));
-            for (const auto& [x, y] : river.path) {
-                m_writer.writeU16(static_cast<uint16_t>(x));
-                m_writer.writeU16(static_cast<uint16_t>(y));
-            }
-        }
+        // VolcanicWorld doesn't have rivers - send 0 rivers for client compatibility
+        m_writer.writeU16(0);
     }
 
     // tell our player about others

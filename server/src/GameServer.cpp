@@ -18,7 +18,7 @@
 #include <thread>
 
 #include "RaycastSystem.hpp"
-#include "WorldGenerator.hpp"
+#include "World.hpp"
 #include "client/Client.hpp"
 #include "common/enums.hpp"
 #include "ecs/EntityManager.hpp"
@@ -29,107 +29,37 @@
 GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {
     std::cout << "Initializing GameServer..." << std::endl;
 
-    // Initialize world generator
-    m_worldGenerator = std::make_unique<WorldGenerator>(*this);
+    // Initialize volcanic world generator
+    m_worldGenerator = std::make_unique<World>();
 
-    // Generate world
-    WorldGenParams params;
-    params.seed = 834624467;
-    params.worldSizeChunks = 8;  // 8x8 chunks = 512x512 tiles = 32,768x32,768 pixels
-    params.numRivers = 15;
-    params.structureDensity = 0.015f;  // 1.5% density for more structures
-    params.minCoverDensity = 0.05f;
+    // Configure world generation parameters
+    const uint32_t seed = 834624467;
+    const int worldSize = 512;  // 512x512 world
+    const float islandSize = 0.75f;
 
-    m_worldGenerator->GenerateWorld(params);
+    m_worldGenerator->setMasterSeed(seed);
+    m_worldGenerator->setIslandSize(islandSize);
+    m_worldGenerator->setNoiseLayers(3);
+
+    // Generate the volcanic island terrain
+    std::cout << "Generating volcanic island terrain..." << std::endl;
+    m_worldGenerator->generateIsland(worldSize, worldSize, "");
+
+    // Build terrain meshes for physics
+    std::cout << "Building terrain meshes..." << std::endl;
+    auto meshes = m_worldGenerator->buildTerrainMeshes();
+
+    // Create Box2D physics from meshes
+    std::cout << "Building physics from meshes..." << std::endl;
+    m_worldGenerator->BuildMeshPhysics(meshes, *m_physicsWorld.m_world);
+
+    // Generate spawn points
+    std::cout << "Generating spawn points..." << std::endl;
+    m_worldGenerator->generateSpawnPoints();
 
     // Initialize raycast system
     m_raycastSystem = std::make_unique<RaycastSystem>(
         m_entityManager.getRegistry(), *m_physicsWorld.m_world);
-
-    // Spawn structures as entities
-    std::cout << "Spawning structures..." << std::endl;
-    const auto& structures = m_worldGenerator->GetStructures();
-    constexpr float TILE_SIZE = 64.0f; // Each tile is 64x64 pixels
-    
-    for (const auto& structure : structures) {
-        entt::entity entity = entt::null;
-        
-        // Convert tile coordinates to pixel coordinates
-        float pixelX = structure.x * TILE_SIZE;
-        float pixelY = structure.y * TILE_SIZE;
-
-        switch (structure.type) {
-            case StructureType::House:
-            case StructureType::Wall:
-                entity = m_entityManager.createWall(pixelX, pixelY,
-                                                    structure.destructible);
-                break;
-            case StructureType::Fence:
-                entity = m_entityManager.createFence(pixelX, pixelY);
-                break;
-            case StructureType::Rock:
-                entity = m_entityManager.createRock();
-                // Position it
-                if (auto* base =
-                        m_entityManager.getRegistry().try_get<Components::EntityBase>(
-                            entity)) {
-                    if (base->body) {
-                        base->body->SetTransform(
-                            b2Vec2(meters(pixelX),
-                                   meters(pixelY)),
-                            0);
-                    }
-                }
-                break;
-            case StructureType::Bush:
-                entity = m_entityManager.createBush();
-                // Position it
-                if (auto* base =
-                        m_entityManager.getRegistry().try_get<Components::EntityBase>(
-                            entity)) {
-                    if (base->body) {
-                        base->body->SetTransform(
-                            b2Vec2(meters(pixelX),
-                                   meters(pixelY)),
-                            0);
-                    }
-                }
-                // Mark as destructible if specified
-                if (structure.destructible) {
-                    Components::Destructible dest;
-                    dest.maxHealth = 20.0f;
-                    dest.currentHealth = 20.0f;
-                    m_entityManager.getRegistry().emplace<Components::Destructible>(
-                        entity, dest);
-                }
-                break;
-            case StructureType::Tree:
-                entity = m_entityManager.createTree(pixelX, pixelY);
-                break;
-            case StructureType::Crate:
-                entity = m_entityManager.createCrate();
-                // Position it
-                if (auto* base =
-                        m_entityManager.getRegistry().try_get<Components::EntityBase>(
-                            entity)) {
-                    if (base->body) {
-                        base->body->SetTransform(
-                            b2Vec2(meters(pixelX),
-                                   meters(pixelY)),
-                            0);
-                    }
-                }
-                // Mark as destructible if specified
-                if (structure.destructible) {
-                    Components::Destructible dest;
-                    dest.maxHealth = 50.0f;
-                    dest.currentHealth = 50.0f;
-                    m_entityManager.getRegistry().emplace<Components::Destructible>(
-                        entity, dest);
-                }
-                break;
-        }
-    }
 
     std::cout << "GameServer initialization complete!" << std::endl;
 }
@@ -222,7 +152,6 @@ void GameServer::tick(double delta) {
 void GameServer::prePhysicsSystemUpdate(double delta) {
     stateSystem();
     inputSystem(delta);
-    applyRiverFlow(delta);
     meleeSystem(delta);
     healthSystem(delta);
     cameraSystem();
@@ -272,9 +201,6 @@ void GameServer::inputSystem(double delta) {
             body->SetLinearVelocity(velocity);
             body->SetTransform(body->GetPosition(), angle);
         });
-    
-    // Apply river flow after input velocity is set
-    applyRiverFlow(delta);
 }
 
 void GameServer::meleeSystem(double delta) {
@@ -392,52 +318,6 @@ void GameServer::Hit(entt::entity attacker, b2Vec2& pos, int radius) {
             }
         }
     }
-}
-
-void GameServer::applyRiverFlow(double delta) {
-    entt::registry& reg = m_entityManager.getRegistry();
-    static bool debugOnce = true;
-
-    // Apply river flow velocity to entities in water
-    reg.view<Components::EntityBase>().each(
-        [&](entt::entity entity, Components::EntityBase& base) {
-            if (!base.body) return;
-
-            b2Vec2 pos = base.body->GetPosition();
-
-            // Convert from Box2D meters to tile coordinates using shared unit helpers
-            constexpr float TILE_SIZE = 64.0f;  // pixels per tile
-            const float metersPerTile = meters(TILE_SIZE);
-
-            int tileX = static_cast<int>(std::floor(pos.x / metersPerTile));
-            int tileY = static_cast<int>(std::floor(pos.y / metersPerTile));
-
-            // Check if entity is in water
-            const Tile* tile = m_worldGenerator->GetTile(tileX, tileY);
-            if (!tile) return;
-            
-            if (!(tile->flags & TileFlags::Water)) return;
-
-            // Get river flow direction
-            uint8_t flowDir = m_worldGenerator->GetFlowDirection(tileX, tileY);
-            if (flowDir == WorldGenerator::NO_FLOW) return;
-
-            // Convert flow direction (0-255) back to radians [-π, π]
-            float angle = (static_cast<float>(flowDir) / 255.0f) * 2.0f * M_PI - M_PI;
-
-            // Apply velocity in direction of flow
-            const float RIVER_SPEED = 0.8f;  // River speed in m/s
-            b2Vec2 flowVelocity(
-                RIVER_SPEED * std::cos(angle),
-                RIVER_SPEED * std::sin(angle)
-            );
-
-            // Get current velocity and add river component
-            b2Vec2 currentVel = base.body->GetLinearVelocity();
-            b2Vec2 newVel = currentVel + flowVelocity;
-
-            base.body->SetLinearVelocity(newVel);
-        });
 }
 
 void GameServer::Die(entt::entity entity) {
