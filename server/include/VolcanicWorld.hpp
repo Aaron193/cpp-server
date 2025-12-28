@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 #include <cstdint>
+#include <deque>
 #include "external/FastNoiseLite.h"
 #include "external/stb_image_write.h"
 
@@ -23,10 +24,17 @@ enum BiomeType {
     BIOME_PEAK = 6
 };
 
-struct BiomeRegion {
-    BiomeType type;
-    std::vector<std::pair<int, int>> points;
-    float avgHeight;
+struct Vec2 {
+    float x, y;
+    
+    Vec2() : x(0.0f), y(0.0f) {}
+    Vec2(float _x, float _y) : x(_x), y(_y) {}
+};
+
+struct TerrainMesh {
+    BiomeType biome;
+    std::vector<Vec2> vertices;
+    std::vector<uint32_t> indices; // triangles (triples)
 };
 
 class VolcanicWorld {
@@ -34,10 +42,12 @@ public:
     VolcanicWorld();
     
     void generateIsland(int width, int height, const std::string& outputDir);
-    void generateBiomePolygons(const std::string& outputFile);
-    void renderBiomeRegions(const std::string& outputFile);
     
-    void setIslandSize(float size) { 
+    // New mesh-based terrain generation
+    std::vector<TerrainMesh> buildTerrainMeshes();
+    void saveTerrainMeshesJSON(const std::vector<TerrainMesh>& meshes, const std::string& filename);
+
+    void setIslandSize(float size) {
         islandSize = std::max(0.1f, std::min(size, 1.5f)); 
     }
     
@@ -79,8 +89,5 @@ private:
     BiomeType getBiomeType(float height);
     const char* getBiomeName(BiomeType type);
     void classifyBiomes(std::vector<BiomeType>& biomeMap);
-    void extractBiomeRegions(const std::vector<BiomeType>& biomeMap, std::vector<BiomeRegion>& regions);
-    void saveBiomePolygonsJSON(const std::vector<BiomeRegion>& regions, const std::string& filename);
     Color getBiomeColor(BiomeType type);
-    void renderRegionsToImage(const std::vector<BiomeRegion>& regions, const std::string& filename);
 };

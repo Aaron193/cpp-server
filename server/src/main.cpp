@@ -15,13 +15,22 @@ int main() {
     // gameServer.run();
 
     VolcanicWorld world;
-    world.setMasterSeed(42);
-    world.setIslandSize(0.8f);
+    world.setMasterSeed(12345);
+    world.setIslandSize(0.75f);
     world.generateIsland(512, 512, "./output");
 
-    // Generate JSON data
-    world.generateBiomePolygons("./output/biome_regions.json");
+    // Build terrain meshes using the new pipeline
+    auto meshes = world.buildTerrainMeshes();
 
-    // Render visualization of the biome regions
-    world.renderBiomeRegions("./output/biome_regions_rendered.png");
+    // Save meshes to JSON (efficient format with vertices + indices)
+    world.saveTerrainMeshesJSON(meshes, "./output/terrain_meshes.json");
+
+    std::cout << "Total terrain meshes generated: " << meshes.size() << "\n";
+
+    // Print summary
+    int totalTriangles = 0;
+    for (const auto& mesh : meshes) {
+        totalTriangles += mesh.indices.size() / 3;
+    }
+    std::cout << "Total triangles: " << totalTriangles << "\n";
 }

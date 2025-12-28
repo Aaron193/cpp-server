@@ -4,6 +4,9 @@
 #include <iostream>
 #include <fstream>
 #include <filesystem>
+#include <unordered_set>
+#include <array>
+#include "external/earcut.hpp"
 
 namespace fs = std::filesystem;
 
@@ -13,7 +16,11 @@ VolcanicWorld::VolcanicWorld()
 
 void VolcanicWorld::createOutputDirectory() {
     if (!outputDirectory.empty()) {
-        fs::create_directories(outputDirectory);
+        try {
+            fs::create_directories(outputDirectory);
+        } catch (const fs::filesystem_error& e) {
+            std::cerr << "Failed to create output directory: " << e.what() << "\n";
+        }
     }
 }
 
@@ -47,9 +54,9 @@ void VolcanicWorld::saveFloatImageAsGrayscale(
 Color VolcanicWorld::lerpColor(const Color& a, const Color& b, float t) {
     t = std::clamp(t, 0.0f, 1.0f);
     return Color(
-        static_cast<uint8_t>(a.r + (b.r - a.r) * t),
-        static_cast<uint8_t>(a.g + (b.g - a.g) * t),
-        static_cast<uint8_t>(a.b + (b.b - a.b) * t)
+        static_cast<uint8_t>(std::round(a.r + (b.r - a.r) * t)),
+        static_cast<uint8_t>(std::round(a.g + (b.g - a.g) * t)),
+        static_cast<uint8_t>(std::round(a.b + (b.b - a.b) * t))
     );
 }
 
@@ -138,8 +145,9 @@ int VolcanicWorld::generateSeed(int index) {
     // Simple Linear Congruential Generator (LCG)
     // Using constants from Numerical Recipes
     long long x = masterSeed + index;
-    x = (x * 1664525LL + 1013904223LL) & 0x7FFFFFFF;
-    return static_cast<int>(x);
+    x = (x * 1664525LL + 1013904223LL);
+    // Ensure positive seed by masking to positive int range
+    return static_cast<int>(x & 0x7FFFFFFF);
 }
 
 /* ============================================================
@@ -152,8 +160,8 @@ void VolcanicWorld::generateRadialGradient() {
     float cy = height * 0.5f;
     float maxDist = std::sqrt(cx * cx + cy * cy);
     
-    // Apply island size scaling
-    maxDist /= islandSize;
+    // Apply island size scaling - larger values = larger island
+    maxDist *= islandSize;
     
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
@@ -196,12 +204,13 @@ void VolcanicWorld::generateOrganicNoise() {
         int layerSeed = generateSeed(layer);
         layerNoiseGen.SetSeed(layerSeed);
         
-        // Each layer has different frequency for varied detail
-        float frequency = 0.008f * (1.0f + layer * 0.3f);
+        // Each layer has different frequency and octaves for varied detail
+        float frequency = 0.008f * (1.0f + layer * 0.4f);
+        int octaves = 3 + (layer % 2); // Vary octaves between 3 and 4
         
         layerNoiseGen.SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2);
         layerNoiseGen.SetFractalType(FastNoiseLite::FractalType_FBm);
-        layerNoiseGen.SetFractalOctaves(3);
+        layerNoiseGen.SetFractalOctaves(octaves);
         layerNoiseGen.SetFractalLacunarity(2.0f);
         layerNoiseGen.SetFractalGain(0.5f);
         layerNoiseGen.SetFrequency(frequency);
@@ -222,13 +231,19 @@ void VolcanicWorld::generateOrganicNoise() {
         );
     }
     
-    // Average all noise layers together
+    // Weighted average - first layers have more influence
+    float totalWeight = 0.0f;
+    for (int layer = 0; layer < numNoiseLayers; ++layer) {
+        totalWeight += 1.0f / (layer + 1);
+    }
+    
     for (int i = 0; i < width * height; ++i) {
-        float sum = 0.0f;
+        float weightedSum = 0.0f;
         for (int layer = 0; layer < numNoiseLayers; ++layer) {
-            sum += noiseLayers_data[layer][i];
+            float weight = 1.0f / (layer + 1);
+            weightedSum += noiseLayers_data[layer][i] * weight;
         }
-        organicNoise[i] = sum / static_cast<float>(numNoiseLayers);
+        organicNoise[i] = weightedSum / totalWeight;
     }
     
     saveFloatImageAsGrayscale(
@@ -246,8 +261,8 @@ void VolcanicWorld::averageTogether() {
     heightmap.assign(width * height, 0.0f);
     
     for (int i = 0; i < width * height; ++i) {
-        // Average the radial gradient and organic noise
-        heightmap[i] = (radialGradient[i] + organicNoise[i]) * 0.5f;
+        // Weight gradient more heavily to maintain island shape
+        heightmap[i] = radialGradient[i] * 0.65f + organicNoise[i] * 0.35f;
     }
     
     saveFloatImageAsGrayscale(
@@ -255,7 +270,7 @@ void VolcanicWorld::averageTogether() {
         heightmap
     );
     
-    std::cout << "Step 3: Averaged gradient and noise together\n";
+    std::cout << "Step 3: Averaged gradient and noise together (65% gradient, 35% noise)\n";
 }
 
 /* ============================================================
@@ -343,153 +358,7 @@ void VolcanicWorld::classifyBiomes(std::vector<BiomeType>& biomeMap) {
 }
 
 /* ============================================================
-   BIOME REGION EXTRACTION
-   ============================================================ */
-void VolcanicWorld::extractBiomeRegions(
-    const std::vector<BiomeType>& biomeMap,
-    std::vector<BiomeRegion>& regions
-) {
-    regions.clear();
-    std::vector<bool> visited(width * height, false);
-    
-    // Flood fill to find connected regions
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            int idx = y * width + x;
-            
-            if (visited[idx]) continue;
-            
-            BiomeType type = biomeMap[idx];
-            BiomeRegion region;
-            region.type = type;
-            region.avgHeight = 0.0f;
-            
-            // Simple flood fill using a queue
-            std::vector<std::pair<int, int>> queue;
-            queue.push_back({x, y});
-            visited[idx] = true;
-            
-            while (!queue.empty()) {
-                auto [cx, cy] = queue.back();
-                queue.pop_back();
-                
-                int cidx = cy * width + cx;
-                region.points.push_back({cx, cy});
-                region.avgHeight += heightmap[cidx];
-                
-                // Check 4-connected neighbors
-                int dx[] = {-1, 1, 0, 0};
-                int dy[] = {0, 0, -1, 1};
-                
-                for (int i = 0; i < 4; ++i) {
-                    int nx = cx + dx[i];
-                    int ny = cy + dy[i];
-                    
-                    if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                        int nidx = ny * width + nx;
-                        if (!visited[nidx] && biomeMap[nidx] == type) {
-                            visited[nidx] = true;
-                            queue.push_back({nx, ny});
-                        }
-                    }
-                }
-            }
-            
-            if (!region.points.empty()) {
-                region.avgHeight /= region.points.size();
-                regions.push_back(region);
-            }
-        }
-    }
-    
-    std::cout << "Extracted " << regions.size() << " biome regions\n";
-}
-
-/* ============================================================
-   SAVE BIOME POLYGONS TO JSON
-   ============================================================ */
-void VolcanicWorld::saveBiomePolygonsJSON(
-    const std::vector<BiomeRegion>& regions,
-    const std::string& filename
-) {
-    std::ofstream out(filename);
-    if (!out.is_open()) {
-        std::cerr << "Failed to open " << filename << " for writing\n";
-        return;
-    }
-    
-    out << "{\n";
-    out << "  \"width\": " << width << ",\n";
-    out << "  \"height\": " << height << ",\n";
-    out << "  \"regions\": [\n";
-    
-    for (size_t i = 0; i < regions.size(); ++i) {
-        const auto& region = regions[i];
-        
-        // Only export regions with reasonable size (filter out tiny regions)
-        if (region.points.size() < 10) continue;
-        
-        out << "    {\n";
-        out << "      \"biome\": \"" << getBiomeName(region.type) << "\",\n";
-        out << "      \"biomeId\": " << static_cast<int>(region.type) << ",\n";
-        out << "      \"avgHeight\": " << region.avgHeight << ",\n";
-        out << "      \"pixelCount\": " << region.points.size() << ",\n";
-        out << "      \"boundingBox\": {\n";
-        
-        // Calculate bounding box
-        int minX = width, maxX = 0, minY = height, maxY = 0;
-        for (const auto& [px, py] : region.points) {
-            minX = std::min(minX, px);
-            maxX = std::max(maxX, px);
-            minY = std::min(minY, py);
-            maxY = std::max(maxY, py);
-        }
-        
-        out << "        \"minX\": " << minX << ",\n";
-        out << "        \"minY\": " << minY << ",\n";
-        out << "        \"maxX\": " << maxX << ",\n";
-        out << "        \"maxY\": " << maxY << "\n";
-        out << "      }\n";
-        out << "    }";
-        
-        if (i < regions.size() - 1) out << ",";
-        out << "\n";
-    }
-    
-    out << "  ]\n";
-    out << "}\n";
-    
-    out.close();
-    std::cout << "Saved biome polygons to " << filename << "\n";
-}
-
-/* ============================================================
-   GENERATE BIOME POLYGONS (PUBLIC API)
-   ============================================================ */
-void VolcanicWorld::generateBiomePolygons(const std::string& outputFile) {
-    if (heightmap.empty()) {
-        std::cerr << "Error: No heightmap data. Run generateIsland() first.\n";
-        return;
-    }
-    
-    std::cout << "\nGenerating biome polygons...\n";
-    
-    // Step 1: Classify each pixel into a biome
-    std::vector<BiomeType> biomeMap;
-    classifyBiomes(biomeMap);
-    
-    // Step 2: Extract connected regions
-    std::vector<BiomeRegion> regions;
-    extractBiomeRegions(biomeMap, regions);
-    
-    // Step 3: Save to JSON
-    saveBiomePolygonsJSON(regions, outputFile);
-    
-    std::cout << "Biome polygon generation complete!\n";
-}
-
-/* ============================================================
-   GET BIOME COLOR (FLAT COLORS FOR REGIONS)
+   GET BIOME COLOR (FLAT COLORS FOR BIOMES)
    ============================================================ */
 Color VolcanicWorld::getBiomeColor(BiomeType type) {
     switch(type) {
@@ -513,60 +382,324 @@ Color VolcanicWorld::getBiomeColor(BiomeType type) {
 }
 
 /* ============================================================
-   RENDER REGIONS TO IMAGE
+   POLYGON CLEANUP UTILITIES
    ============================================================ */
-void VolcanicWorld::renderRegionsToImage(
-    const std::vector<BiomeRegion>& regions,
-    const std::string& filename
-) {
-    // Create a blank image
-    std::vector<uint8_t> image(width * height * 3, 0);
-    
-    // Fill each region with its biome color
-    for (const auto& region : regions) {
-        Color c = getBiomeColor(region.type);
-        
-        for (const auto& [x, y] : region.points) {
-            int idx = (y * width + x) * 3;
-            image[idx + 0] = c.r;
-            image[idx + 1] = c.g;
-            image[idx + 2] = c.b;
-        }
+
+static float signedArea(const std::vector<Vec2>& v) {
+    float a = 0.0f;
+    for (size_t i = 0; i < v.size(); ++i) {
+        const auto& p = v[i];
+        const auto& q = v[(i + 1) % v.size()];
+        a += (p.x * q.y - q.x * p.y);
     }
-    
-    stbi_write_png(
-        filename.c_str(),
-        width,
-        height,
-        3,
-        image.data(),
-        width * 3
-    );
-    
-    std::cout << "Rendered biome regions to " << filename << "\n";
+    return 0.5f * a;
+}
+
+static void enforceCCW(std::vector<Vec2>& v) {
+    if (signedArea(v) < 0.0f)
+        std::reverse(v.begin(), v.end());
+}
+
+static bool collinear(const Vec2& a, const Vec2& b, const Vec2& c) {
+    float cross = (b.x - a.x) * (c.y - b.y) -
+                  (b.y - a.y) * (c.x - b.x);
+    return std::abs(cross) < 1e-4f;
+}
+
+static void removeCollinear(std::vector<Vec2>& v) {
+    if (v.size() < 3) return;
+    std::vector<Vec2> out;
+    for (size_t i = 0; i < v.size(); ++i) {
+        const Vec2& prev = v[(i + v.size() - 1) % v.size()];
+        const Vec2& cur  = v[i];
+        const Vec2& next = v[(i + 1) % v.size()];
+        if (!collinear(prev, cur, next))
+            out.push_back(cur);
+    }
+    v.swap(out);
 }
 
 /* ============================================================
-   RENDER BIOME REGIONS (PUBLIC API)
+   MARCHING SQUARES CONTOUR EXTRACTION
    ============================================================ */
-void VolcanicWorld::renderBiomeRegions(const std::string& outputFile) {
-    if (heightmap.empty()) {
-        std::cerr << "Error: No heightmap data. Run generateIsland() first.\n";
-        return;
+
+static std::vector<std::vector<Vec2>> marchingSquares(
+    const std::vector<BiomeType>& biomeMap,
+    int width, int height,
+    BiomeType biome
+) {
+    std::vector<std::vector<Vec2>> contours;
+
+    auto inside = [&](int x, int y) {
+        if (x < 0 || y < 0 || x >= width || y >= height) return false;
+        return biomeMap[y * width + x] == biome;
+    };
+
+    // Track which cells have been processed
+    std::vector<std::vector<bool>> used(height, std::vector<bool>(width, false));
+
+    // Process each cell
+    for (int y = 0; y < height - 1; ++y) {
+        for (int x = 0; x < width - 1; ++x) {
+            // Calculate marching squares case (4-bit mask)
+            int mask = 0;
+            if (inside(x, y)) mask |= 1;
+            if (inside(x + 1, y)) mask |= 2;
+            if (inside(x + 1, y + 1)) mask |= 4;
+            if (inside(x, y + 1)) mask |= 8;
+
+            // Skip empty or full cells
+            if (mask == 0 || mask == 15) continue;
+
+            // Build edge segments for this cell
+            std::vector<Vec2> poly;
+            float fx = (float)x;
+            float fy = (float)y;
+
+            auto mid = [&](float ax, float ay, float bx, float by) {
+                return Vec2((ax + bx) * 0.5f, (ay + by) * 0.5f);
+            };
+
+            // Handle different marching squares cases
+            // Generate edge segments based on the case
+            switch (mask) {
+                case 1:
+                case 14:
+                    poly.push_back(mid(fx, fy, fx + 1, fy));
+                    poly.push_back(mid(fx, fy, fx, fy + 1));
+                    break;
+                case 2:
+                case 13:
+                    poly.push_back(mid(fx + 1, fy, fx + 1, fy + 1));
+                    poly.push_back(mid(fx, fy, fx + 1, fy));
+                    break;
+                case 4:
+                case 11:
+                    poly.push_back(mid(fx, fy + 1, fx + 1, fy + 1));
+                    poly.push_back(mid(fx + 1, fy, fx + 1, fy + 1));
+                    break;
+                case 7:
+                case 8:
+                    poly.push_back(mid(fx, fy, fx, fy + 1));
+                    poly.push_back(mid(fx, fy + 1, fx + 1, fy + 1));
+                    break;
+                case 3:
+                case 12:
+                    poly.push_back(mid(fx, fy, fx + 1, fy));
+                    poly.push_back(mid(fx, fy + 1, fx + 1, fy + 1));
+                    break;
+                case 5:
+                    // Saddle point - ambiguous case
+                    poly.push_back(mid(fx, fy, fx + 1, fy));
+                    poly.push_back(mid(fx, fy, fx, fy + 1));
+                    break;
+                case 10:
+                    // Saddle point - ambiguous case  
+                    poly.push_back(mid(fx + 1, fy, fx + 1, fy + 1));
+                    poly.push_back(mid(fx, fy + 1, fx + 1, fy + 1));
+                    break;
+                case 6:
+                case 9:
+                    poly.push_back(mid(fx + 1, fy, fx + 1, fy + 1));
+                    poly.push_back(mid(fx, fy, fx, fy + 1));
+                    break;
+                default:
+                    continue;
+            }
+
+            if (poly.size() >= 2)
+                contours.push_back(poly);
+        }
+    }
+
+    // Merge edge segments into closed contours
+    // For now, we return individual segments - a more sophisticated
+    // implementation would chain them into complete loops
+    // This simplified version generates small edge segments
+    
+    return contours;
+}
+
+// Better marching squares implementation that builds complete closed contours
+static std::vector<Vec2> extractContour(
+    const std::vector<BiomeType>& biomeMap,
+    int width, int height,
+    BiomeType biome
+) {
+    // Find boundary pixels using simple edge detection
+    std::vector<Vec2> contour;
+    
+    auto inside = [&](int x, int y) {
+        if (x < 0 || y < 0 || x >= width || y >= height) return false;
+        return biomeMap[y * width + x] == biome;
+    };
+    
+    // Find all boundary pixels
+    std::vector<std::pair<int, int>> boundary;
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            if (!inside(x, y)) continue;
+            
+            // Check if this is a boundary pixel (has at least one non-biome neighbor)
+            bool isBoundary = false;
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    if (dx == 0 && dy == 0) continue;
+                    if (!inside(x + dx, y + dy)) {
+                        isBoundary = true;
+                        break;
+                    }
+                }
+                if (isBoundary) break;
+            }
+            
+            if (isBoundary) {
+                boundary.push_back({x, y});
+            }
+        }
     }
     
-    std::cout << "\nRendering biome regions...\n";
+    if (boundary.empty()) return contour;
     
-    // Step 1: Classify each pixel into a biome
+    // Find convex hull or use boundary pixels as-is
+    // For simplicity, we'll sample boundary pixels uniformly
+    int step = std::max(1, (int)boundary.size() / 200); // Limit to ~200 vertices
+    for (size_t i = 0; i < boundary.size(); i += step) {
+        contour.push_back(Vec2((float)boundary[i].first, (float)boundary[i].second));
+    }
+    
+    return contour;
+}
+
+/* ============================================================
+   BUILD TERRAIN MESHES (MAIN PIPELINE)
+   ============================================================ */
+
+std::vector<TerrainMesh> VolcanicWorld::buildTerrainMeshes() {
+    std::vector<TerrainMesh> meshes;
+
+    if (heightmap.empty()) {
+        std::cerr << "Error: No heightmap data. Run generateIsland() first.\n";
+        return meshes;
+    }
+
+    std::cout << "\nBuilding terrain meshes using marching squares + triangulation...\n";
+
+    // Step 1: Classify biomes
     std::vector<BiomeType> biomeMap;
     classifyBiomes(biomeMap);
-    
-    // Step 2: Extract connected regions
-    std::vector<BiomeRegion> regions;
-    extractBiomeRegions(biomeMap, regions);
-    
-    // Step 3: Render to image
-    renderRegionsToImage(regions, outputFile);
-    
-    std::cout << "Biome region rendering complete!\n";
+
+    // Step 2: For each biome type, extract contours and triangulate
+    for (int b = BIOME_DEEP_WATER; b <= BIOME_PEAK; ++b) {
+        BiomeType biome = static_cast<BiomeType>(b);
+
+        // Extract contour for this biome
+        auto contour = extractContour(biomeMap, width, height, biome);
+
+        if (contour.size() < 3) {
+            std::cout << "  Skipping " << getBiomeName(biome) << " (insufficient vertices)\n";
+            continue;
+        }
+
+        // Clean up the polygon
+        removeCollinear(contour);
+        enforceCCW(contour);
+
+        if (contour.size() < 3) {
+            std::cout << "  Skipping " << getBiomeName(biome) << " (too few vertices after cleanup)\n";
+            continue;
+        }
+
+        // Prepare for earcut triangulation
+        // earcut expects vector<vector<vector<N>>> where:
+        // - Outer vector: polygons
+        // - Middle vector: rings (first is outer, rest are holes)
+        // - Inner vector: coordinates [x, y, x, y, ...]
+        
+        using Coord = float;
+        using N = uint32_t;
+        std::vector<std::vector<std::array<Coord, 2>>> polygon;
+        
+        // Outer ring
+        std::vector<std::array<Coord, 2>> ring;
+        for (const auto& v : contour) {
+            ring.push_back({v.x, v.y});
+        }
+        polygon.push_back(ring);
+
+        // Triangulate
+        std::vector<N> indices = mapbox::earcut<N>(polygon);
+
+        if (indices.empty() || indices.size() % 3 != 0) {
+            std::cout << "  Skipping " << getBiomeName(biome) << " (triangulation failed)\n";
+            continue;
+        }
+
+        // Create mesh
+        TerrainMesh mesh;
+        mesh.biome = biome;
+        mesh.vertices = contour;
+        mesh.indices = indices;
+
+        meshes.push_back(mesh);
+
+        std::cout << "  " << getBiomeName(biome) << ": "
+                  << contour.size() << " vertices, "
+                  << (indices.size() / 3) << " triangles\n";
+    }
+
+    std::cout << "Generated " << meshes.size() << " terrain meshes\n";
+    return meshes;
+}
+
+/* ============================================================
+   SAVE TERRAIN MESHES TO JSON
+   ============================================================ */
+
+void VolcanicWorld::saveTerrainMeshesJSON(
+    const std::vector<TerrainMesh>& meshes,
+    const std::string& filename
+) {
+    std::ofstream out(filename);
+    if (!out.is_open()) {
+        std::cerr << "Failed to open " << filename << " for writing\n";
+        return;
+    }
+
+    out << "{\n";
+    out << "  \"worldSize\": [" << width << ", " << height << "],\n";
+    out << "  \"meshes\": [\n";
+
+    for (size_t i = 0; i < meshes.size(); ++i) {
+        const auto& m = meshes[i];
+        
+        if (i > 0) out << ",\n";
+        
+        out << "    {\n";
+        out << "      \"biome\": " << (int)m.biome << ",\n";
+        out << "      \"biomeName\": \"" << getBiomeName(m.biome) << "\",\n";
+        out << "      \"vertices\": [";
+
+        for (size_t v = 0; v < m.vertices.size(); ++v) {
+            if (v > 0) out << ", ";
+            out << "[" << m.vertices[v].x << ", " << m.vertices[v].y << "]";
+        }
+
+        out << "],\n";
+        out << "      \"indices\": [";
+
+        for (size_t k = 0; k < m.indices.size(); ++k) {
+            if (k > 0) out << ", ";
+            out << m.indices[k];
+        }
+
+        out << "]\n";
+        out << "    }";
+    }
+
+    out << "\n  ]\n";
+    out << "}\n";
+
+    out.close();
+    std::cout << "Saved terrain meshes to " << filename << "\n";
 }
