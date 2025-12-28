@@ -64,6 +64,9 @@ public:
     const std::vector<SpawnPoint>& GetSpawnPoints() const { return m_spawnPoints; }
     uint32_t GetSeed() const { return m_seed; }
     int GetWorldSize() const { return width; }
+    
+    // Save final terrain visualization
+    void saveFinalTerrainImage(const std::string& filename);
 
     void setIslandSize(float size) {
         islandSize = std::max(0.1f, std::min(size, 1.5f)); 

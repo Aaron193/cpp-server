@@ -333,6 +333,43 @@ void World::generateIsland(
 }
 
 /* ============================================================
+   SAVE FINAL TERRAIN IMAGE
+   ============================================================ */
+void World::saveFinalTerrainImage(const std::string& filename) {
+    if (heightmap.empty()) {
+        std::cerr << "Cannot save terrain image: heightmap is empty\n";
+        return;
+    }
+    
+    std::cout << "Generating final terrain image...\\n";
+    
+    // Classify biomes
+    std::vector<BiomeType> biomeMap;
+    classifyBiomes(biomeMap);
+    
+    // Create colored image based on biomes
+    std::vector<uint8_t> colorImage(width * height * 3);
+    
+    for (int i = 0; i < width * height; ++i) {
+        Color c = getBiomeColor(biomeMap[i]);
+        colorImage[i * 3 + 0] = c.r;
+        colorImage[i * 3 + 1] = c.g;
+        colorImage[i * 3 + 2] = c.b;
+    }
+    
+    stbi_write_png(
+        filename.c_str(),
+        width,
+        height,
+        3,
+        colorImage.data(),
+        width * 3
+    );
+    
+    std::cout << "Saved final terrain image to: " << filename << "\\n";
+}
+
+/* ============================================================
    BIOME CLASSIFICATION
    ============================================================ */
 BiomeType World::getBiomeType(float height) {

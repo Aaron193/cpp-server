@@ -53,9 +53,9 @@ GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {
     std::cout << "Building physics from meshes..." << std::endl;
     m_worldGenerator->BuildMeshPhysics(meshes, *m_physicsWorld.m_world);
 
-    // Generate spawn points
-    std::cout << "Generating spawn points..." << std::endl;
-    m_worldGenerator->generateSpawnPoints();
+    // Save final terrain visualization
+    std::cout << "Saving final terrain image..." << std::endl;
+    m_worldGenerator->saveFinalTerrainImage("final_terrain.png");
 
     // Initialize raycast system
     m_raycastSystem = std::make_unique<RaycastSystem>(
