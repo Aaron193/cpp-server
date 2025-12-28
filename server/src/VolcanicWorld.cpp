@@ -419,162 +419,112 @@ static void removeCollinear(std::vector<Vec2>& v) {
     v.swap(out);
 }
 
-/* ============================================================
-   MARCHING SQUARES CONTOUR EXTRACTION
-   ============================================================ */
+// Replace the extractContour and marchingSquares functions with this improved version
 
-static std::vector<std::vector<Vec2>> marchingSquares(
-    const std::vector<BiomeType>& biomeMap,
-    int width, int height,
-    BiomeType biome
-) {
-    std::vector<std::vector<Vec2>> contours;
-
-    auto inside = [&](int x, int y) {
-        if (x < 0 || y < 0 || x >= width || y >= height) return false;
-        return biomeMap[y * width + x] == biome;
-    };
-
-    // Track which cells have been processed
-    std::vector<std::vector<bool>> used(height, std::vector<bool>(width, false));
-
-    // Process each cell
-    for (int y = 0; y < height - 1; ++y) {
-        for (int x = 0; x < width - 1; ++x) {
-            // Calculate marching squares case (4-bit mask)
-            int mask = 0;
-            if (inside(x, y)) mask |= 1;
-            if (inside(x + 1, y)) mask |= 2;
-            if (inside(x + 1, y + 1)) mask |= 4;
-            if (inside(x, y + 1)) mask |= 8;
-
-            // Skip empty or full cells
-            if (mask == 0 || mask == 15) continue;
-
-            // Build edge segments for this cell
-            std::vector<Vec2> poly;
-            float fx = (float)x;
-            float fy = (float)y;
-
-            auto mid = [&](float ax, float ay, float bx, float by) {
-                return Vec2((ax + bx) * 0.5f, (ay + by) * 0.5f);
-            };
-
-            // Handle different marching squares cases
-            // Generate edge segments based on the case
-            switch (mask) {
-                case 1:
-                case 14:
-                    poly.push_back(mid(fx, fy, fx + 1, fy));
-                    poly.push_back(mid(fx, fy, fx, fy + 1));
-                    break;
-                case 2:
-                case 13:
-                    poly.push_back(mid(fx + 1, fy, fx + 1, fy + 1));
-                    poly.push_back(mid(fx, fy, fx + 1, fy));
-                    break;
-                case 4:
-                case 11:
-                    poly.push_back(mid(fx, fy + 1, fx + 1, fy + 1));
-                    poly.push_back(mid(fx + 1, fy, fx + 1, fy + 1));
-                    break;
-                case 7:
-                case 8:
-                    poly.push_back(mid(fx, fy, fx, fy + 1));
-                    poly.push_back(mid(fx, fy + 1, fx + 1, fy + 1));
-                    break;
-                case 3:
-                case 12:
-                    poly.push_back(mid(fx, fy, fx + 1, fy));
-                    poly.push_back(mid(fx, fy + 1, fx + 1, fy + 1));
-                    break;
-                case 5:
-                    // Saddle point - ambiguous case
-                    poly.push_back(mid(fx, fy, fx + 1, fy));
-                    poly.push_back(mid(fx, fy, fx, fy + 1));
-                    break;
-                case 10:
-                    // Saddle point - ambiguous case  
-                    poly.push_back(mid(fx + 1, fy, fx + 1, fy + 1));
-                    poly.push_back(mid(fx, fy + 1, fx + 1, fy + 1));
-                    break;
-                case 6:
-                case 9:
-                    poly.push_back(mid(fx + 1, fy, fx + 1, fy + 1));
-                    poly.push_back(mid(fx, fy, fx, fy + 1));
-                    break;
-                default:
-                    continue;
-            }
-
-            if (poly.size() >= 2)
-                contours.push_back(poly);
-        }
-    }
-
-    // Merge edge segments into closed contours
-    // For now, we return individual segments - a more sophisticated
-    // implementation would chain them into complete loops
-    // This simplified version generates small edge segments
-    
-    return contours;
+// Helper to check if a pixel belongs to the target biome
+static bool isBiome(const std::vector<BiomeType>& biomeMap, int width, int height, 
+                    int x, int y, BiomeType target) {
+    if (x < 0 || y < 0 || x >= width || y >= height) return false;
+    return biomeMap[y * width + x] == target;
 }
 
-// Better marching squares implementation that builds complete closed contours
-static std::vector<Vec2> extractContour(
+// Moore-Neighbor contour tracing (proper boundary following)
+static std::vector<Vec2> traceContour(
     const std::vector<BiomeType>& biomeMap,
     int width, int height,
     BiomeType biome
 ) {
-    // Find boundary pixels using simple edge detection
     std::vector<Vec2> contour;
     
-    auto inside = [&](int x, int y) {
-        if (x < 0 || y < 0 || x >= width || y >= height) return false;
-        return biomeMap[y * width + x] == biome;
-    };
-    
-    // Find all boundary pixels
-    std::vector<std::pair<int, int>> boundary;
-    for (int y = 0; y < height; ++y) {
+    // Find starting point (leftmost pixel of topmost row)
+    int startX = -1, startY = -1;
+    for (int y = 0; y < height && startX == -1; ++y) {
         for (int x = 0; x < width; ++x) {
-            if (!inside(x, y)) continue;
-            
-            // Check if this is a boundary pixel (has at least one non-biome neighbor)
-            bool isBoundary = false;
-            for (int dy = -1; dy <= 1; ++dy) {
-                for (int dx = -1; dx <= 1; ++dx) {
-                    if (dx == 0 && dy == 0) continue;
-                    if (!inside(x + dx, y + dy)) {
-                        isBoundary = true;
-                        break;
-                    }
-                }
-                if (isBoundary) break;
-            }
-            
-            if (isBoundary) {
-                boundary.push_back({x, y});
+            if (isBiome(biomeMap, width, height, x, y, biome)) {
+                startX = x;
+                startY = y;
+                break;
             }
         }
     }
     
-    if (boundary.empty()) return contour;
+    if (startX == -1) return contour; // No pixels found
     
-    // Find convex hull or use boundary pixels as-is
-    // For simplicity, we'll sample boundary pixels uniformly
-    int step = std::max(1, (int)boundary.size() / 200); // Limit to ~200 vertices
-    for (size_t i = 0; i < boundary.size(); i += step) {
-        contour.push_back(Vec2((float)boundary[i].first, (float)boundary[i].second));
+    // Moore neighborhood (8-connected, clockwise from top)
+    const int dx8[] = {0, 1, 1, 1, 0, -1, -1, -1};
+    const int dy8[] = {-1, -1, 0, 1, 1, 1, 0, -1};
+    
+    int x = startX, y = startY;
+    int dir = 7; // Start looking from left (since we found leftmost point)
+    
+    std::unordered_set<long long> visited;
+    auto makeKey = [&](int px, int py, int d) -> long long {
+        return ((long long)px << 32) | ((long long)py << 16) | d;
+    };
+    
+    const int maxIter = width * height * 2;
+    int iter = 0;
+    
+    do {
+        long long key = makeKey(x, y, dir);
+        if (visited.count(key)) break; // Already been here with this direction
+        visited.insert(key);
+        
+        // Add point to contour (pixel centers)
+        contour.push_back(Vec2(x + 0.5f, y + 0.5f));
+        
+        // Find next boundary pixel using Moore-Neighbor tracing
+        int foundDir = -1;
+        for (int i = 0; i < 8; ++i) {
+            int checkDir = (dir + i) % 8;
+            int nx = x + dx8[checkDir];
+            int ny = y + dy8[checkDir];
+            
+            if (isBiome(biomeMap, width, height, nx, ny, biome)) {
+                foundDir = checkDir;
+                x = nx;
+                y = ny;
+                // Set backtrack direction (opposite + 2, wrapping)
+                dir = (checkDir + 6) % 8;
+                break;
+            }
+        }
+        
+        if (foundDir == -1) break; // Stuck, shouldn't happen
+        if (++iter > maxIter) break; // Safety limit
+        
+    } while (x != startX || y != startY || contour.size() < 4);
+    
+    // Simplify contour (Douglas-Peucker style decimation)
+    if (contour.size() > 300) {
+        std::vector<Vec2> simplified;
+        int step = std::max(1, (int)contour.size() / 250);
+        for (size_t i = 0; i < contour.size(); i += step) {
+            simplified.push_back(contour[i]);
+        }
+        contour = simplified;
+    }
+    
+    // Remove consecutive duplicates
+    if (contour.size() > 1) {
+        std::vector<Vec2> cleaned;
+        cleaned.push_back(contour[0]);
+        for (size_t i = 1; i < contour.size(); ++i) {
+            const Vec2& prev = cleaned.back();
+            const Vec2& curr = contour[i];
+            float dx = curr.x - prev.x;
+            float dy = curr.y - prev.y;
+            if (dx*dx + dy*dy > 0.01f) { // Not too close
+                cleaned.push_back(curr);
+            }
+        }
+        contour = cleaned;
     }
     
     return contour;
 }
 
-/* ============================================================
-   BUILD TERRAIN MESHES (MAIN PIPELINE)
-   ============================================================ */
-
+// Updated buildTerrainMeshes using the fixed contour tracing
 std::vector<TerrainMesh> VolcanicWorld::buildTerrainMeshes() {
     std::vector<TerrainMesh> meshes;
 
@@ -583,7 +533,7 @@ std::vector<TerrainMesh> VolcanicWorld::buildTerrainMeshes() {
         return meshes;
     }
 
-    std::cout << "\nBuilding terrain meshes using marching squares + triangulation...\n";
+    std::cout << "\nBuilding terrain meshes using Moore-Neighbor tracing + triangulation...\n";
 
     // Step 1: Classify biomes
     std::vector<BiomeType> biomeMap;
@@ -593,8 +543,8 @@ std::vector<TerrainMesh> VolcanicWorld::buildTerrainMeshes() {
     for (int b = BIOME_DEEP_WATER; b <= BIOME_PEAK; ++b) {
         BiomeType biome = static_cast<BiomeType>(b);
 
-        // Extract contour for this biome
-        auto contour = extractContour(biomeMap, width, height, biome);
+        // Extract contour for this biome using Moore-Neighbor tracing
+        auto contour = traceContour(biomeMap, width, height, biome);
 
         if (contour.size() < 3) {
             std::cout << "  Skipping " << getBiomeName(biome) << " (insufficient vertices)\n";
@@ -611,11 +561,6 @@ std::vector<TerrainMesh> VolcanicWorld::buildTerrainMeshes() {
         }
 
         // Prepare for earcut triangulation
-        // earcut expects vector<vector<vector<N>>> where:
-        // - Outer vector: polygons
-        // - Middle vector: rings (first is outer, rest are holes)
-        // - Inner vector: coordinates [x, y, x, y, ...]
-        
         using Coord = float;
         using N = uint32_t;
         std::vector<std::vector<std::array<Coord, 2>>> polygon;
@@ -635,17 +580,65 @@ std::vector<TerrainMesh> VolcanicWorld::buildTerrainMeshes() {
             continue;
         }
 
+        // Validate indices and remove degenerate triangles
+        std::vector<N> validIndices;
+        size_t numVerts = contour.size();
+        int degenerateCount = 0;
+        int outOfRangeCount = 0;
+        
+        for (size_t i = 0; i < indices.size(); i += 3) {
+            N a = indices[i];
+            N b = indices[i + 1];
+            N c = indices[i + 2];
+            
+            // Check for out-of-range indices
+            if (a >= numVerts || b >= numVerts || c >= numVerts) {
+                outOfRangeCount++;
+                continue;
+            }
+            
+            // Check for degenerate triangles
+            if (a == b || b == c || a == c) {
+                degenerateCount++;
+                continue;
+            }
+            
+            // Check for zero-area triangles
+            const Vec2& va = contour[a];
+            const Vec2& vb = contour[b];
+            const Vec2& vc = contour[c];
+            float area = (vb.x - va.x) * (vc.y - va.y) - (vb.y - va.y) * (vc.x - va.x);
+            if (std::abs(area) < 0.1f) {
+                degenerateCount++;
+                continue;
+            }
+            
+            validIndices.push_back(a);
+            validIndices.push_back(b);
+            validIndices.push_back(c);
+        }
+        
+        if (validIndices.empty()) {
+            std::cout << "  Skipping " << getBiomeName(biome) << " (no valid triangles after filtering)\n";
+            continue;
+        }
+
         // Create mesh
         TerrainMesh mesh;
         mesh.biome = biome;
         mesh.vertices = contour;
-        mesh.indices = indices;
+        mesh.indices = validIndices;
 
         meshes.push_back(mesh);
+        
+        if (degenerateCount > 0 || outOfRangeCount > 0) {
+            std::cout << "    (filtered " << degenerateCount << " degenerate, " 
+                      << outOfRangeCount << " out-of-range)\n";
+        }
 
         std::cout << "  " << getBiomeName(biome) << ": "
                   << contour.size() << " vertices, "
-                  << (indices.size() / 3) << " triangles\n";
+                  << (validIndices.size() / 3) << " triangles\n";
     }
 
     std::cout << "Generated " << meshes.size() << " terrain meshes\n";
