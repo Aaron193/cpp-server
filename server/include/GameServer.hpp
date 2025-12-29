@@ -28,6 +28,7 @@ class GameServer {
     std::unique_ptr<World> m_worldGenerator;
     std::unique_ptr<RaycastSystem> m_raycastSystem;
     std::unordered_map<uint32_t, Client*> m_clients;
+    std::vector<TerrainMesh> m_terrainMeshes;
 
     // incoming network messages
     std::vector<std::pair<uint32_t, std::string>> m_messages;

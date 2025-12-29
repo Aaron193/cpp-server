@@ -26,6 +26,7 @@ enum ServerHeader : uint8_t {
     NEWS,
     SERVER_CHAT,
     MAP_INIT,
+    BIOME_CREATE,
 };
 
 enum NewsType : uint8_t {

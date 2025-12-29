@@ -22,4 +22,5 @@ export const enum ServerHeader {
     NEWS,
     SERVER_CHAT,
     MAP_INIT,
+    BIOME_CREATE,
 }

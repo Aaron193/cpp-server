@@ -33,6 +33,7 @@ class Client {
     // we are actively playing inside the game world, spectators are inactive
     bool m_active = false;
     std::unordered_set<entt::entity> m_previousVisibleEntities;
+    std::unordered_set<size_t> m_previousVisibleBiomes;
 
     Client(GameServer& gameServer,
            uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id);

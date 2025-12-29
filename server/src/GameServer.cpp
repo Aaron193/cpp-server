@@ -47,11 +47,11 @@ GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {
 
     // Build terrain meshes for physics
     std::cout << "Building terrain meshes..." << std::endl;
-    auto meshes = m_worldGenerator->buildTerrainMeshes();
+    m_terrainMeshes = m_worldGenerator->buildTerrainMeshes();
 
     // Create Box2D physics from meshes
     std::cout << "Building physics from meshes..." << std::endl;
-    m_worldGenerator->BuildMeshPhysics(meshes, *m_physicsWorld.m_world);
+    m_worldGenerator->BuildMeshPhysics(m_terrainMeshes, *m_physicsWorld.m_world);
 
     // Save final terrain visualization
     std::cout << "Saving final terrain image..." << std::endl;

@@ -15,7 +15,8 @@ PhysicsWorld::PhysicsWorld(GameServer& gameServer)
       m_gameServer(gameServer),
       m_contactListener(new ContactListener(gameServer)),
       m_QueryNetworkedEntities(new QueryNetworkedEntities(gameServer)),
-      m_queryBodies(new QueryBodies(gameServer)) {
+      m_queryBodies(new QueryBodies(gameServer)),
+      m_queryTerrainMeshes(new QueryTerrainMeshes(gameServer)) {
     m_world->SetContactListener(m_contactListener);
 };
 
@@ -67,6 +68,22 @@ bool QueryBodies::ReportFixture(b2Fixture* fixture) {
 }
 
 void QueryBodies::Clear() { entities.clear(); }
+
+// ======== QueryTerrainMeshes ========
+QueryTerrainMeshes::QueryTerrainMeshes(GameServer& gameServer)
+    : m_gameServer(gameServer) {}
+
+bool QueryTerrainMeshes::ReportFixture(b2Fixture* fixture) {
+    // Check if this fixture has terrain user data
+    if (fixture->GetUserData().pointer) {
+        TerrainFixtureUserData* userData =
+            reinterpret_cast<TerrainFixtureUserData*>(fixture->GetUserData().pointer);
+        meshIndices.insert(userData->meshIndex);
+    }
+    return true;
+}
+
+void QueryTerrainMeshes::Clear() { meshIndices.clear(); }
 
 // ======== ContactListener ========
 

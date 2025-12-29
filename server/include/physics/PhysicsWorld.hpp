@@ -6,13 +6,20 @@
 #include <memory>
 #include <optional>
 #include <vector>
+#include <unordered_set>
 
 #include "ecs/EntityManager.hpp"
 #include "ecs/components.hpp"
 
 class QueryBodies;
 class QueryNetworkedEntities;
+class QueryTerrainMeshes;
 class ContactListener;
+
+// User data for terrain fixtures to identify which mesh they belong to
+struct TerrainFixtureUserData {
+    size_t meshIndex;
+};
 
 class PhysicsWorld {
    public:
@@ -25,10 +32,21 @@ class PhysicsWorld {
     ContactListener* m_contactListener;
     QueryBodies* m_queryBodies;
     QueryNetworkedEntities* m_QueryNetworkedEntities;
+    QueryTerrainMeshes* m_queryTerrainMeshes;
 
     GameServer& m_gameServer;
 
    private:
+};
+
+class QueryTerrainMeshes : public b2QueryCallback {
+   public:
+    QueryTerrainMeshes(GameServer& gameServer);
+    std::unordered_set<size_t> meshIndices;
+    void Clear();
+    bool ReportFixture(b2Fixture* fixture) override;
+
+    GameServer& m_gameServer;
 };
 class QueryNetworkedEntities : public b2QueryCallback {
    public:

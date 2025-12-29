@@ -14,6 +14,7 @@
 #include <box2d/b2_fixture.h>
 #include <box2d/b2_world.h>
 #include "util/units.hpp"
+#include "physics/PhysicsWorld.hpp"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "external/stb_image_write.h"
@@ -762,12 +763,9 @@ void World::BuildMeshPhysics(const std::vector<TerrainMesh>& meshes, b2World& ph
     
     int totalFixtures = 0;
     
-    // Only create physics for solid terrain (not water)
-    for (const auto& mesh : meshes) {
-        // Skip water biomes - only create collision for land
-        if (mesh.biome == BIOME_DEEP_WATER || mesh.biome == BIOME_SHALLOW_WATER) {
-            continue;
-        }
+    // Create physics for ALL terrain (including water for visibility queries)
+    for (size_t meshIdx = 0; meshIdx < meshes.size(); ++meshIdx) {
+        const auto& mesh = meshes[meshIdx];
         
         // Create triangles from the mesh indices
         for (size_t i = 0; i < mesh.indices.size(); i += 3) {
@@ -785,9 +783,6 @@ void World::BuildMeshPhysics(const std::vector<TerrainMesh>& meshes, b2World& ph
             const Vec2& v2 = mesh.vertices[idx2];
             
             // Create polygon shape for this triangle
-            // Scale from heightmap pixel coords (0-512) to game world coords (0-32768)
-            // by multiplying by tile size (64), then convert to Box2D meters
-            // TODO: no magic number 64 here
             b2PolygonShape triangleShape;
             b2Vec2 vertices[3];
             vertices[0].Set(meters(v0.x * 64.0f), meters(v0.y * 64.0f));
@@ -800,15 +795,19 @@ void World::BuildMeshPhysics(const std::vector<TerrainMesh>& meshes, b2World& ph
             fixtureDef.shape = &triangleShape;
             fixtureDef.friction = 0.5f;
             fixtureDef.restitution = 0.0f;
-            fixtureDef.isSensor = true;  // Terrain doesn't collide with players, only for overlap detection
-            // Set collision filtering if needed (using default for now)
+            fixtureDef.isSensor = true;  // All terrain is sensor for visibility queries
+            
+            // Attach mesh index as user data so we can identify which mesh this fixture belongs to
+            TerrainFixtureUserData* userData = new TerrainFixtureUserData();
+            userData->meshIndex = meshIdx;
+            fixtureDef.userData.pointer = reinterpret_cast<uintptr_t>(userData);
             
             terrainBody->CreateFixture(&fixtureDef);
             totalFixtures++;
         }
     }
     
-    std::cout << "Created " << totalFixtures << " physics fixtures from terrain meshes\n";
+    std::cout << "Created " << totalFixtures << " physics fixtures from " << meshes.size() << " terrain meshes\n";
 }
 
 /* ============================================================

@@ -6,6 +6,7 @@
 #include <box2d/b2_world.h>
 
 #include <iostream>
+#include <limits>
 #include <unordered_set>
 
 #include "GameServer.hpp"
@@ -304,7 +305,47 @@ void Client::writeGameState() {
         }
     }
 
+    // Handle biome mesh visibility using Box2D spatial query
+    physicsWorld.m_queryTerrainMeshes->Clear();
+    world->QueryAABB(physicsWorld.m_queryTerrainMeshes, queryAABB);
+    
+    // Copy the results from the query callback
+    std::unordered_set<size_t> currentlyVisibleBiomes = physicsWorld.m_queryTerrainMeshes->meshIndices;
+
+    // Debug logging (only log occasionally to avoid spam)
+    static int frameCounter = 0;
+    if (frameCounter++ % 100 == 0) {
+        std::cout << "Client " << m_id << " sees " << currentlyVisibleBiomes.size() 
+                  << " biome meshes (via Box2D query)\n";
+    }
+
+    // Send new biome meshes
+    for (size_t biomeIdx : currentlyVisibleBiomes) {
+        if (m_previousVisibleBiomes.find(biomeIdx) == m_previousVisibleBiomes.end()) {
+            const TerrainMesh& mesh = m_gameServer.m_terrainMeshes[biomeIdx];
+            
+            std::cout << "Sending biome mesh " << biomeIdx << " to client " << m_id << "\n";
+            m_writer.writeU8(ServerHeader::BIOME_CREATE);
+            m_writer.writeU32(static_cast<uint32_t>(biomeIdx));
+            m_writer.writeU8(static_cast<uint8_t>(mesh.biome));
+            
+            // Write vertices (convert from heightmap coords to world pixel coords)
+            m_writer.writeU32(static_cast<uint32_t>(mesh.vertices.size()));
+            for (const Vec2& v : mesh.vertices) {
+                m_writer.writeFloat(v.x * 64.0f); // Scale from heightmap to world pixels
+                m_writer.writeFloat(v.y * 64.0f);
+            }
+            
+            // Write indices
+            m_writer.writeU32(static_cast<uint32_t>(mesh.indices.size()));
+            for (uint32_t idx : mesh.indices) {
+                m_writer.writeU32(idx);
+            }
+        }
+    }
+
     m_previousVisibleEntities.swap(currentlyVisibleEntities);
+    m_previousVisibleBiomes.swap(currentlyVisibleBiomes);
 }
 
 void Client::sendBytes() {

@@ -2,6 +2,7 @@ import * as PIXI from 'pixi.js'
 import { Hud } from './graphics/hud/Hud'
 import { World } from './World'
 import { Grid } from './graphics/Grid'
+import { TerrainRenderer } from './graphics/TerrainRenderer'
 
 const TEMP_VEC = { x: 0, y: 0 }
 
@@ -12,6 +13,7 @@ export class Renderer {
     camera: PIXI.Container
     hud: Hud
     grid: Grid
+    terrainRenderer: TerrainRenderer
     background: PIXI.Container
     middleground: PIXI.Container
     foreground: PIXI.Container
@@ -31,6 +33,10 @@ export class Renderer {
         this.background = new PIXI.Container()
         this.middleground = new PIXI.Container()
         this.foreground = new PIXI.Container()
+
+        // Initialize terrain renderer
+        this.terrainRenderer = new TerrainRenderer(this)
+        this.background.addChild(this.terrainRenderer.getContainer())
 
         this.grid = new Grid(this)
         this.background.addChild(this.grid)
@@ -96,6 +102,7 @@ export class Renderer {
     }
 
     update(delta: number, tick: number, now: number) {
+        this.terrainRenderer.update(delta, tick, now)
         this.grid.update(delta, tick, now)
         this.hud.update(delta, tick, now)
     }

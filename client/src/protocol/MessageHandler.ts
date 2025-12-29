@@ -253,6 +253,37 @@ export class MessageHandler {
 
                 break
             }
+            case ServerHeader.BIOME_CREATE: {
+                console.log('Biome create')
+                const id = reader.readU32()
+                const biome = reader.readU8()
+
+                // Read vertices
+                const vertexCount = reader.readU32()
+                const vertices: { x: number; y: number }[] = []
+                for (let i = 0; i < vertexCount; i++) {
+                    const x = reader.readFloat()
+                    const y = reader.readFloat()
+                    vertices.push({ x, y })
+                }
+
+                // Read indices
+                const indexCount = reader.readU32()
+                const indices: number[] = []
+                for (let i = 0; i < indexCount; i++) {
+                    indices.push(reader.readU32())
+                }
+
+                // Add terrain mesh to renderer
+                client.world.renderer.terrainRenderer.addTerrainMesh(
+                    id,
+                    biome,
+                    vertices,
+                    indices
+                )
+
+                break
+            }
             default:
                 assert(false, `Unknown message type: ${messageType}`)
         }
