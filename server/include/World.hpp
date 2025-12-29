@@ -40,11 +40,7 @@ struct TerrainMesh {
     std::vector<uint32_t> indices; // triangles (triples)
 };
 
-// Spawn point for player spawning
-struct SpawnPoint {
-    int x, y;
-    float safetyScore;
-};
+
 
 class World {
 public:
@@ -60,8 +56,6 @@ public:
     void BuildMeshPhysics(const std::vector<TerrainMesh>& meshes, b2World& physicsWorld);
 
     // Game integration
-    void generateSpawnPoints();
-    const std::vector<SpawnPoint>& GetSpawnPoints() const { return m_spawnPoints; }
     uint32_t GetSeed() const { return m_seed; }
     int GetWorldSize() const { return width; }
     
@@ -101,7 +95,6 @@ private:
     std::vector<BiomeType> biomeMap;  // Cached biome classification
     
     std::string outputDirectory;
-    std::vector<SpawnPoint> m_spawnPoints;
 
     void createOutputDirectory();
     uint8_t floatToUint8(float value);
