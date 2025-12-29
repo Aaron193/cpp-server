@@ -31,6 +31,11 @@ bool QueryNetworkedEntities::ReportFixture(b2Fixture* fixture) {
     EntityBodyUserData* userData =
         reinterpret_cast<EntityBodyUserData*>(body->GetUserData().pointer);
 
+    // Skip fixtures without userdata (e.g., terrain)
+    if (!userData) {
+        return true;
+    }
+
     auto& reg = m_gameServer.m_entityManager.getRegistry();
 
     if (reg.all_of<Components::Networked>(userData->entity)) {

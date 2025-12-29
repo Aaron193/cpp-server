@@ -2,7 +2,6 @@ import * as PIXI from 'pixi.js'
 import { Hud } from './graphics/hud/Hud'
 import { World } from './World'
 import { Grid } from './graphics/Grid'
-import { Terrain } from './graphics/Terrain'
 
 const TEMP_VEC = { x: 0, y: 0 }
 
@@ -77,11 +76,6 @@ export class Renderer {
 
     setWorld(world: World) {
         this.world = world
-    }
-
-    addTerrain(terrain: Terrain) {
-        // Add terrain to background, behind the grid
-        this.background.addChildAt(terrain, 0)
     }
 
     resize() {

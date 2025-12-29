@@ -67,6 +67,12 @@ public:
     
     // Save final terrain visualization
     void saveFinalTerrainImage(const std::string& filename);
+    
+    // Query biome at world position
+    BiomeType GetBiomeAtPosition(float worldX, float worldY) const;
+    
+    // Get biome name for display
+    const char* GetBiomeName(BiomeType type) const;
 
     void setIslandSize(float size) {
         islandSize = std::max(0.1f, std::min(size, 1.5f)); 
@@ -92,6 +98,7 @@ private:
     std::vector<float> radialGradient;
     std::vector<float> organicNoise;
     std::vector<float> heightmap;
+    std::vector<BiomeType> biomeMap;  // Cached biome classification
     
     std::string outputDirectory;
     std::vector<SpawnPoint> m_spawnPoints;
@@ -111,7 +118,7 @@ private:
     int generateSeed(int index);
     
     BiomeType getBiomeType(float height);
-    const char* getBiomeName(BiomeType type);
+    const char* getBiomeName(BiomeType type) const;
     void classifyBiomes(std::vector<BiomeType>& biomeMap);
     Color getBiomeColor(BiomeType type);
 };

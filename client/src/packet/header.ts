@@ -22,6 +22,4 @@ export const enum ServerHeader {
     NEWS,
     SERVER_CHAT,
     MAP_INIT,
-    STRUCTURE_CREATE,
-    STRUCTURE_DESTROY,
 }

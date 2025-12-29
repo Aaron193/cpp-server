@@ -26,15 +26,8 @@ Client::Client(GameServer& gameServer,
     m_writer.writeU8(ServerHeader::TPS);
     m_writer.writeU8(m_gameServer.m_tps);
 
-    // Send map initialization data
-    if (m_gameServer.m_worldGenerator) {
-        m_writer.writeU8(ServerHeader::MAP_INIT);
-        m_writer.writeU32(m_gameServer.m_worldGenerator->GetSeed());
-        m_writer.writeU16(m_gameServer.m_worldGenerator->GetWorldSize());
-        
-        // VolcanicWorld doesn't have rivers - send 0 rivers for client compatibility
-        m_writer.writeU16(0);
-    }
+    m_writer.writeU8(ServerHeader::MAP_INIT);
+    m_writer.writeU32(static_cast<uint32_t>(m_gameServer.m_worldGenerator->GetWorldSize()));
 
     // tell our player about others
     for (auto& [id, client] : m_gameServer.m_clients) {

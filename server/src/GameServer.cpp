@@ -150,11 +150,44 @@ void GameServer::tick(double delta) {
 }
 
 void GameServer::prePhysicsSystemUpdate(double delta) {
+    biomeSystem();
     stateSystem();
     inputSystem(delta);
     meleeSystem(delta);
     healthSystem(delta);
     cameraSystem();
+}
+
+void GameServer::biomeSystem() {
+    entt::registry& reg = m_entityManager.getRegistry();
+    
+    // Query biome for each entity with a position
+    reg.view<Components::EntityBase>().each(
+        [&](entt::entity entity, Components::EntityBase& base) {
+            if (!base.body) return;
+            
+            // Get entity's position
+            b2Vec2 pos = base.body->GetPosition();
+            
+            // Convert from Box2D meters to world coordinates
+            // (Assuming pixels are the world coordinate system)
+            float worldX = pixels(pos.x);
+            float worldY = pixels(pos.y);
+            
+            // Query biome at this position
+            if (m_worldGenerator) {
+                BiomeType currentBiome = m_worldGenerator->GetBiomeAtPosition(worldX, worldY);
+                
+                std::cout << "Entity " << static_cast<uint32_t>(entity)
+                          << " is in biome: " << m_worldGenerator->GetBiomeName(currentBiome) << "\n";
+                // TODO: Store biome on entity if needed
+                // For now, just log it for testing
+                // You can add a Biome component if you want to track it
+                // entt::component biomeComponent;
+                // biomeComponent.type = currentBiome;
+                // reg.emplace<Components::Biome>(entity, biomeComponent);
+            }
+        });
 }
 
 void GameServer::stateSystem() {
@@ -326,26 +359,8 @@ void GameServer::Die(entt::entity entity) {
 
     EntityTypes type = reg.get<Components::EntityBase>(entity).type;
 
-    // Check if this is a destructible entity (structures)
-    if (reg.all_of<Components::Destructible>(entity)) {
-        auto& destructible = reg.get<Components::Destructible>(entity);
-        if (destructible.isDestroyed()) {
-            // Broadcast structure destruction to all clients
-            for (auto& [id, client] : m_clients) {
-                client->m_writer.writeU8(ServerHeader::STRUCTURE_DESTROY);
-                client->m_writer.writeU32(static_cast<uint32_t>(entity));
-            }
-            
-            // Schedule for removal
-            m_entityManager.scheduleForRemoval(entity);
-            return;
-        }
-    }
-
     // Entities cannot be 'killed' unless they have a health component
-    if (!reg.all_of<Components::Health>(entity)) {
-        return;
-    }
+    assert(reg.all_of<Components::Health>(entity));
 
     switch (type) {
         case EntityTypes::PLAYER: {
@@ -372,8 +387,8 @@ void GameServer::Die(entt::entity entity) {
         }
 
         default:
-            // For other entities with health, just remove them
-            m_entityManager.scheduleForRemoval(entity);
+            std::cout << "Did not implement case for " << type << std::endl;
+            assert(false);
             break;
     }
 }

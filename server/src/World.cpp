@@ -13,6 +13,7 @@
 #include <box2d/b2_chain_shape.h>
 #include <box2d/b2_fixture.h>
 #include <box2d/b2_world.h>
+#include "util/units.hpp"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "external/stb_image_write.h"
@@ -382,7 +383,7 @@ BiomeType World::getBiomeType(float height) {
     else return BIOME_PEAK;
 }
 
-const char* World::getBiomeName(BiomeType type) {
+const char* World::getBiomeName(BiomeType type) const {
     switch(type) {
         case BIOME_DEEP_WATER: return "Deep Water";
         case BIOME_SHALLOW_WATER: return "Shallow Water";
@@ -750,6 +751,9 @@ void World::saveTerrainMeshesJSON(
 void World::BuildMeshPhysics(const std::vector<TerrainMesh>& meshes, b2World& physicsWorld) {
     std::cout << "Building Box2D physics from terrain meshes...\n";
     
+    // Cache the biome map for fast lookups
+    classifyBiomes(biomeMap);
+    
     // Create a single static body to hold all terrain fixtures
     b2BodyDef bodyDef;
     bodyDef.type = b2_staticBody;
@@ -781,11 +785,14 @@ void World::BuildMeshPhysics(const std::vector<TerrainMesh>& meshes, b2World& ph
             const Vec2& v2 = mesh.vertices[idx2];
             
             // Create polygon shape for this triangle
+            // Scale from heightmap pixel coords (0-512) to game world coords (0-32768)
+            // by multiplying by tile size (64), then convert to Box2D meters
+            // TODO: no magic number 64 here
             b2PolygonShape triangleShape;
             b2Vec2 vertices[3];
-            vertices[0].Set(v0.x, v0.y);
-            vertices[1].Set(v1.x, v1.y);
-            vertices[2].Set(v2.x, v2.y);
+            vertices[0].Set(meters(v0.x * 64.0f), meters(v0.y * 64.0f));
+            vertices[1].Set(meters(v1.x * 64.0f), meters(v1.y * 64.0f));
+            vertices[2].Set(meters(v2.x * 64.0f), meters(v2.y * 64.0f));
             triangleShape.Set(vertices, 3);
             
             // Create fixture
@@ -793,6 +800,7 @@ void World::BuildMeshPhysics(const std::vector<TerrainMesh>& meshes, b2World& ph
             fixtureDef.shape = &triangleShape;
             fixtureDef.friction = 0.5f;
             fixtureDef.restitution = 0.0f;
+            fixtureDef.isSensor = true;  // Terrain doesn't collide with players, only for overlap detection
             // Set collision filtering if needed (using default for now)
             
             terrainBody->CreateFixture(&fixtureDef);
@@ -885,4 +893,38 @@ void World::generateSpawnPoints() {
     }
     
     std::cout << "Generated " << m_spawnPoints.size() << " spawn points\n";
+}
+
+/* ============================================================
+   GET BIOME AT POSITION
+   ============================================================ */
+BiomeType World::GetBiomeAtPosition(float worldX, float worldY) const {
+    if (biomeMap.empty()) {
+        return BIOME_DEEP_WATER;  // Default if not initialized
+    }
+    
+    // Convert game world coordinates (in pixels) to heightmap indices
+    // Game world is 512 * 64 pixels (32768 pixels total)
+    // Heightmap is 512 x 512 indices
+    int x = static_cast<int>(worldX / 64.0f);
+    int y = static_cast<int>(worldY / 64.0f);
+    
+    // Clamp to bounds
+    x = std::max(0, std::min(x, width - 1));
+    y = std::max(0, std::min(y, height - 1));
+    
+    // Look up biome in map
+    int idx = y * width + x;
+    if (idx >= 0 && idx < static_cast<int>(biomeMap.size())) {
+        return biomeMap[idx];
+    }
+    
+    return BIOME_DEEP_WATER;  // Default fallback
+}
+
+/* ============================================================
+   GET BIOME NAME (PUBLIC WRAPPER)
+   ============================================================ */
+const char* World::GetBiomeName(BiomeType type) const {
+    return getBiomeName(type);
 }

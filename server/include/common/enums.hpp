@@ -26,8 +26,6 @@ enum ServerHeader : uint8_t {
     NEWS,
     SERVER_CHAT,
     MAP_INIT,
-    STRUCTURE_CREATE,
-    STRUCTURE_DESTROY,
 };
 
 enum NewsType : uint8_t {

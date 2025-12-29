@@ -68,23 +68,24 @@ entt::entity EntityManager::createPlayer() {
     b2BodyDef bodyDef;
     bodyDef.type = b2_dynamicBody;
 
-    // Get spawn point from world generator or use center of world
+    // Get spawn point - try to spawn on land (not in water)
+    // World is 512x512 heightmap pixels, each = 1 tile (64px)
+    // Center of island is typically around (256, 256) in heightmap coords
+    // In game coords that's (256*64, 256*64) = (16384, 16384)
     constexpr float TILE_SIZE = 64.0f;
-    float spawnX = 1024.0f * TILE_SIZE; // Center of 2048 tile world
-    float spawnY = 1024.0f * TILE_SIZE;
+    constexpr float WORLD_SIZE_HEIGHTMAP = 512.0f;  // Heightmap is 512x512
+    float spawnX = (WORLD_SIZE_HEIGHTMAP / 2.0f) * TILE_SIZE;  // Center of island
+    float spawnY = (WORLD_SIZE_HEIGHTMAP / 2.0f) * TILE_SIZE;
     
     if (m_gameServer.m_worldGenerator) {
         const auto& spawnPoints = m_gameServer.m_worldGenerator->GetSpawnPoints();
         if (!spawnPoints.empty()) {
-            // Pick a random spawn point
+            // Pick a random spawn point (already in game world coordinates)
             const auto& spawn = spawnPoints[rand() % spawnPoints.size()];
-            spawnX = spawn.x * TILE_SIZE;
-            spawnY = spawn.y * TILE_SIZE;
+            spawnX = spawn.x;
+            spawnY = spawn.y;
         }
     }
-
-    spawnX = 10000;
-    spawnY = 10000;
     
     bodyDef.position.Set(meters(spawnX), meters(spawnY));
     bodyDef.fixedRotation = true;
