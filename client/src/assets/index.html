@@ -4,12 +4,27 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <link rel="stylesheet" href="./assets/styles/style.css" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&display=swap"
+            rel="stylesheet"
+        />
         <title>Multiplayer Game</title>
     </head>
     <body>
         <div id="home-screen" class="home-screen">
             <!-- Home screen content will be rendered by HomeScreen.ts -->
         </div>
+
+        <!-- Modal Overlay -->
+        <div id="modal-overlay" class="modal-overlay hidden">
+            <div id="modal-container" class="modal-container">
+                <button id="modal-close" class="modal-close">&times;</button>
+                <div id="modal-content"></div>
+            </div>
+        </div>
+
         <div id="game-container" class="game-container hidden">
             <div id="chat_container">
                 <input
