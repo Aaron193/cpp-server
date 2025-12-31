@@ -19,7 +19,12 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       }),
     },
   }, async (request, reply) => {
-    const { username, email, password } = request.body;
+    const body = request.body as unknown as {
+      username: string;
+      email?: string;
+      password: string;
+    };
+    const { username, email, password } = body;
 
     try {
       const user = await registerUser(username, password, email);
@@ -46,7 +51,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       return { user: userResponse };
     } catch (err) {
       const error = err as Error;
-      reply.code(400).send({
+      return reply.code(400).send({
         error: error.message,
         code: '400',
       });
@@ -65,7 +70,11 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       }),
     },
   }, async (request, reply) => {
-    const { usernameOrEmail, password } = request.body;
+    const body = request.body as unknown as {
+      usernameOrEmail: string;
+      password: string;
+    };
+    const { usernameOrEmail, password } = body;
 
     try {
       const user = await authenticateUser(usernameOrEmail, password);
@@ -99,7 +108,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       // Log auth failure (but not the password)
       request.log.warn({ usernameOrEmail }, 'Login failed');
       
-      reply.code(401).send({
+      return reply.code(401).send({
         error: error.message,
         code: '401',
       });
@@ -110,7 +119,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
    * POST /auth/logout
    * Clears auth cookies
    */
-  fastify.post('/logout', async (request, reply) => {
+  fastify.post('/logout', async (_request, reply) => {
     reply.clearCookie(CONSTANTS.COOKIE_ACCESS_TOKEN, {
       path: '/',
     });

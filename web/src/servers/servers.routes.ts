@@ -21,7 +21,14 @@ const serversRoutes: FastifyPluginAsync = async (fastify) => {
       }),
     },
   }, async (request, reply) => {
-    const { id, host, port, region, maxPlayers } = request.body;
+    const body = request.body as unknown as {
+      id: string;
+      host: string;
+      port: number;
+      region: string;
+      maxPlayers: number;
+    };
+    const { id, host, port, region, maxPlayers } = body;
 
     try {
       await registerGameServer(id, host, port, region, maxPlayers);
@@ -32,7 +39,7 @@ const serversRoutes: FastifyPluginAsync = async (fastify) => {
       return { message: 'Server registered', serverId: id };
     } catch (err) {
       const error = err as Error;
-      reply.code(500).send({
+      return reply.code(500).send({
         error: error.message,
         code: '500',
       });
@@ -52,7 +59,11 @@ const serversRoutes: FastifyPluginAsync = async (fastify) => {
       }),
     },
   }, async (request, reply) => {
-    const { id, currentPlayers } = request.body;
+    const body = request.body as unknown as {
+      id: string;
+      currentPlayers: number;
+    };
+    const { id, currentPlayers } = body;
 
     try {
       await updateHeartbeat(id, currentPlayers);
@@ -60,7 +71,7 @@ const serversRoutes: FastifyPluginAsync = async (fastify) => {
       return { message: 'Heartbeat updated' };
     } catch (err) {
       const error = err as Error;
-      reply.code(500).send({
+      return reply.code(500).send({
         error: error.message,
         code: '500',
       });
@@ -71,7 +82,7 @@ const serversRoutes: FastifyPluginAsync = async (fastify) => {
    * GET /servers
    * Get list of online game servers (public endpoint)
    */
-  fastify.get('/', async (request, reply) => {
+  fastify.get('/', async (_request, reply) => {
     try {
       const servers = await getOnlineServers();
 
@@ -80,7 +91,7 @@ const serversRoutes: FastifyPluginAsync = async (fastify) => {
       return { servers: response };
     } catch (err) {
       const error = err as Error;
-      reply.code(500).send({
+      return reply.code(500).send({
         error: error.message,
         code: '500',
       });

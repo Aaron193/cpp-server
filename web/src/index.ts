@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { createServer } from './server';
 import { env } from './config/env';
 import { initDatabase } from './db/client';
