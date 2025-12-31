@@ -8,6 +8,13 @@
       "when": 1767211303820,
       "tag": "0000_marvelous_alex_power",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1767225176677,
+      "tag": "0001_nappy_chameleon",
+      "breakpoints": true
     }
   ]
 }

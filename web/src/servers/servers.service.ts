@@ -80,6 +80,8 @@ export async function getOnlineServers(): Promise<GameServerInfo[]> {
       region: gameServers.region,
       currentPlayers: gameServers.currentPlayers,
       maxPlayers: gameServers.maxPlayers,
+      lastHeartbeat: gameServers.lastHeartbeat,
+      isOnline: gameServers.isOnline,
     })
     .from(gameServers)
     .where(
@@ -90,7 +92,10 @@ export async function getOnlineServers(): Promise<GameServerInfo[]> {
     )
     .orderBy(gameServers.region, gameServers.currentPlayers);
 
-  return servers;
+  return servers.map((s) => ({
+    ...s,
+    lastHeartbeat: s.lastHeartbeat.toISOString(),
+  }));
 }
 
 /**

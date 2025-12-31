@@ -16,10 +16,14 @@ async function main() {
     const { default: authRoutes } = await import('./auth/auth.routes');
     const { default: usersRoutes } = await import('./users/users.routes');
     const { default: serversRoutes } = await import('./servers/servers.routes');
+    const { default: leaderboardRoutes } = await import('./leaderboard/leaderboard.routes');
+    const { default: changelogRoutes } = await import('./changelog/changelog.routes');
     
     await server.register(authRoutes, { prefix: '/auth' });
     await server.register(usersRoutes, { prefix: '/users' });
     await server.register(serversRoutes, { prefix: '/servers' });
+    await server.register(leaderboardRoutes, { prefix: '/leaderboard' });
+    await server.register(changelogRoutes, { prefix: '/changelog' });
     
     // Start cleanup job for expired servers
     startCleanupJob();

@@ -10,6 +10,7 @@ interface GameServer {
 }
 
 interface ChangelogEntry {
+    id: string
     version: string
     date: string
     tag: 'new' | 'fix' | 'update'
@@ -22,7 +23,17 @@ interface LeaderboardEntry {
     score: number
     kills: number
     wins: number
+    gamesPlayed: number
 }
+
+interface User {
+    id: string
+    username: string
+    email: string | null
+    createdAt: string
+}
+
+type LeaderboardPeriod = 'all' | 'weekly' | 'daily'
 
 export class HomeScreen {
     private container: HTMLElement
@@ -30,54 +41,10 @@ export class HomeScreen {
     private refreshInterval: number | null = null
     private playerName: string = ''
     private servers: GameServer[] = []
-
-    // Sample changelog data - replace with API call later
-    private changelog: ChangelogEntry[] = [
-        {
-            version: 'v0.3.0',
-            date: 'Dec 31, 2024',
-            tag: 'new',
-            changes: [
-                'Added new home screen UI with server browser',
-                'Implemented leaderboard system',
-                'Added player name customization',
-            ],
-        },
-        {
-            version: 'v0.2.1',
-            date: 'Dec 28, 2024',
-            tag: 'fix',
-            changes: [
-                'Fixed server connection stability issues',
-                'Resolved chat message display bugs',
-                'Performance improvements for large lobbies',
-            ],
-        },
-        {
-            version: 'v0.2.0',
-            date: 'Dec 20, 2024',
-            tag: 'update',
-            changes: [
-                'New terrain rendering system',
-                'Improved player interpolation',
-                'Added chat bubbles above players',
-            ],
-        },
-    ]
-
-    // Sample leaderboard data - replace with API call later
-    private leaderboard: LeaderboardEntry[] = [
-        { rank: 1, name: 'xXSlayerXx', score: 15420, kills: 892, wins: 156 },
-        { rank: 2, name: 'ProGamer99', score: 14200, kills: 756, wins: 142 },
-        { rank: 3, name: 'NightHawk', score: 13890, kills: 701, wins: 138 },
-        { rank: 4, name: 'ShadowBlade', score: 12450, kills: 623, wins: 121 },
-        { rank: 5, name: 'ThunderStrike', score: 11200, kills: 589, wins: 108 },
-        { rank: 6, name: 'IceQueen', score: 10800, kills: 534, wins: 99 },
-        { rank: 7, name: 'FireDemon', score: 9950, kills: 498, wins: 91 },
-        { rank: 8, name: 'StormChaser', score: 9200, kills: 456, wins: 84 },
-        { rank: 9, name: 'DarkKnight', score: 8700, kills: 423, wins: 78 },
-        { rank: 10, name: 'LightningBolt', score: 8100, kills: 398, wins: 72 },
-    ]
+    private currentUser: User | null = null
+    private changelog: ChangelogEntry[] = []
+    private leaderboard: LeaderboardEntry[] = []
+    private currentLeaderboardPeriod: LeaderboardPeriod = 'all'
 
     constructor(
         containerId: string,
@@ -119,10 +86,8 @@ export class HomeScreen {
                             value="${this.escapeHtml(this.playerName)}"
                         />
                     </div>
-                    <div class="auth-buttons">
-                        <button id="login-btn" class="btn btn-secondary">
-                            <span>🔐</span> Login
-                        </button>
+                    <div class="auth-buttons" id="auth-buttons">
+                        <!-- Auth buttons populated dynamically -->
                     </div>
                 </section>
 
@@ -150,7 +115,9 @@ export class HomeScreen {
                         <button id="refresh-btn" class="btn btn-ghost">↻ Refresh</button>
                     </div>
                     <div id="server-list" class="server-list">
-                        <!-- Server list populated dynamically -->
+                        <div class="no-servers">
+                            <p>Loading servers...</p>
+                        </div>
                     </div>
                 </section>
 
@@ -164,6 +131,7 @@ export class HomeScreen {
         `
 
         this.attachEventListeners()
+        this.updateAuthUI()
     }
 
     private attachEventListeners(): void {
@@ -191,11 +159,6 @@ export class HomeScreen {
         }
 
         // Modal buttons
-        const loginBtn = document.getElementById('login-btn')
-        if (loginBtn) {
-            loginBtn.addEventListener('click', () => this.showLoginModal())
-        }
-
         const leaderboardBtn = document.getElementById('leaderboard-btn')
         if (leaderboardBtn) {
             leaderboardBtn.addEventListener('click', () =>
@@ -208,6 +171,34 @@ export class HomeScreen {
             changelogBtn.addEventListener('click', () =>
                 this.showChangelogModal()
             )
+        }
+    }
+
+    private updateAuthUI(): void {
+        const authButtons = document.getElementById('auth-buttons')
+        if (!authButtons) return
+
+        if (this.currentUser) {
+            authButtons.innerHTML = `
+                <span class="user-greeting">Welcome, <strong>${this.escapeHtml(this.currentUser.username)}</strong></span>
+                <button id="logout-btn" class="btn btn-ghost">
+                    Logout
+                </button>
+            `
+            const logoutBtn = document.getElementById('logout-btn')
+            if (logoutBtn) {
+                logoutBtn.addEventListener('click', () => this.logout())
+            }
+        } else {
+            authButtons.innerHTML = `
+                <button id="login-btn" class="btn btn-secondary">
+                    <span>🔐</span> Login
+                </button>
+            `
+            const loginBtn = document.getElementById('login-btn')
+            if (loginBtn) {
+                loginBtn.addEventListener('click', () => this.showLoginModal())
+            }
         }
     }
 
@@ -258,14 +249,16 @@ export class HomeScreen {
                 <h3 class="modal-title">Login</h3>
             </div>
             <div class="modal-body">
+                <div id="login-error" class="form-error hidden"></div>
                 <form class="login-form" id="login-form">
                     <div class="form-group">
-                        <label class="input-label" for="login-email">Email</label>
+                        <label class="input-label" for="login-username">Username or Email</label>
                         <input 
-                            type="email" 
-                            id="login-email" 
+                            type="text" 
+                            id="login-username" 
                             class="form-input" 
-                            placeholder="Enter your email..."
+                            placeholder="Enter username or email..."
+                            required
                         />
                     </div>
                     <div class="form-group">
@@ -275,19 +268,20 @@ export class HomeScreen {
                             id="login-password" 
                             class="form-input" 
                             placeholder="Enter your password..."
+                            required
                         />
                     </div>
-                    <button type="submit" class="btn btn-primary" style="width: 100%;">
+                    <button type="submit" id="login-submit-btn" class="btn btn-primary" style="width: 100%;">
                         Login
                     </button>
                     <div class="form-divider">or</div>
-                    <button type="button" class="btn btn-secondary" style="width: 100%;">
+                    <button type="button" id="guest-btn" class="btn btn-secondary" style="width: 100%;">
                         Continue as Guest
                     </button>
                 </form>
                 <div class="login-footer">
                     <p class="login-footer-text">
-                        Don't have an account? <a href="#">Sign up</a>
+                        Don't have an account? <a href="#" id="show-register-link">Sign up</a>
                     </p>
                 </div>
             </div>
@@ -296,16 +290,252 @@ export class HomeScreen {
         // Attach form handler
         const form = document.getElementById('login-form')
         if (form) {
-            form.addEventListener('submit', (e) => {
+            form.addEventListener('submit', (e) => this.handleLogin(e))
+        }
+
+        // Guest button
+        const guestBtn = document.getElementById('guest-btn')
+        if (guestBtn) {
+            guestBtn.addEventListener('click', () => this.hideModal())
+        }
+
+        // Show register link
+        const registerLink = document.getElementById('show-register-link')
+        if (registerLink) {
+            registerLink.addEventListener('click', (e) => {
                 e.preventDefault()
-                // TODO: Implement login logic
-                console.log('Login submitted')
-                this.hideModal()
+                this.showRegisterModal()
             })
         }
     }
 
-    private showLeaderboardModal(): void {
+    private showRegisterModal(): void {
+        this.showModal(`
+            <div class="modal-header">
+                <h3 class="modal-title">Create Account</h3>
+            </div>
+            <div class="modal-body">
+                <div id="register-error" class="form-error hidden"></div>
+                <form class="login-form" id="register-form">
+                    <div class="form-group">
+                        <label class="input-label" for="register-username">Username</label>
+                        <input 
+                            type="text" 
+                            id="register-username" 
+                            class="form-input" 
+                            placeholder="Choose a username..."
+                            minlength="3"
+                            maxlength="20"
+                            required
+                        />
+                    </div>
+                    <div class="form-group">
+                        <label class="input-label" for="register-email">Email (optional)</label>
+                        <input 
+                            type="email" 
+                            id="register-email" 
+                            class="form-input" 
+                            placeholder="Enter your email..."
+                        />
+                    </div>
+                    <div class="form-group">
+                        <label class="input-label" for="register-password">Password</label>
+                        <input 
+                            type="password" 
+                            id="register-password" 
+                            class="form-input" 
+                            placeholder="Choose a password..."
+                            minlength="8"
+                            required
+                        />
+                    </div>
+                    <button type="submit" id="register-submit-btn" class="btn btn-primary" style="width: 100%;">
+                        Create Account
+                    </button>
+                </form>
+                <div class="login-footer">
+                    <p class="login-footer-text">
+                        Already have an account? <a href="#" id="show-login-link">Login</a>
+                    </p>
+                </div>
+            </div>
+        `)
+
+        // Attach form handler
+        const form = document.getElementById('register-form')
+        if (form) {
+            form.addEventListener('submit', (e) => this.handleRegister(e))
+        }
+
+        // Show login link
+        const loginLink = document.getElementById('show-login-link')
+        if (loginLink) {
+            loginLink.addEventListener('click', (e) => {
+                e.preventDefault()
+                this.showLoginModal()
+            })
+        }
+    }
+
+    private async handleLogin(e: Event): Promise<void> {
+        e.preventDefault()
+
+        const usernameInput = document.getElementById(
+            'login-username'
+        ) as HTMLInputElement
+        const passwordInput = document.getElementById(
+            'login-password'
+        ) as HTMLInputElement
+        const submitBtn = document.getElementById(
+            'login-submit-btn'
+        ) as HTMLButtonElement
+        const errorDiv = document.getElementById('login-error')
+
+        if (!usernameInput || !passwordInput || !submitBtn) return
+
+        const usernameOrEmail = usernameInput.value.trim()
+        const password = passwordInput.value
+
+        // Disable form while submitting
+        submitBtn.disabled = true
+        submitBtn.textContent = 'Logging in...'
+
+        try {
+            const response = await fetch('/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ usernameOrEmail, password }),
+            })
+
+            const data = await response.json()
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Login failed')
+            }
+
+            this.currentUser = data.user
+
+            // Update player name to match username if not set
+            if (!this.playerName && this.currentUser) {
+                this.playerName = this.currentUser.username
+                localStorage.setItem('playerName', this.playerName)
+                const nameInput = document.getElementById(
+                    'player-name'
+                ) as HTMLInputElement
+                if (nameInput) {
+                    nameInput.value = this.playerName
+                }
+            }
+
+            this.updateAuthUI()
+            this.hideModal()
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : 'Login failed'
+            if (errorDiv) {
+                errorDiv.textContent = message
+                errorDiv.classList.remove('hidden')
+            }
+        } finally {
+            submitBtn.disabled = false
+            submitBtn.textContent = 'Login'
+        }
+    }
+
+    private async handleRegister(e: Event): Promise<void> {
+        e.preventDefault()
+
+        const usernameInput = document.getElementById(
+            'register-username'
+        ) as HTMLInputElement
+        const emailInput = document.getElementById(
+            'register-email'
+        ) as HTMLInputElement
+        const passwordInput = document.getElementById(
+            'register-password'
+        ) as HTMLInputElement
+        const submitBtn = document.getElementById(
+            'register-submit-btn'
+        ) as HTMLButtonElement
+        const errorDiv = document.getElementById('register-error')
+
+        if (!usernameInput || !passwordInput || !submitBtn) return
+
+        const username = usernameInput.value.trim()
+        const email = emailInput?.value.trim() || undefined
+        const password = passwordInput.value
+
+        // Disable form while submitting
+        submitBtn.disabled = true
+        submitBtn.textContent = 'Creating account...'
+
+        try {
+            const response = await fetch('/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, email, password }),
+            })
+
+            const data = await response.json()
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Registration failed')
+            }
+
+            this.currentUser = data.user
+
+            // Set player name to username
+            this.playerName = username
+            localStorage.setItem('playerName', this.playerName)
+            const nameInput = document.getElementById(
+                'player-name'
+            ) as HTMLInputElement
+            if (nameInput) {
+                nameInput.value = this.playerName
+            }
+
+            this.updateAuthUI()
+            this.hideModal()
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : 'Registration failed'
+            if (errorDiv) {
+                errorDiv.textContent = message
+                errorDiv.classList.remove('hidden')
+            }
+        } finally {
+            submitBtn.disabled = false
+            submitBtn.textContent = 'Create Account'
+        }
+    }
+
+    private async logout(): Promise<void> {
+        try {
+            await fetch('/auth/logout', { method: 'POST' })
+        } catch (error) {
+            console.error('Logout error:', error)
+        }
+
+        this.currentUser = null
+        this.updateAuthUI()
+    }
+
+    private async checkAuthStatus(): Promise<void> {
+        try {
+            const response = await fetch('/auth/me')
+            if (response.ok) {
+                const data = await response.json()
+                this.currentUser = data.user
+            }
+        } catch (error) {
+            // Not logged in, that's fine
+            console.log('Not logged in')
+        }
+        this.updateAuthUI()
+    }
+
+    private async showLeaderboardModal(): Promise<void> {
+        // Show loading state
         this.showModal(`
             <div class="modal-header">
                 <h3 class="modal-title">Leaderboard</h3>
@@ -316,21 +546,74 @@ export class HomeScreen {
                 <button class="leaderboard-tab" data-period="daily">Daily</button>
             </div>
             <div class="modal-body">
-                <div class="leaderboard-list">
-                    ${this.leaderboard.map((entry) => this.renderLeaderboardEntry(entry)).join('')}
+                <div class="leaderboard-list" id="leaderboard-list">
+                    <div class="loading-state">Loading leaderboard...</div>
                 </div>
             </div>
         `)
 
-        // Tab switching
+        // Attach tab handlers
         const tabs = document.querySelectorAll('.leaderboard-tab')
         tabs.forEach((tab) => {
             tab.addEventListener('click', () => {
                 tabs.forEach((t) => t.classList.remove('active'))
                 tab.classList.add('active')
-                // TODO: Fetch different leaderboard data based on period
+                const period = (tab as HTMLElement).dataset
+                    .period as LeaderboardPeriod
+                this.fetchLeaderboard(period)
             })
         })
+
+        // Fetch initial data
+        await this.fetchLeaderboard('all')
+    }
+
+    private async fetchLeaderboard(period: LeaderboardPeriod): Promise<void> {
+        this.currentLeaderboardPeriod = period
+        const listEl = document.getElementById('leaderboard-list')
+        if (!listEl) return
+
+        listEl.innerHTML = '<div class="loading-state">Loading...</div>'
+
+        try {
+            const response = await fetch(
+                `/leaderboard?period=${period}&limit=50`
+            )
+
+            if (!response.ok) {
+                throw new Error('Failed to fetch leaderboard')
+            }
+
+            const data = await response.json()
+            this.leaderboard = data.leaderboard || []
+            this.renderLeaderboardList()
+        } catch (error) {
+            console.error('Error fetching leaderboard:', error)
+            listEl.innerHTML = `
+                <div class="error-message">
+                    <p>Failed to load leaderboard. Please try again.</p>
+                </div>
+            `
+        }
+    }
+
+    private renderLeaderboardList(): void {
+        const listEl = document.getElementById('leaderboard-list')
+        if (!listEl) return
+
+        if (this.leaderboard.length === 0) {
+            listEl.innerHTML = `
+                <div class="no-servers">
+                    <p>No leaderboard data available yet.</p>
+                    <p style="font-size: 0.875rem; margin-top: 8px;">Play some games to get on the board!</p>
+                </div>
+            `
+            return
+        }
+
+        listEl.innerHTML = this.leaderboard
+            .map((entry) => this.renderLeaderboardEntry(entry))
+            .join('')
     }
 
     private renderLeaderboardEntry(entry: LeaderboardEntry): string {
@@ -351,17 +634,62 @@ export class HomeScreen {
         `
     }
 
-    private showChangelogModal(): void {
+    private async showChangelogModal(): Promise<void> {
+        // Show loading state
         this.showModal(`
             <div class="modal-header">
                 <h3 class="modal-title">Changelog</h3>
             </div>
             <div class="modal-body">
-                <div class="changelog-list">
-                    ${this.changelog.map((entry) => this.renderChangelogEntry(entry)).join('')}
+                <div class="changelog-list" id="changelog-list">
+                    <div class="loading-state">Loading changelog...</div>
                 </div>
             </div>
         `)
+
+        await this.fetchChangelog()
+    }
+
+    private async fetchChangelog(): Promise<void> {
+        const listEl = document.getElementById('changelog-list')
+        if (!listEl) return
+
+        try {
+            const response = await fetch('/changelog?limit=20')
+
+            if (!response.ok) {
+                throw new Error('Failed to fetch changelog')
+            }
+
+            const data = await response.json()
+            this.changelog = data.changelog || []
+            this.renderChangelogList()
+        } catch (error) {
+            console.error('Error fetching changelog:', error)
+            listEl.innerHTML = `
+                <div class="error-message">
+                    <p>Failed to load changelog. Please try again.</p>
+                </div>
+            `
+        }
+    }
+
+    private renderChangelogList(): void {
+        const listEl = document.getElementById('changelog-list')
+        if (!listEl) return
+
+        if (this.changelog.length === 0) {
+            listEl.innerHTML = `
+                <div class="no-servers">
+                    <p>No changelog entries yet.</p>
+                </div>
+            `
+            return
+        }
+
+        listEl.innerHTML = this.changelog
+            .map((entry) => this.renderChangelogEntry(entry))
+            .join('')
     }
 
     private renderChangelogEntry(entry: ChangelogEntry): string {
@@ -403,7 +731,9 @@ export class HomeScreen {
 
     async show(): Promise<void> {
         this.container.style.display = 'flex'
-        await this.fetchServers()
+
+        // Check auth status and fetch servers in parallel
+        await Promise.all([this.checkAuthStatus(), this.fetchServers()])
 
         // Auto-refresh every 10 seconds
         this.refreshInterval = window.setInterval(() => {
@@ -430,7 +760,9 @@ export class HomeScreen {
                 )
             }
 
-            this.servers = await response.json()
+            const data = await response.json()
+            // Handle both wrapped {servers: [...]} and direct [...] response
+            this.servers = Array.isArray(data) ? data : data.servers || []
             this.renderServers(this.servers)
         } catch (error) {
             console.error('Error fetching servers:', error)
@@ -511,5 +843,10 @@ export class HomeScreen {
     // Public method to get the player name
     getPlayerName(): string {
         return this.playerName || 'Anonymous'
+    }
+
+    // Public method to get the current user (if logged in)
+    getCurrentUser(): User | null {
+        return this.currentUser
     }
 }

@@ -24,4 +24,23 @@ export interface GameServerInfo {
   region: string;
   currentPlayers: number;
   maxPlayers: number;
+  isOnline: boolean;
+  lastHeartbeat: string;
+}
+
+export interface LeaderboardEntry {
+  rank: number;
+  name: string;
+  score: number;
+  kills: number;
+  wins: number;
+  gamesPlayed: number;
+}
+
+export interface ChangelogEntryInfo {
+  id: string;
+  version: string;
+  date: string;
+  tag: 'new' | 'fix' | 'update';
+  changes: string[];
 }

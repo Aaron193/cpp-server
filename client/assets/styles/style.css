@@ -695,6 +695,37 @@ body {
     text-decoration: underline;
 }
 
+/* Form Error */
+.form-error {
+    padding: var(--space-md);
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-md);
+    color: var(--danger);
+    font-size: 0.875rem;
+    margin-bottom: var(--space-md);
+}
+
+/* Loading State */
+.loading-state {
+    padding: var(--space-2xl);
+    text-align: center;
+    color: var(--text-muted);
+}
+
+/* User Greeting */
+.user-greeting {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.user-greeting strong {
+    color: var(--accent-primary);
+}
+
 /* ============================================
    LEADERBOARD MODAL
    ============================================ */
