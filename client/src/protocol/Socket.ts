@@ -2,6 +2,7 @@ import { GameClient } from '../GameClient'
 import { ClientHeader, PacketReader, PacketWriter } from '../packet'
 import { assert } from '../utils/assert'
 import { isDevelopment } from '../utils/environment'
+import { getAccessToken } from '../utils/cookies'
 import { MessageHandler } from './MessageHandler'
 
 export class Socket {
@@ -9,9 +10,13 @@ export class Socket {
     public streamReader: PacketReader = new PacketReader()
     public streamWriter: PacketWriter = new PacketWriter()
     private client: GameClient
+    private host: string
+    private port: number
 
-    constructor(client: GameClient) {
+    constructor(client: GameClient, host: string, port: number) {
         this.client = client
+        this.host = host
+        this.port = port
     }
 
     public connect(): void {
@@ -29,9 +34,8 @@ export class Socket {
             )
         }
 
-        const url = isDevelopment()
-            ? 'ws://localhost:9001'
-            : location.href.replace('https', 'wss')
+        const url = `ws://${this.host}:${this.port}`
+        console.log(`Connecting to WebSocket: ${url}`)
         this.ws = new WebSocket(url)
         this.ws.binaryType = 'arraybuffer'
         this.ws.onopen = this.onOpen.bind(this)
@@ -40,9 +44,23 @@ export class Socket {
     }
 
     private onOpen(): void {
+        console.log('WebSocket connected')
+
+        // Get access token if available
+        const token = getAccessToken()
+
+        // Send SPAWN message with player name
+        // TODO: If token exists, send it to server for authentication
+        // For now, we'll send the username from the token or use a default
         this.streamWriter.writeU8(ClientHeader.SPAWN)
         this.streamWriter.writeString('my name!')
         this.flush()
+
+        if (token) {
+            console.log('User authenticated with access token')
+        } else {
+            console.log('No authentication token found, connecting as guest')
+        }
     }
 
     private onClose(): void {

@@ -6,6 +6,7 @@
 #include <mutex>
 
 #include "RaycastSystem.hpp"
+#include "ServerRegistration.hpp"
 #include "World.hpp"
 #include "client/Client.hpp"
 #include "ecs/EntityManager.hpp"
@@ -33,7 +34,13 @@ class GameServer {
     // incoming network messages
     std::vector<std::pair<uint32_t, std::string>> m_messages;
 
+    // Server registration (optional)
+    ServerRegistration* m_serverRegistration = nullptr;
+    double m_heartbeatTimer = 0.0;
+    const double m_heartbeatInterval = 5.0; // seconds
+
     void run();
+    void setServerRegistration(ServerRegistration* registration);
 
    private:
     void processClientMessages();
@@ -53,4 +60,5 @@ class GameServer {
     void broadcastMessage(const std::string& message);
 
     void processJobs();
+    void updateHeartbeat(double delta);
 };

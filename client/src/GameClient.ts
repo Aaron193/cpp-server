@@ -5,7 +5,7 @@ import { World } from './World'
 
 export class GameClient {
     world: World
-    socket: Socket = new Socket(this)
+    socket: Socket
     lastSendDirection: number = 0
     currentDirection: number = 0
 
@@ -16,8 +16,9 @@ export class GameClient {
     private lastAngleSentTime: number = 0
     private lastSendMouseDown: boolean = false
 
-    private constructor(world: World) {
+    private constructor(world: World, host: string, port: number) {
         this.world = world
+        this.socket = new Socket(this, host, port)
         this.socket.connect()
 
         // keyboard
@@ -35,9 +36,12 @@ export class GameClient {
         )
     }
 
-    public static async create(): Promise<GameClient> {
+    public static async create(
+        host: string,
+        port: number
+    ): Promise<GameClient> {
         const world = await World.create()
-        return new GameClient(world)
+        return new GameClient(world, host, port)
     }
 
     update(delta: number, tick: number, now: number) {

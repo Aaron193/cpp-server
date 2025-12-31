@@ -80,6 +80,9 @@ void GameServer::run() {
         if (m_socketLoop) {
             std::lock_guard<std::mutex> lock(m_gameMutex);
             tick(deltaTime.count());
+            
+            // Update heartbeat timer (send heartbeat every X seconds)
+            updateHeartbeat(deltaTime.count());
         }
 
         auto tickTime = std::chrono::steady_clock::now() - currentTime;
@@ -410,5 +413,25 @@ void GameServer::broadcastMessage(const std::string& message) {
         client->m_writer.writeU8(ServerHeader::NEWS);
         client->m_writer.writeU8(NewsType::TEXT);
         client->m_writer.writeString(message);
+    }
+}
+
+void GameServer::setServerRegistration(ServerRegistration* registration) {
+    m_serverRegistration = registration;
+}
+
+void GameServer::updateHeartbeat(double delta) {
+    if (!m_serverRegistration) {
+        return; // No registration configured
+    }
+
+    m_heartbeatTimer += delta;
+
+    if (m_heartbeatTimer >= m_heartbeatInterval) {
+        m_heartbeatTimer = 0.0;
+        
+        // Send heartbeat with current player count
+        int playerCount = static_cast<int>(m_clients.size());
+        m_serverRegistration->sendHeartbeatAsync(playerCount);
     }
 }

@@ -18,6 +18,7 @@ find_package(box2d CONFIG REQUIRED)
 find_package(unofficial-uwebsockets CONFIG REQUIRED)
 find_package(EnTT CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
+find_package(httplib CONFIG REQUIRED)
 
 file(GLOB_RECURSE SOURCES
     "src/*.cpp"
@@ -30,6 +31,7 @@ target_link_libraries(server PRIVATE
     unofficial::uwebsockets::uwebsockets
     EnTT::EnTT
     glm::glm
+    httplib::httplib
 )
 
 target_include_directories(server PRIVATE
