@@ -65,7 +65,7 @@ const sampleLeaderboard = [
 ];
 
 async function seed() {
-  console.log('🌱 Starting database seed...');
+  console.log('Starting database seed...');
   
   await initDatabase();
   const db = getDb();
@@ -81,16 +81,16 @@ async function seed() {
     // Insert changelog entries
     console.log('Inserting changelog entries...');
     await db.insert(changelogEntries).values(sampleChangelog);
-    console.log(`✓ Inserted ${sampleChangelog.length} changelog entries`);
+    console.log(`Inserted ${sampleChangelog.length} changelog entries`);
 
     // Insert player stats
     console.log('Inserting sample leaderboard data...');
     await db.insert(playerStats).values(sampleLeaderboard);
-    console.log(`✓ Inserted ${sampleLeaderboard.length} player stats entries`);
+    console.log(`Inserted ${sampleLeaderboard.length} player stats entries`);
 
-    console.log('✅ Seed completed successfully!');
+    console.log('Seed completed successfully!');
   } catch (error) {
-    console.error('❌ Seed failed:', error);
+    console.error('Seed failed:', error);
     throw error;
   } finally {
     await closeDatabase();
