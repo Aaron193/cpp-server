@@ -1,11 +1,11 @@
 #pragma once
 
-#include <box2d/b2_world_callbacks.h>
+#include <box2d/box2d.h>
 
 #include <entt/entt.hpp>
 #include <glm/glm.hpp>
 
-class b2World;
+class b2WorldId;
 
 // Result of a raycast
 struct RayHit {
@@ -17,26 +17,10 @@ struct RayHit {
     bool hit = false;
 };
 
-// Raycast callback for bullets
-class BulletRaycastCallback : public b2RayCastCallback {
-   public:
-    BulletRaycastCallback(entt::registry& registry);
-
-    float ReportFixture(b2Fixture* fixture, const b2Vec2& point,
-                        const b2Vec2& normal, float fraction) override;
-
-    RayHit GetResult() const { return m_result; }
-    bool HasHit() const { return m_result.hit; }
-
-   private:
-    entt::registry& m_registry;
-    RayHit m_result;
-};
-
 // Raycast system for Line of Sight and bullets
 class RaycastSystem {
    public:
-    RaycastSystem(entt::registry& registry, b2World& physicsWorld);
+    RaycastSystem(entt::registry& registry, b2WorldId worldId);
 
     // Fire a bullet raycast
     RayHit FireBullet(entt::entity shooter, glm::vec2 origin,
@@ -50,5 +34,5 @@ class RaycastSystem {
 
    private:
     entt::registry& m_registry;
-    b2World& m_physicsWorld;
+    b2WorldId m_worldId;
 };

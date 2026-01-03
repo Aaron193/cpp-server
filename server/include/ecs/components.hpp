@@ -1,7 +1,6 @@
 #pragma once
 
-#include <box2d/b2_body.h>
-#include <box2d/b2_math.h>
+#include <box2d/box2d.h>
 
 #include <entt/entt.hpp>
 #include <unordered_map>
@@ -17,7 +16,7 @@ struct Client {
 struct EntityBase {
     EntityTypes type;
     uint8_t variant = 0;
-    b2Body* body = nullptr;
+    b2BodyId bodyId = b2_nullBodyId;
 };
 
 struct Networked {};

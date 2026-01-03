@@ -1,12 +1,6 @@
 #include "GameServer.hpp"
 
-#include <box2d/b2_body.h>
-#include <box2d/b2_circle_shape.h>
-#include <box2d/b2_collision.h>
-#include <box2d/b2_fixture.h>
-#include <box2d/b2_math.h>
-#include <box2d/b2_shape.h>
-#include <box2d/b2_world.h>
+#include <box2d/box2d.h>
 
 #include <cassert>
 #include <chrono>
@@ -51,7 +45,8 @@ GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {
 
     // Create Box2D physics from meshes
     std::cout << "Building physics from meshes..." << std::endl;
-    m_worldGenerator->BuildMeshPhysics(m_terrainMeshes, *m_physicsWorld.m_world);
+    m_worldGenerator->BuildMeshPhysics(m_terrainMeshes,
+                                       m_physicsWorld.m_worldId);
 
     // Save final terrain visualization
     std::cout << "Saving final terrain image..." << std::endl;
@@ -59,7 +54,7 @@ GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {
 
     // Initialize raycast system
     m_raycastSystem = std::make_unique<RaycastSystem>(
-        m_entityManager.getRegistry(), *m_physicsWorld.m_world);
+        m_entityManager.getRegistry(), m_physicsWorld.m_worldId);
 
     std::cout << "GameServer initialization complete!" << std::endl;
 }
@@ -80,7 +75,7 @@ void GameServer::run() {
         if (m_socketLoop) {
             std::lock_guard<std::mutex> lock(m_gameMutex);
             tick(deltaTime.count());
-            
+
             // Update heartbeat timer (send heartbeat every X seconds)
             updateHeartbeat(deltaTime.count());
         }
@@ -163,34 +158,36 @@ void GameServer::prePhysicsSystemUpdate(double delta) {
 
 void GameServer::biomeSystem() {
     entt::registry& reg = m_entityManager.getRegistry();
-    
+
     // Query biome for each entity with a position
-    reg.view<Components::EntityBase>().each(
-        [&](entt::entity entity, Components::EntityBase& base) {
-            if (!base.body) return;
-            
-            // Get entity's position
-            b2Vec2 pos = base.body->GetPosition();
-            
-            // Convert from Box2D meters to world coordinates
-            // (Assuming pixels are the world coordinate system)
-            float worldX = pixels(pos.x);
-            float worldY = pixels(pos.y);
-            
-            // Query biome at this position
-            if (m_worldGenerator) {
-                BiomeType currentBiome = m_worldGenerator->GetBiomeAtPosition(worldX, worldY);
-                
-                std::cout << "Entity " << static_cast<uint32_t>(entity)
-                          << " is in biome: " << m_worldGenerator->GetBiomeName(currentBiome) << "\n";
-                // TODO: Store biome on entity if needed
-                // For now, just log it for testing
-                // You can add a Biome component if you want to track it
-                // entt::component biomeComponent;
-                // biomeComponent.type = currentBiome;
-                // reg.emplace<Components::Biome>(entity, biomeComponent);
-            }
-        });
+    reg.view<Components::EntityBase>().each([&](entt::entity entity,
+                                                Components::EntityBase& base) {
+        if (B2_IS_NULL(base.bodyId)) return;
+
+        // Get entity's position
+        b2Vec2 pos = b2Body_GetPosition(base.bodyId);
+
+        // Convert from Box2D meters to world coordinates
+        // (Assuming pixels are the world coordinate system)
+        float worldX = pixels(pos.x);
+        float worldY = pixels(pos.y);
+
+        // Query biome at this position
+        if (m_worldGenerator) {
+            BiomeType currentBiome =
+                m_worldGenerator->GetBiomeAtPosition(worldX, worldY);
+
+            std::cout << "Entity " << static_cast<uint32_t>(entity)
+                      << " is in biome: "
+                      << m_worldGenerator->GetBiomeName(currentBiome) << "\n";
+            // TODO: Store biome on entity if needed
+            // For now, just log it for testing
+            // You can add a Biome component if you want to track it
+            // entt::component biomeComponent;
+            // biomeComponent.type = currentBiome;
+            // reg.emplace<Components::Biome>(entity, biomeComponent);
+        }
+    });
 }
 
 void GameServer::stateSystem() {
@@ -226,16 +223,16 @@ void GameServer::inputSystem(double delta) {
 
             const float speed = 2.5f;
 
-            b2Vec2 inputVector = b2Vec2(x, y);
-            b2Vec2 velocity =
-                b2Vec2(inputVector.x * speed, inputVector.y * speed);
+            b2Vec2 inputVector = {x, y};
+            b2Vec2 velocity = {inputVector.x * speed, inputVector.y * speed};
 
-            b2Body* body = base.body;
+            b2BodyId bodyId = base.bodyId;
 
-            assert(body != nullptr);
+            assert(B2_IS_NON_NULL(bodyId));
 
-            body->SetLinearVelocity(velocity);
-            body->SetTransform(body->GetPosition(), angle);
+            b2Body_SetLinearVelocity(bodyId, velocity);
+            b2Rot rotation = b2MakeRot(angle);
+            b2Body_SetTransform(bodyId, b2Body_GetPosition(bodyId), rotation);
         });
 }
 
@@ -248,8 +245,7 @@ void GameServer::meleeSystem(double delta) {
                   Components::Input& input,
                   Components::AttackCooldown& cooldown,
                   Components::State& state) {
-            b2Body* body = base.body;
-            assert(body != nullptr);
+            assert(B2_IS_NON_NULL(base.bodyId));
 
             const bool shouldAttack = input.mouseIsDown || input.dirtyClick;
             const bool finishedCooldown = cooldown.update(delta);
@@ -261,13 +257,15 @@ void GameServer::meleeSystem(double delta) {
 
                 state.setState(EntityStates::MELEE);
 
-                const b2Vec2& pos = body->GetPosition();
-                const float angle = body->GetAngle();
+                const b2Vec2& pos = b2Body_GetPosition(base.bodyId);
+                b2Rot rot = b2Body_GetRotation(base.bodyId);
+                const float angle =
+                    atan2f(2.0f * rot.c * rot.s, 1.0f - 2.0f * rot.s * rot.s);
                 int playerRadius = 25;
 
-                b2Vec2 meleePos =
-                    b2Vec2(pixels(pos.x) + playerRadius * std::cos(angle),
-                           pixels(pos.y) + playerRadius * std::sin(angle));
+                b2Vec2 meleePos = {
+                    pixels(pos.x) + playerRadius * std::cos(angle),
+                    pixels(pos.y) + playerRadius * std::sin(angle)};
 
                 Hit(entity, meleePos, 15);
             }
@@ -281,8 +279,9 @@ void GameServer::cameraSystem() {
             if (reg.valid(cam.target)) {
                 assert(reg.all_of<Components::EntityBase>(cam.target));
 
-                b2Body* body = reg.get<Components::EntityBase>(cam.target).body;
-                cam.position = body->GetPosition();
+                b2BodyId bodyId =
+                    reg.get<Components::EntityBase>(cam.target).bodyId;
+                cam.position = b2Body_GetPosition(bodyId);
             }
         });
 }
@@ -305,41 +304,47 @@ void GameServer::Hit(entt::entity attacker, b2Vec2& pos, int radius) {
     float y = meters(pos.y);
 
     b2AABB queryAABB;
-    queryAABB.lowerBound = b2Vec2(x - mRadius, y - mRadius);
-    queryAABB.upperBound = b2Vec2(x + mRadius, y + mRadius);
-
-    b2World* world = m_physicsWorld.m_world.get();
-
-    m_physicsWorld.m_queryBodies->Clear();
-    world->QueryAABB(m_physicsWorld.m_queryBodies, queryAABB);
-
-    b2CircleShape hitbox;
-    hitbox.m_radius = mRadius;
-
-    b2Transform hitboxXf;
-    hitboxXf.Set(b2Vec2(x, y), 0.0f);
+    queryAABB.lowerBound = {x - mRadius, y - mRadius};
+    queryAABB.upperBound = {x + mRadius, y + mRadius};
 
     entt::registry& reg = m_entityManager.getRegistry();
 
-    for (entt::entity entity : m_physicsWorld.m_queryBodies->entities) {
+    auto healthView = reg.view<Components::EntityBase, Components::Health>();
+
+    for (auto entity : healthView) {
         if (attacker == entity) continue;
 
-        if (!reg.all_of<Components::Health>(entity)) continue;
+        assert(healthView.contains(entity));
+        auto& base = healthView.get<Components::EntityBase>(entity);
 
-        assert(reg.all_of<Components::EntityBase>(entity));
-        b2Body* body = reg.get<Components::EntityBase>(entity).body;
-        assert(body != nullptr);
+        if (B2_IS_NULL(base.bodyId)) continue;
 
-        Components::Health& health = reg.get<Components::Health>(entity);
+        // Get entity position
+        b2Vec2 entityPos = b2Body_GetPosition(base.bodyId);
 
-        b2Fixture* fixture = body->GetFixtureList();
+        // Simple distance check first
+        b2Vec2 diff = {entityPos.x - x, entityPos.y - y};
+        float distSq = diff.x * diff.x + diff.y * diff.y;
+        if (distSq > (mRadius + 2.0f) * (mRadius + 2.0f))
+            continue;  // Simple bounds check
 
-        for (b2Fixture* fixture = body->GetFixtureList(); fixture;
-             fixture = fixture->GetNext()) {
-            const b2Shape* shape = fixture->GetShape();
-            b2Transform shapeXf = body->GetTransform();
+        Components::Health& health = healthView.get<Components::Health>(entity);
 
-            if (b2TestOverlap(&hitbox, 0, shape, 0, hitboxXf, shapeXf)) {
+        // Get all shapes for this body and test overlap
+        int shapeCount = b2Body_GetShapeCount(base.bodyId);
+        b2ShapeId* shapes = new b2ShapeId[shapeCount];
+        b2Body_GetShapes(base.bodyId, shapes, shapeCount);
+
+        bool hit = false;
+        for (int i = 0; i < shapeCount; ++i) {
+            b2ShapeId shapeId = shapes[i];
+
+            // Get shape bounds
+            b2AABB shapeAABB = b2Shape_GetAABB(shapeId);
+            if (shapeAABB.lowerBound.x <= x + mRadius &&
+                shapeAABB.upperBound.x >= x - mRadius &&
+                shapeAABB.lowerBound.y <= y + mRadius &&
+                shapeAABB.upperBound.y >= y - mRadius) {
                 // damage entity
                 const int DAMAGE = 10;
                 health.decrement(DAMAGE, attacker);
@@ -351,8 +356,11 @@ void GameServer::Hit(entt::entity attacker, b2Vec2& pos, int radius) {
 
                     state.setState(EntityStates::HURT);
                 }
+                hit = true;
+                break;  // Only hit once per entity
             }
         }
+        delete[] shapes;
     }
 }
 
@@ -422,14 +430,14 @@ void GameServer::setServerRegistration(ServerRegistration* registration) {
 
 void GameServer::updateHeartbeat(double delta) {
     if (!m_serverRegistration) {
-        return; // No registration configured
+        return;  // No registration configured
     }
 
     m_heartbeatTimer += delta;
 
     if (m_heartbeatTimer >= m_heartbeatInterval) {
         m_heartbeatTimer = 0.0;
-        
+
         // Send heartbeat with current player count
         int playerCount = static_cast<int>(m_clients.size());
         m_serverRegistration->sendHeartbeatAsync(playerCount);
