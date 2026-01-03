@@ -4,7 +4,6 @@
 
 #include "GameServer.hpp"
 #include "ecs/EntityManager.hpp"
-#include "ecs/components.hpp"
 
 PhysicsWorld::PhysicsWorld(GameServer& gameServer) : m_gameServer(gameServer) {
     b2WorldDef worldDef = b2DefaultWorldDef();

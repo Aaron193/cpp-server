@@ -37,9 +37,9 @@ enum NewsType : uint8_t {
 // Collision system for Box2D filtering
 enum CollisionCategory : uint16_t {
     CAT_PLAYER = 1 << 0,  // 1
-    CAT_WALL   = 1 << 1,  // 2
-    CAT_COVER  = 1 << 2,  // 4
-    CAT_WATER  = 1 << 3,  // 8
+    CAT_WALL = 1 << 1,    // 2
+    CAT_COVER = 1 << 2,   // 4
+    CAT_WATER = 1 << 3,   // 8
 };
 
 enum CollisionMask : uint16_t {

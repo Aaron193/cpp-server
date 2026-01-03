@@ -37,7 +37,7 @@ class GameServer {
     // Server registration (optional)
     ServerRegistration* m_serverRegistration = nullptr;
     double m_heartbeatTimer = 0.0;
-    const double m_heartbeatInterval = 5.0; // seconds
+    const double m_heartbeatInterval = 5.0;  // seconds
 
     void run();
     void setServerRegistration(ServerRegistration* registration);

@@ -3,13 +3,8 @@
 #include <box2d/box2d.h>
 
 #include <entt/entity/fwd.hpp>
-#include <memory>
-#include <optional>
-#include <unordered_set>
-#include <vector>
 
 #include "ecs/EntityManager.hpp"
-#include "ecs/components.hpp"
 
 // User data for terrain shapes to identify which mesh they belong to
 struct TerrainShapeUserData {

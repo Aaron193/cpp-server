@@ -5,7 +5,6 @@
 #include <cmath>
 
 #include "common/enums.hpp"
-#include "ecs/EntityManager.hpp"
 #include "ecs/components.hpp"
 
 RaycastSystem::RaycastSystem(entt::registry& registry, b2WorldId worldId)
