@@ -84,27 +84,26 @@ void ServerRegistration::sendHttpPostAsync(const std::string& endpoint,
 
             if (res) {
                 if (res->status == 200 || res->status == 201) {
-                    std::cout << "[ServerRegistration] ✓ HTTP POST successful: "
-                              << path << " (status: " << res->status << ")"
-                              << std::endl;
+                    std::cout
+                        << "[ServerRegistration] HTTP POST successful: " << path
+                        << " (status: " << res->status << ")" << std::endl;
                 } else {
                     std::cerr
-                        << "[ServerRegistration] ✗ HTTP POST failed: " << path
+                        << "[ServerRegistration] HTTP POST failed: " << path
                         << " (status: " << res->status << ")" << std::endl;
                     std::cerr << "[ServerRegistration] Response: " << res->body
                               << std::endl;
                 }
             } else {
                 auto err = res.error();
-                std::cerr << "[ServerRegistration] ✗ HTTP request failed: "
+                std::cerr << "[ServerRegistration] HTTP request failed: "
                           << path << std::endl;
                 std::cerr << "[ServerRegistration] Error: "
                           << httplib::to_string(err) << std::endl;
             }
         } catch (const std::exception& e) {
-            std::cerr
-                << "[ServerRegistration] ✗ Exception during HTTP request: "
-                << e.what() << std::endl;
+            std::cerr << "[ServerRegistration] Exception during HTTP request: "
+                      << e.what() << std::endl;
         }
     }).detach();
 }

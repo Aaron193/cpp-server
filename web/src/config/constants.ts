@@ -17,6 +17,6 @@ export const CONSTANTS = {
   COOKIE_ACCESS_TOKEN: 'access_token',
   
   // Rate limiting
-  RATE_LIMIT_MAX: 10,
+  RATE_LIMIT_MAX: 50,
   RATE_LIMIT_WINDOW_MS: 60000, // 1 minute
 } as const;

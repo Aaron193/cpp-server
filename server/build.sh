@@ -52,5 +52,18 @@ cmake --build . --parallel
 
 # Run 
 if [[ $RUN_AFTER_BUILD -eq 1 ]]; then
+    # Load .env if present (dev convenience)
+    if [[ -f "./.env" ]]; then
+        echo "[Dev] Loading environment from .env"
+        set -o allexport
+        source ./.env
+        set +o allexport
+    elif [[ -f "../.env" ]]; then
+        echo "[Dev] Loading environment from ../.env"
+        set -o allexport
+        source ../.env
+        set +o allexport
+    fi
+
     ./server
 fi

@@ -32,6 +32,8 @@ int main() {
     std::cout << "[Config] Region: " << serverRegion << std::endl;
     std::cout << "[Config] Max Players: " << maxPlayers << std::endl;
     std::cout << "[Config] Web API: " << webApiUrl << std::endl;
+    std::cout << "[Config] Shared Secret: "
+              << (sharedSecret.empty() ? "<not set>" : "<set>") << std::endl;
 
     GameServer gameServer;
     SocketServer socketServer(gameServer, serverPort);

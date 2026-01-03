@@ -30,7 +30,11 @@ module.exports = (env, argv) => {
             hot: true,
             historyApiFallback: true,
             compress: true,
-            port: 3000,
+            // Allow overriding dev server port with CLIENT_PORT env var. Default to 3001 to avoid
+            // conflicting with the backend API running on port 3000 during development.
+            port: process.env.CLIENT_PORT
+                ? parseInt(process.env.CLIENT_PORT, 10)
+                : 3001,
             client: {
                 overlay: true,
             },

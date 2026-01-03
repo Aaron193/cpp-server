@@ -1,3 +1,5 @@
+import { isDevelopment } from './utils/environment'
+
 interface GameServer {
     id: string
     host: string
@@ -35,6 +37,9 @@ interface User {
 
 type LeaderboardPeriod = 'all' | 'weekly' | 'daily'
 
+const API_BASE = isDevelopment()
+    ? 'http://localhost:3000'
+    : window.location.href
 export class HomeScreen {
     private container: HTMLElement
     private onServerSelect: (host: string, port: number) => void
@@ -401,8 +406,9 @@ export class HomeScreen {
         submitBtn.textContent = 'Logging in...'
 
         try {
-            const response = await fetch('/auth/login', {
+            const response = await fetch(`${API_BASE}/auth/login`, {
                 method: 'POST',
+                credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ usernameOrEmail, password }),
             })
@@ -470,8 +476,9 @@ export class HomeScreen {
         submitBtn.textContent = 'Creating account...'
 
         try {
-            const response = await fetch('/auth/register', {
+            const response = await fetch(`${API_BASE}/auth/register`, {
                 method: 'POST',
+                credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, email, password }),
             })
@@ -511,7 +518,7 @@ export class HomeScreen {
 
     private async logout(): Promise<void> {
         try {
-            await fetch('/auth/logout', { method: 'POST' })
+            await fetch(`${API_BASE}/auth/logout`, { method: 'POST' })
         } catch (error) {
             console.error('Logout error:', error)
         }
@@ -522,7 +529,9 @@ export class HomeScreen {
 
     private async checkAuthStatus(): Promise<void> {
         try {
-            const response = await fetch('/auth/me')
+            const response = await fetch(`${API_BASE}/auth/me`, {
+                credentials: 'include',
+            })
             if (response.ok) {
                 const data = await response.json()
                 this.currentUser = data.user
@@ -577,7 +586,7 @@ export class HomeScreen {
 
         try {
             const response = await fetch(
-                `/leaderboard?period=${period}&limit=50`
+                `${API_BASE}/leaderboard?period=${period}&limit=50`
             )
 
             if (!response.ok) {
@@ -655,7 +664,7 @@ export class HomeScreen {
         if (!listEl) return
 
         try {
-            const response = await fetch('/changelog?limit=20')
+            const response = await fetch(`${API_BASE}/changelog?limit=20`)
 
             if (!response.ok) {
                 throw new Error('Failed to fetch changelog')
@@ -752,7 +761,7 @@ export class HomeScreen {
 
     private async fetchServers(): Promise<void> {
         try {
-            const response = await fetch('/servers')
+            const response = await fetch(`${API_BASE}/servers`)
 
             if (!response.ok) {
                 throw new Error(
