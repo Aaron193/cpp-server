@@ -3,7 +3,7 @@ import { Pool } from 'pg';
 import { env } from '../config/env';
 import * as schema from './schema';
 
-let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
+export let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 let pool: Pool | null = null;
 
 export async function initDatabase() {

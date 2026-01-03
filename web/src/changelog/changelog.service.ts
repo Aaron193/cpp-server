@@ -1,13 +1,13 @@
-import { db } from '../db/client';
+import { getDb } from '../db/client';
 import { changelogEntries } from '../db/schema';
-import { desc, sql } from 'drizzle-orm';
+import { desc } from 'drizzle-orm';
 import type { ChangelogEntryInfo } from '../types/shared';
 
 /**
  * Get all changelog entries, sorted by publish date descending
  */
 export async function getChangelog(limit: number = 20): Promise<ChangelogEntryInfo[]> {
-  const results = await db
+  const results = await getDb()
     .select()
     .from(changelogEntries)
     .orderBy(desc(changelogEntries.publishedAt))
@@ -35,7 +35,7 @@ export async function createChangelogEntry(
   changes: string[],
   publishedAt?: Date
 ): Promise<void> {
-  await db.insert(changelogEntries).values({
+  await getDb().insert(changelogEntries).values({
     version,
     tag,
     changes,
