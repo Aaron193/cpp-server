@@ -44,7 +44,7 @@ for var in "${REQUIRED_VARS[@]}"; do
     fi
 done
 
-echo "✅ Environment validation passed"
+echo "Environment validation passed"
 
 # Build services
 echo "Building Docker images..."
