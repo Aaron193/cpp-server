@@ -4,6 +4,7 @@ const MiniCssExtractPlugin = require('mini-css-extract-plugin')
 const CopyPlugin = require('copy-webpack-plugin')
 const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin')
 const { CleanWebpackPlugin } = require('clean-webpack-plugin')
+const webpack = require('webpack')
 
 module.exports = (env, argv) => {
     const isDevelopment = argv.mode === 'development'
@@ -95,7 +96,11 @@ module.exports = (env, argv) => {
                 patterns: [
                     {
                         from: path.resolve(__dirname, 'src/assets/styles'),
-                        to: path.resolve(__dirname, 'assets/styles'),
+                        to: path.resolve(__dirname, 'dist/assets/styles'),
+                    },
+                    {
+                        from: path.resolve(__dirname, 'src/assets/img'),
+                        to: path.resolve(__dirname, 'dist/assets/img'),
                     },
                 ],
             }),
@@ -104,6 +109,16 @@ module.exports = (env, argv) => {
                 typescript: {
                     configFile: path.resolve(__dirname, './tsconfig.json'),
                 },
+            }),
+
+            // Inject environment variables
+            new webpack.DefinePlugin({
+                'process.env.CLIENT_API_BASE': JSON.stringify(
+                    process.env.CLIENT_API_BASE || 'http://localhost:3000'
+                ),
+                'process.env.CLIENT_GAME_SERVER_WS': JSON.stringify(
+                    process.env.CLIENT_GAME_SERVER_WS || 'ws://localhost:9001'
+                ),
             }),
         ],
     }

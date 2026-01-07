@@ -1,0 +1,57 @@
+# =============================================================================
+# Multi-stage Dockerfile for Client (Static Build)
+# =============================================================================
+
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Accept build arguments for environment configuration
+ARG CLIENT_API_BASE
+ARG CLIENT_GAME_SERVER_WS
+
+# Set as environment variables for webpack
+ENV CLIENT_API_BASE=${CLIENT_API_BASE}
+ENV CLIENT_GAME_SERVER_WS=${CLIENT_GAME_SERVER_WS}
+
+# Copy package files
+COPY client/package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy source code
+COPY client/ ./
+
+# Build production bundle
+RUN npm run build
+
+# =============================================================================
+# Production stage with nginx
+# =============================================================================
+FROM nginx:alpine AS production
+
+# Copy custom nginx configuration
+COPY nginx.conf /etc/nginx/nginx.conf
+
+# Copy built static files from builder
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Create non-root user for nginx
+RUN chown -R nginx:nginx /usr/share/nginx/html && \
+    chown -R nginx:nginx /var/cache/nginx && \
+    chown -R nginx:nginx /var/log/nginx && \
+    chown -R nginx:nginx /etc/nginx/conf.d
+
+# Use non-root user
+USER nginx
+
+# Expose port
+EXPOSE 80
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost/ || exit 1
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]

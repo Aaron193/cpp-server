@@ -12,7 +12,12 @@ async function runMigrations() {
 
   console.log('Running migrations...');
   
-  await migrate(db, { migrationsFolder: './src/db/migrations' });
+  // Use different path for production (compiled) vs development
+  const migrationsFolder = process.env.NODE_ENV === 'production' 
+    ? './dist/db/migrations' 
+    : './src/db/migrations';
+  
+  await migrate(db, { migrationsFolder });
 
   console.log('Migrations complete');
   

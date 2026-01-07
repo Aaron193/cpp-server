@@ -37,9 +37,11 @@ interface User {
 
 type LeaderboardPeriod = 'all' | 'weekly' | 'daily'
 
-const API_BASE = isDevelopment()
-    ? 'http://localhost:3000'
-    : window.location.href
+// Use environment variable from webpack, or fallback to smart defaults
+const API_BASE =
+    (process.env as any).CLIENT_API_BASE ||
+    (isDevelopment() ? 'http://localhost:3000' : window.location.origin)
+
 export class HomeScreen {
     private container: HTMLElement
     private onServerSelect: (host: string, port: number) => void
@@ -735,7 +737,7 @@ export class HomeScreen {
         })
 
         const server = availableServers[0]
-        this.onServerSelect(server.host, server.port)
+        this.onServerSelect(this.normalizeHost(server.host), server.port)
     }
 
     async show(): Promise<void> {
@@ -802,7 +804,10 @@ export class HomeScreen {
             const card = document.getElementById(`server-${server.id}`)
             if (card && server.isOnline) {
                 card.addEventListener('click', () => {
-                    this.onServerSelect(server.host, server.port)
+                    this.onServerSelect(
+                        this.normalizeHost(server.host),
+                        server.port
+                    )
                 })
             }
         })
@@ -847,6 +852,15 @@ export class HomeScreen {
         const div = document.createElement('div')
         div.textContent = text
         return div.innerHTML
+    }
+
+    private normalizeHost(host: string): string {
+        // Convert 0.0.0.0 to localhost for browser WebSocket connections
+        // 0.0.0.0 is valid for server binding but not for client connections
+        if (host === '0.0.0.0') {
+            return 'localhost'
+        }
+        return host
     }
 
     // Public method to get the player name

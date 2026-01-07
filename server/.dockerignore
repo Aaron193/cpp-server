@@ -1,0 +1,27 @@
+# Server (C++) dockerignore
+build/
+.env
+.env.*
+!.env.example
+*.log
+logs/
+.git/
+.gitignore
+*.md
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+compile_commands.json
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+CMakeFiles/
+vcpkg_installed/
+
+# Prevent any cached build artifacts from being copied
+**/build/
+**/CMakeCache.txt
+**/cmake_install.cmake

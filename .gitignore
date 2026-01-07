@@ -1,2 +1,7 @@
 .internal
 .env
+
+# Docker
+docker-compose.override.yml
+*.log
+logs/

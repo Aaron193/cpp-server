@@ -1,0 +1,67 @@
+# =============================================================================
+# Development Docker Compose Override
+# =============================================================================
+# This file is for local development only and is already gitignored
+# Copy this to docker compose.override.yml to use it
+#
+# Usage:
+#   cp docker compose.override.yml.example docker compose.override.yml
+#   docker compose up
+#
+# This will automatically merge with docker compose.yml
+
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      target: builder  # Use builder stage for development
+    volumes:
+      # Mount source for hot-reloading
+      - ./web/src:/app/src:ro
+      - ./web/package.json:/app/package.json:ro
+    environment:
+      NODE_ENV: development
+    command: npm run dev
+    ports:
+      - "3000:3000"
+      - "9229:9229"  # Node.js debugger port
+
+  gameserver:
+    # For development, you might want to mount the binary
+    # or use a different build configuration
+    volumes:
+      - ./server:/app/server:ro
+    environment:
+      LOG_LEVEL: debug
+
+  client:
+    # For development, use webpack dev server instead
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+      target: builder
+    volumes:
+      - ./client/src:/app/src:ro
+    command: npm run dev
+    ports:
+      - "3001:3001"  # Webpack dev server
+    environment:
+      CLIENT_API_BASE: http://localhost:3000
+      CLIENT_GAME_SERVER_WS: ws://localhost:9001
+
+  # Optional: Add development tools
+  adminer:
+    image: adminer
+    container_name: game-adminer
+    ports:
+      - "8080:8080"
+    networks:
+      - game-network
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+
+networks:
+  game-network:
+    external: false

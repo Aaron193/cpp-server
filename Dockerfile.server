@@ -1,0 +1,84 @@
+# =============================================================================
+# Multi-stage Dockerfile for C++ Game Server
+# =============================================================================
+
+FROM ubuntu:22.04 AS builder
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    curl \
+    zip \
+    unzip \
+    tar \
+    pkg-config \
+    ninja-build \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install vcpkg
+RUN git clone https://github.com/Microsoft/vcpkg.git /opt/vcpkg && \
+    /opt/vcpkg/bootstrap-vcpkg.sh
+
+ENV VCPKG_ROOT=/opt/vcpkg
+ENV PATH="${VCPKG_ROOT}:${PATH}"
+
+WORKDIR /build
+
+# Copy vcpkg.json first for dependency caching
+COPY server/vcpkg.json ./
+
+# Install dependencies via vcpkg (this layer will be cached if vcpkg.json doesn't change)
+RUN vcpkg install --triplet=x64-linux
+
+# Copy source code
+COPY server/ ./
+
+# Build the server in release mode
+RUN rm -rf build && \
+    mkdir -p build && \
+    cd build && \
+    cmake \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_TOOLCHAIN_FILE="${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" \
+    .. && \
+    cmake --build . --parallel $(nproc)
+
+# =============================================================================
+# Production stage
+# =============================================================================
+FROM ubuntu:22.04 AS production
+
+# Install only runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libstdc++6 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy the built server binary
+COPY --from=builder /build/build/server ./server
+
+# Copy any required runtime assets (if any)
+# COPY server/assets ./assets
+
+# Create non-root user for security
+RUN useradd -m -u 1001 -s /bin/bash gameserver && \
+    chown -R gameserver:gameserver /app
+
+USER gameserver
+
+# Expose game server port
+EXPOSE 9001
+
+# Health check (customize based on your server's health endpoint if available)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD timeout 2 bash -c "</dev/tcp/localhost/9001" || exit 1
+
+# Start the server
+CMD ["./server"]

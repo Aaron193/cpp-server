@@ -1,0 +1,130 @@
+# =============================================================================
+# Production Docker Compose Configuration
+# =============================================================================
+# This configuration orchestrates all services for the multiplayer game:
+# - PostgreSQL database
+# - Web API server (control plane)
+# - C++ game server
+# - Client static files (nginx)
+
+services:
+  # ===========================================================================
+  # Database Service
+  # ===========================================================================
+  db:
+    image: postgres:16-alpine
+    container_name: game-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Optional: backup scripts or init scripts
+      # - ./db-backups:/backups
+    networks:
+      - game-network
+    ports:
+      # Only expose for development/debugging; remove in production
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ===========================================================================
+  # Web API Service (Control Plane)
+  # ===========================================================================
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: game-web
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      PORT: ${WEB_PORT}
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN}
+      SERVER_SHARED_SECRET: ${SERVER_SHARED_SECRET}
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost}
+    networks:
+      - game-network
+    ports:
+      - "${WEB_PORT}:${WEB_PORT}"
+    restart: unless-stopped
+    command: sh -c "node dist/db/migrate.js && node dist/index.js"
+    # Optional: mount for logs
+    # volumes:
+    #   - ./logs/web:/app/logs
+
+  # ===========================================================================
+  # Game Server (C++)
+  # ===========================================================================
+  gameserver:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: game-server
+    depends_on:
+      web:
+        condition: service_started
+    environment:
+      SERVER_ID: ${SERVER_ID}
+      SERVER_HOST: ${SERVER_HOST}
+      SERVER_PORT: ${SERVER_PORT}
+      SERVER_REGION: ${SERVER_REGION}
+      MAX_PLAYERS: ${MAX_PLAYERS}
+      WEB_API_URL: ${WEB_API_URL}
+      SERVER_SHARED_SECRET: ${SERVER_SHARED_SECRET}
+    networks:
+      - game-network
+    ports:
+      - "${SERVER_PORT}:${SERVER_PORT}"
+    restart: unless-stopped
+    # Optional: mount for logs or config
+    # volumes:
+    #   - ./logs/server:/app/logs
+
+  # ===========================================================================
+  # Client Service (Static Files via Nginx)
+  # ===========================================================================
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+      args:
+        - CLIENT_API_BASE=${CLIENT_API_BASE}
+        - CLIENT_GAME_SERVER_WS=${CLIENT_GAME_SERVER_WS}
+    container_name: game-client
+    depends_on:
+      - web
+      - gameserver
+    networks:
+      - game-network
+    ports:
+      - "${NGINX_PORT}:80"
+    restart: unless-stopped
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  game-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  postgres_data:
+    driver: local

@@ -29,7 +29,9 @@ export async function createServer() {
   await fastify.register(cookie);
   
   await fastify.register(cors, {
-    origin: env.NODE_ENV === 'production' ? false : true,
+    origin: env.NODE_ENV === 'production' 
+      ? ['http://localhost', 'http://localhost:80', process.env.CLIENT_ORIGIN || 'http://localhost']
+      : true,
     credentials: true,
   });
 

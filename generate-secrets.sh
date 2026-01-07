@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# =============================================================================
+# Generate Secure Secrets
+# =============================================================================
+# This script generates secure random secrets for your .env file
+
+echo "Generating secure secrets for production..."
+echo ""
+echo "Add these to your .env file:"
+echo ""
+echo "# Database"
+echo "POSTGRES_PASSWORD=$(openssl rand -base64 32)"
+echo ""
+echo "# JWT"
+echo "JWT_SECRET=$(openssl rand -base64 32)"
+echo ""
+echo "# Server Authentication"
+echo "SERVER_SHARED_SECRET=$(openssl rand -base64 32)"
+echo ""
