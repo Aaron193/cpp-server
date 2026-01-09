@@ -2,9 +2,17 @@
 # Multi-stage Dockerfile for Web Service (Control Plane)
 # =============================================================================
 
-FROM node:20-alpine AS builder
+FROM node:20-bullseye AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /app
+
+RUN apt-get update && \
+    apt-get install -y build-essential python3 && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g npm@11.7.0
 
 # Copy package files
 COPY web/package*.json ./
@@ -21,23 +29,20 @@ RUN npm run build
 # =============================================================================
 # Production stage
 # =============================================================================
-FROM node:20-alpine AS production
+FROM node:20-bullseye-slim AS production
 
 WORKDIR /app
 
-# Install production dependencies only
+# Install runtime dependencies only
 COPY web/package*.json ./
 RUN npm ci --only=production
 
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
-
-# Copy migration files (needed by migrate script)
 COPY --from=builder /app/src/db/migrations ./dist/db/migrations
 
-# Create non-root user for security
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001 && \
+# Create non-root user
+RUN addgroup --system nodejs && adduser --system --ingroup nodejs nodejs && \
     chown -R nodejs:nodejs /app
 
 USER nodejs
