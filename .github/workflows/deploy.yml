@@ -70,10 +70,15 @@ jobs:
         cache-from: type=registry,ref=${{ env.DOCKERHUB_USERNAME }}/game-web:buildcache
         cache-to: type=registry,ref=${{ env.DOCKERHUB_USERNAME }}/game-web:buildcache,mode=max
 
-    - name: Test SSH
+    - name: Deploy to VM
       uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ secrets.VM_HOST }}
         username: ${{ secrets.VM_USER }}
         key: ${{ secrets.VM_SSH_KEY }}
-        script: echo "SSH works!"
+        port: ${{ secrets.VM_PORT }}
+        script: |
+          cd /home/azureuser/cpp-server && \
+          docker compose pull && \
+          docker compose up -d && \
+          docker compose logs --tail=50
