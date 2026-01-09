@@ -1,11 +1,6 @@
 # =============================================================================
 # Production Docker Compose Configuration
 # =============================================================================
-# This configuration orchestrates all services for the multiplayer game:
-# - PostgreSQL database
-# - Web API server (control plane)
-# - C++ game server
-# - Client static files (nginx)
 
 services:
   # ===========================================================================
@@ -20,12 +15,9 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # Optional: backup scripts or init scripts
-      # - ./db-backups:/backups
     networks:
       - game-network
     ports:
-      # Only expose for development/debugging; remove in production
       - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
@@ -38,9 +30,7 @@ services:
   # Web API Service (Control Plane)
   # ===========================================================================
   web:
-    build:
-      context: .
-      dockerfile: Dockerfile.web
+    image: aaron193/game-web:latest
     container_name: game-web
     depends_on:
       db:
@@ -60,17 +50,12 @@ services:
       - "${WEB_PORT}:${WEB_PORT}"
     restart: unless-stopped
     command: sh -c "node dist/db/migrate.js && node dist/index.js"
-    # Optional: mount for logs
-    # volumes:
-    #   - ./logs/web:/app/logs
 
   # ===========================================================================
   # Game Server (C++)
   # ===========================================================================
   gameserver:
-    build:
-      context: .
-      dockerfile: Dockerfile.server
+    image: aaron193/game-server:latest
     container_name: game-server
     depends_on:
       web:
@@ -88,20 +73,12 @@ services:
     ports:
       - "${SERVER_PORT}:${SERVER_PORT}"
     restart: unless-stopped
-    # Optional: mount for logs or config
-    # volumes:
-    #   - ./logs/server:/app/logs
 
   # ===========================================================================
   # Client Service (Static Files via Nginx)
   # ===========================================================================
   client:
-    build:
-      context: .
-      dockerfile: Dockerfile.client
-      args:
-        - CLIENT_API_BASE=${CLIENT_API_BASE}
-        - CLIENT_GAME_SERVER_WS=${CLIENT_GAME_SERVER_WS}
+    image: aaron193/game-client:latest
     container_name: game-client
     depends_on:
       - web

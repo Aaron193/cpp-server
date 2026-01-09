@@ -78,6 +78,7 @@ jobs:
         key: ${{ secrets.VM_SSH_KEY }}
         port: ${{ secrets.VM_PORT }}
         timeout: 30m
+        command_timeout: 30m
         script: |
           cd /home/azureuser/cpp-server && \
           docker compose pull && \
