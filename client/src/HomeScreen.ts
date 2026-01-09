@@ -40,7 +40,7 @@ type LeaderboardPeriod = 'all' | 'weekly' | 'daily'
 // Use environment variable from webpack, or fallback to smart defaults
 const API_BASE =
     // (process.env as any).CLIENT_API_BASE ||
-    isDevelopment() ? 'http://localhost:3000' : window.location.origin + ':3000'
+    isDevelopment() ? 'http://localhost:3000' : window.location.origin
 
 export class HomeScreen {
     private container: HTMLElement
