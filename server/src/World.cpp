@@ -401,7 +401,7 @@ Color World::getBiomeColor(BiomeType type) {
         case BIOME_PEAK:
             return Color(140, 130, 120);  // Light gray
         default:
-            return Color(255, 0, 255);  // Magenta for unknown
+            return Color(0, 0, 0);  // Black for unknown
     }
 }
 
@@ -450,100 +450,155 @@ static bool isBiome(const std::vector<BiomeType>& biomeMap, int width,
     return biomeMap[y * width + x] == target;
 }
 
-// Moore-Neighbor contour tracing (proper boundary following)
-static std::vector<Vec2> traceContour(const std::vector<BiomeType>& biomeMap,
-                                      int width, int height, BiomeType biome) {
-    std::vector<Vec2> contour;
+// Flood fill to collect a single connected component of a biome
+static std::vector<int> floodFillComponent(const std::vector<BiomeType>& map,
+                                           int width, int height, int startX,
+                                           int startY, BiomeType biome,
+                                           std::vector<uint8_t>& visited) {
+    std::vector<int> cells;
+    std::deque<std::pair<int, int>> q;
+    q.emplace_back(startX, startY);
 
-    // Find starting point (leftmost pixel of topmost row)
-    int startX = -1, startY = -1;
-    for (int y = 0; y < height && startX == -1; ++y) {
-        for (int x = 0; x < width; ++x) {
-            if (isBiome(biomeMap, width, height, x, y, biome)) {
-                startX = x;
-                startY = y;
-                break;
+    const int offsets[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+
+    auto idx = [width](int x, int y) { return y * width + x; };
+
+    visited[idx(startX, startY)] = 1;
+
+    while (!q.empty()) {
+        auto [x, y] = q.front();
+        q.pop_front();
+
+        cells.push_back(idx(x, y));
+
+        for (auto& o : offsets) {
+            int nx = x + o[0];
+            int ny = y + o[1];
+            if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+            int nIdx = idx(nx, ny);
+            if (!visited[nIdx] && map[nIdx] == biome) {
+                visited[nIdx] = 1;
+                q.emplace_back(nx, ny);
             }
         }
     }
 
-    if (startX == -1) return contour;  // No pixels found
-
-    // Moore neighborhood (8-connected, clockwise from top)
-    const int dx8[] = {0, 1, 1, 1, 0, -1, -1, -1};
-    const int dy8[] = {-1, -1, 0, 1, 1, 1, 0, -1};
-
-    int x = startX, y = startY;
-    int dir = 7;  // Start looking from left (since we found leftmost point)
-
-    std::unordered_set<long long> visited;
-    auto makeKey = [&](int px, int py, int d) -> long long {
-        return ((long long)px << 32) | ((long long)py << 16) | d;
-    };
-
-    const int maxIter = width * height * 2;
-    int iter = 0;
-
-    do {
-        long long key = makeKey(x, y, dir);
-        if (visited.count(key)) break;  // Already been here with this direction
-        visited.insert(key);
-
-        // Add point to contour (pixel centers)
-        contour.push_back(Vec2(x + 0.5f, y + 0.5f));
-
-        // Find next boundary pixel using Moore-Neighbor tracing
-        int foundDir = -1;
-        for (int i = 0; i < 8; ++i) {
-            int checkDir = (dir + i) % 8;
-            int nx = x + dx8[checkDir];
-            int ny = y + dy8[checkDir];
-
-            if (isBiome(biomeMap, width, height, nx, ny, biome)) {
-                foundDir = checkDir;
-                x = nx;
-                y = ny;
-                // Set backtrack direction (opposite + 2, wrapping)
-                dir = (checkDir + 6) % 8;
-                break;
-            }
-        }
-
-        if (foundDir == -1) break;    // Stuck, shouldn't happen
-        if (++iter > maxIter) break;  // Safety limit
-
-    } while (x != startX || y != startY || contour.size() < 4);
-
-    // Simplify contour (Douglas-Peucker style decimation)
-    if (contour.size() > 300) {
-        std::vector<Vec2> simplified;
-        int step = std::max(1, (int)contour.size() / 250);
-        for (size_t i = 0; i < contour.size(); i += step) {
-            simplified.push_back(contour[i]);
-        }
-        contour = simplified;
-    }
-
-    // Remove consecutive duplicates
-    if (contour.size() > 1) {
-        std::vector<Vec2> cleaned;
-        cleaned.push_back(contour[0]);
-        for (size_t i = 1; i < contour.size(); ++i) {
-            const Vec2& prev = cleaned.back();
-            const Vec2& curr = contour[i];
-            float dx = curr.x - prev.x;
-            float dy = curr.y - prev.y;
-            if (dx * dx + dy * dy > 0.01f) {  // Not too close
-                cleaned.push_back(curr);
-            }
-        }
-        contour = cleaned;
-    }
-
-    return contour;
+    return cells;
 }
 
-// Updated buildTerrainMeshes using the fixed contour tracing
+// Build boundary loops (outer + holes) for a component mask
+static std::vector<std::vector<Vec2>> buildLoopsFromComponent(
+    const std::vector<uint8_t>& mask, int width, int height) {
+    struct Edge {
+        Vec2 a;
+        Vec2 b;
+    };
+
+    auto idx = [width](int x, int y) { return y * width + x; };
+
+    std::vector<Edge> edges;
+    edges.reserve(mask.size());
+
+    auto addEdge = [&](float x1, float y1, float x2, float y2) {
+        edges.push_back({Vec2(x1, y1), Vec2(x2, y2)});
+    };
+
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            if (!mask[idx(x, y)]) continue;
+
+            // For each of the four sides, if neighbor is empty, emit an edge.
+            // Edges are on the grid line (corner coordinates).
+            if (y == 0 || !mask[idx(x, y - 1)]) {  // top
+                addEdge(x, y, x + 1, y);
+            }
+            if (x == width - 1 || !mask[idx(x + 1, y)]) {  // right
+                addEdge(x + 1, y, x + 1, y + 1);
+            }
+            if (y == height - 1 || !mask[idx(x, y + 1)]) {  // bottom
+                addEdge(x + 1, y + 1, x, y + 1);
+            }
+            if (x == 0 || !mask[idx(x - 1, y)]) {  // left
+                addEdge(x, y + 1, x, y);
+            }
+        }
+    }
+
+    // Stitch edges into closed loops
+    std::unordered_map<uint64_t, std::vector<size_t>> adjacency;
+    adjacency.reserve(edges.size() * 2);
+
+    auto key = [](const Vec2& v) -> uint64_t {
+        int64_t ix = static_cast<int64_t>(std::lround(v.x * 1000.0f));
+        int64_t iy = static_cast<int64_t>(std::lround(v.y * 1000.0f));
+        return (static_cast<uint64_t>(ix & 0xffffffff) << 32) |
+               static_cast<uint64_t>(iy & 0xffffffff);
+    };
+
+    for (size_t i = 0; i < edges.size(); ++i) {
+        adjacency[key(edges[i].a)].push_back(i);
+    }
+
+    std::vector<uint8_t> used(edges.size(), 0);
+    std::vector<std::vector<Vec2>> loops;
+    loops.reserve(32);
+
+    for (size_t i = 0; i < edges.size(); ++i) {
+        if (used[i]) continue;
+
+        std::vector<Vec2> loop;
+        size_t currentIdx = i;
+        Vec2 start = edges[currentIdx].a;
+        Vec2 currentPoint = start;
+
+        while (true) {
+            used[currentIdx] = 1;
+            const Edge& e = edges[currentIdx];
+            loop.push_back(e.a);
+            Vec2 nextPoint = e.b;
+
+            if (key(nextPoint) == key(start)) {
+                loop.push_back(nextPoint);
+                break;
+            }
+
+            auto& outgoing = adjacency[key(nextPoint)];
+            size_t nextIdx = SIZE_MAX;
+            for (size_t candidate : outgoing) {
+                if (!used[candidate]) {
+                    nextIdx = candidate;
+                    break;
+                }
+            }
+
+            if (nextIdx == SIZE_MAX) {
+                // Open contour (should not happen); abort this loop
+                break;
+            }
+
+            currentIdx = nextIdx;
+            currentPoint = nextPoint;
+        }
+
+        if (loop.size() >= 4) {
+            // Remove duplicate final point to keep polygons clean
+            if (loop.size() > 1) {
+                const Vec2& first = loop.front();
+                const Vec2& last = loop.back();
+                if (std::abs(first.x - last.x) < 1e-4f &&
+                    std::abs(first.y - last.y) < 1e-4f) {
+                    loop.pop_back();
+                }
+            }
+            removeCollinear(loop);
+            loops.push_back(loop);
+        }
+    }
+
+    return loops;
+}
+
+// Updated buildTerrainMeshes using connected components and hole-aware rings
 std::vector<TerrainMesh> World::buildTerrainMeshes() {
     std::vector<TerrainMesh> meshes;
 
@@ -552,118 +607,192 @@ std::vector<TerrainMesh> World::buildTerrainMeshes() {
         return meshes;
     }
 
-    std::cout << "\nBuilding terrain meshes using Moore-Neighbor tracing + "
-                 "triangulation...\n";
+    std::cout << "\nBuilding terrain meshes from components + holes...\n";
 
     // Step 1: Classify biomes
-    std::vector<BiomeType> biomeMap;
-    classifyBiomes(biomeMap);
+    std::vector<BiomeType> classified;
+    classifyBiomes(classified);
 
-    // Step 2: For each biome type, extract contours and triangulate
+    auto idx = [this](int x, int y) { return y * this->width + x; };
+
+    // Step 2: For each biome type, extract every connected component
     for (int b = BIOME_DEEP_WATER; b <= BIOME_PEAK; ++b) {
         BiomeType biome = static_cast<BiomeType>(b);
+        std::vector<uint8_t> visited(width * height, 0);
 
-        // Extract contour for this biome using Moore-Neighbor tracing
-        auto contour = traceContour(biomeMap, width, height, biome);
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                if (classified[idx(x, y)] != biome || visited[idx(x, y)])
+                    continue;
 
-        if (contour.size() < 3) {
-            std::cout << "  Skipping " << getBiomeName(biome)
-                      << " (insufficient vertices)\n";
-            continue;
-        }
+                // Flood fill to get this component
+                std::vector<int> componentCells = floodFillComponent(
+                    classified, width, height, x, y, biome, visited);
 
-        // Clean up the polygon
-        removeCollinear(contour);
-        enforceCCW(contour);
+                if (componentCells.empty()) continue;
 
-        if (contour.size() < 3) {
-            std::cout << "  Skipping " << getBiomeName(biome)
-                      << " (too few vertices after cleanup)\n";
-            continue;
-        }
+                // Build a mask for this component
+                std::vector<uint8_t> componentMask(width * height, 0);
+                for (int cellIdx : componentCells) {
+                    componentMask[cellIdx] = 1;
+                }
 
-        // Prepare for earcut triangulation
-        using Coord = float;
-        using N = uint32_t;
-        std::vector<std::vector<std::array<Coord, 2>>> polygon;
+                // Build boundary loops (outer + holes)
+                auto loops =
+                    buildLoopsFromComponent(componentMask, width, height);
+                if (loops.empty()) continue;
 
-        // Outer ring
-        std::vector<std::array<Coord, 2>> ring;
-        for (const auto& v : contour) {
-            ring.push_back({v.x, v.y});
-        }
-        polygon.push_back(ring);
+                // Identify outer ring (max absolute area) and holes
+                int outerIdx = -1;
+                float maxArea = 0.0f;
+                for (size_t i = 0; i < loops.size(); ++i) {
+                    float a = std::abs(signedArea(loops[i]));
+                    if (a > maxArea) {
+                        maxArea = a;
+                        outerIdx = static_cast<int>(i);
+                    }
+                }
 
-        // Triangulate
-        std::vector<N> indices = mapbox::earcut<N>(polygon);
+                if (outerIdx == -1 || maxArea < 1e-3f) continue;
 
-        if (indices.empty() || indices.size() % 3 != 0) {
-            std::cout << "  Skipping " << getBiomeName(biome)
-                      << " (triangulation failed)\n";
-            continue;
-        }
+                // Prepare polygon rings for earcut
+                using Coord = float;
+                using N = uint32_t;
+                std::vector<std::vector<std::array<Coord, 2>>> polygon;
 
-        // Validate indices and remove degenerate triangles
-        std::vector<N> validIndices;
-        size_t numVerts = contour.size();
-        int degenerateCount = 0;
-        int outOfRangeCount = 0;
+                // Outer ring: ensure CCW
+                enforceCCW(loops[outerIdx]);
+                polygon.push_back({});
+                for (const auto& v : loops[outerIdx]) {
+                    polygon.back().push_back({v.x, v.y});
+                }
 
-        for (size_t i = 0; i < indices.size(); i += 3) {
-            N a = indices[i];
-            N b = indices[i + 1];
-            N c = indices[i + 2];
+                // Holes: ensure CW
+                for (size_t i = 0; i < loops.size(); ++i) {
+                    if (static_cast<int>(i) == outerIdx) continue;
+                    std::vector<Vec2> hole = loops[i];
+                    if (signedArea(hole) > 0.0f) {
+                        std::reverse(hole.begin(), hole.end());
+                    }
+                    polygon.push_back({});
+                    for (const auto& v : hole) {
+                        polygon.back().push_back({v.x, v.y});
+                    }
+                }
 
-            // Check for out-of-range indices
-            if (a >= numVerts || b >= numVerts || c >= numVerts) {
-                outOfRangeCount++;
-                continue;
+                // Flatten vertices in the same order earcut expects
+                std::vector<Vec2> meshVertices;
+                meshVertices.reserve(width + height);  // rough guess
+                for (const auto& ring : polygon) {
+                    for (const auto& p : ring) {
+                        meshVertices.emplace_back(p[0], p[1]);
+                    }
+                }
+
+                std::vector<N> indices = mapbox::earcut<N>(polygon);
+                if (indices.empty() || indices.size() % 3 != 0) {
+                    std::cout << "  Skipping component of "
+                              << getBiomeName(biome)
+                              << " (triangulation failed)\n";
+                    continue;
+                }
+
+                // Filter degenerate triangles
+                std::vector<N> validIndices;
+                validIndices.reserve(indices.size());
+                for (size_t i = 0; i < indices.size(); i += 3) {
+                    N a = indices[i];
+                    N b = indices[i + 1];
+                    N c = indices[i + 2];
+
+                    if (a >= meshVertices.size() || b >= meshVertices.size() ||
+                        c >= meshVertices.size()) {
+                        continue;
+                    }
+
+                    const Vec2& va = meshVertices[a];
+                    const Vec2& vb = meshVertices[b];
+                    const Vec2& vc = meshVertices[c];
+
+                    float area = (vb.x - va.x) * (vc.y - va.y) -
+                                 (vb.y - va.y) * (vc.x - va.x);
+                    if (std::abs(area) < 1e-4f) continue;
+
+                    validIndices.push_back(a);
+                    validIndices.push_back(b);
+                    validIndices.push_back(c);
+                }
+
+                if (validIndices.empty()) continue;
+
+                TerrainMesh mesh;
+                mesh.biome = biome;
+                mesh.vertices = std::move(meshVertices);
+                mesh.indices = std::move(validIndices);
+
+                std::cout << "  " << getBiomeName(biome)
+                          << " component: " << mesh.vertices.size()
+                          << " verts, " << (mesh.indices.size() / 3)
+                          << " tris\n";
+
+                meshes.push_back(std::move(mesh));
             }
+        }
+    }
 
-            // Check for degenerate triangles
-            if (a == b || b == c || a == c) {
-                degenerateCount++;
-                continue;
+    // Optional debug raster: draw the triangulated meshes to a PNG so we can
+    // visually compare against the original heightmap render.
+    if (!meshes.empty() && !outputDirectory.empty()) {
+        std::vector<uint8_t> img(width * height * 3, 0);
+
+        auto insideTri = [](float px, float py, const Vec2& a, const Vec2& b,
+                            const Vec2& c) {
+            float area = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+            if (std::abs(area) < 1e-6f) return false;
+            float w1 =
+                ((b.y - c.y) * (px - c.x) + (c.x - b.x) * (py - c.y)) / area;
+            float w2 =
+                ((c.y - a.y) * (px - c.x) + (a.x - c.x) * (py - c.y)) / area;
+            float w3 = 1.0f - w1 - w2;
+            return w1 >= 0.0f && w2 >= 0.0f && w3 >= 0.0f;
+        };
+
+        auto putPixel = [&](int x, int y, const Color& c) {
+            if (x < 0 || y < 0 || x >= width || y >= height) return;
+            size_t idx = (y * width + x) * 3;
+            img[idx + 0] = c.r;
+            img[idx + 1] = c.g;
+            img[idx + 2] = c.b;
+        };
+
+        for (const auto& mesh : meshes) {
+            Color c = getBiomeColor(mesh.biome);
+            for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
+                const Vec2& a = mesh.vertices[mesh.indices[i]];
+                const Vec2& b = mesh.vertices[mesh.indices[i + 1]];
+                const Vec2& d = mesh.vertices[mesh.indices[i + 2]];
+
+                float minX = std::floor(std::min({a.x, b.x, d.x}));
+                float maxX = std::ceil(std::max({a.x, b.x, d.x}));
+                float minY = std::floor(std::min({a.y, b.y, d.y}));
+                float maxY = std::ceil(std::max({a.y, b.y, d.y}));
+
+                for (int y = static_cast<int>(minY);
+                     y <= static_cast<int>(maxY); ++y) {
+                    for (int x = static_cast<int>(minX);
+                         x <= static_cast<int>(maxX); ++x) {
+                        float px = x + 0.5f;
+                        float py = y + 0.5f;
+                        if (insideTri(px, py, a, b, d)) {
+                            putPixel(x, y, c);
+                        }
+                    }
+                }
             }
-
-            // Check for zero-area triangles
-            const Vec2& va = contour[a];
-            const Vec2& vb = contour[b];
-            const Vec2& vc = contour[c];
-            float area =
-                (vb.x - va.x) * (vc.y - va.y) - (vb.y - va.y) * (vc.x - va.x);
-            if (std::abs(area) < 0.1f) {
-                degenerateCount++;
-                continue;
-            }
-
-            validIndices.push_back(a);
-            validIndices.push_back(b);
-            validIndices.push_back(c);
         }
 
-        if (validIndices.empty()) {
-            std::cout << "  Skipping " << getBiomeName(biome)
-                      << " (no valid triangles after filtering)\n";
-            continue;
-        }
-
-        // Create mesh
-        TerrainMesh mesh;
-        mesh.biome = biome;
-        mesh.vertices = contour;
-        mesh.indices = validIndices;
-
-        meshes.push_back(mesh);
-
-        if (degenerateCount > 0 || outOfRangeCount > 0) {
-            std::cout << "    (filtered " << degenerateCount << " degenerate, "
-                      << outOfRangeCount << " out-of-range)\n";
-        }
-
-        std::cout << "  " << getBiomeName(biome) << ": " << contour.size()
-                  << " vertices, " << (validIndices.size() / 3)
-                  << " triangles\n";
+        stbi_write_png((outputDirectory + "/debug_meshes.png").c_str(), width,
+                       height, 3, img.data(), width * 3);
     }
 
     std::cout << "Generated " << meshes.size() << " terrain meshes\n";

@@ -19,6 +19,7 @@ export class Renderer {
     foreground: PIXI.Container
     app!: { renderer: PIXI.Renderer }
     renderer!: PIXI.Renderer
+    private readonly worldScale = 1 // for debug map purposes
 
     private constructor() {
         this.canvas = document.getElementById(
@@ -29,6 +30,7 @@ export class Renderer {
         this.camera = new PIXI.Container({
             isRenderGroup: true,
         })
+        this.camera.scale.set(this.worldScale, this.worldScale)
 
         this.background = new PIXI.Container()
         this.middleground = new PIXI.Container()

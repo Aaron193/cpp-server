@@ -52,6 +52,10 @@ GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {
     std::cout << "Saving final terrain image..." << std::endl;
     m_worldGenerator->saveFinalTerrainImage("final_terrain.png");
 
+    // Store JSON file of terrain meshes for debugging
+    m_worldGenerator->saveTerrainMeshesJSON(m_terrainMeshes,
+                                            "terrain_meshes.json");
+
     // Initialize raycast system
     m_raycastSystem = std::make_unique<RaycastSystem>(
         m_entityManager.getRegistry(), m_physicsWorld.m_worldId);

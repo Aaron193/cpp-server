@@ -258,13 +258,23 @@ export class MessageHandler {
                 const id = reader.readU32()
                 const biome = reader.readU8()
 
+                // Encoding: 0 = float world pixels, 1 = uint16 heightmap units
+                const encoding = reader.readU8()
+                const HEIGHTMAP_SCALE = 64
+
                 // Read vertices
                 const vertexCount = reader.readU32()
                 const vertices: { x: number; y: number }[] = []
                 for (let i = 0; i < vertexCount; i++) {
-                    const x = reader.readFloat()
-                    const y = reader.readFloat()
-                    vertices.push({ x, y })
+                    if (encoding === 1) {
+                        const x = reader.readU16() * HEIGHTMAP_SCALE
+                        const y = reader.readU16() * HEIGHTMAP_SCALE
+                        vertices.push({ x, y })
+                    } else {
+                        const x = reader.readFloat()
+                        const y = reader.readFloat()
+                        vertices.push({ x, y })
+                    }
                 }
 
                 // Read indices

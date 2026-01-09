@@ -1,6 +1,7 @@
 import * as PIXI from 'pixi.js'
 import { BiomeType } from '../enums/BiomeType'
 import { Renderer } from '../Renderer'
+import { assert } from '../utils/assert'
 
 interface TerrainMesh {
     id: number
@@ -8,6 +9,8 @@ interface TerrainMesh {
     vertices: { x: number; y: number }[]
     indices: number[]
 }
+
+const debug = false
 
 export class TerrainRenderer {
     private renderer: Renderer
@@ -31,9 +34,10 @@ export class TerrainRenderer {
         indices: number[]
     ): void {
         // Don't recreate if already exists
-        if (this.meshes.has(id)) {
-            return
-        }
+        assert(
+            !this.meshes.has(id),
+            `Terrain mesh with id ${id} already exists.`
+        )
 
         const graphics = new PIXI.Graphics()
         const color = this.getBiomeColor(biome)
@@ -50,54 +54,35 @@ export class TerrainRenderer {
 
             graphics.poly([v0.x, v0.y, v1.x, v1.y, v2.x, v2.y])
             graphics.fill({ color, alpha: 1.0 })
+            if (debug) {
+                graphics.stroke({ color: 0xff0000, width: 2 })
+            }
         }
 
-        // log out the x/y of the first vertex and the number of vertices
-        console.log(
-            `First vertex: (${vertices[0].x}, ${vertices[0].y}), Total vertices: ${vertices.length}`
-        )
-
+        // graphics.zIndex = id // todo: check if this is needed
         this.container.addChild(graphics)
+        // this.container.sortChildren()
         this.meshes.set(id, graphics)
-
-        const biomeName = this.getBiomeName(biome)
-        console.log(
-            `Added terrain mesh ${id} (${biomeName}) with ${vertices.length} vertices and ${indices.length / 3} triangles`
-        )
-    }
-
-    private getBiomeName(biome: BiomeType): string {
-        const names = [
-            'DEEP_WATER',
-            'SHALLOW_WATER',
-            'BEACH',
-            'GRASSLAND',
-            'FOREST',
-            'MOUNTAIN',
-            'PEAK',
-        ]
-        return names[biome] || 'UNKNOWN'
     }
 
     private getBiomeColor(biome: BiomeType): number {
-        // Colors matching server-side terrain generation
         switch (biome) {
             case BiomeType.BIOME_DEEP_WATER:
-                return 0x08183a // Dark blue
+                return 0x142864 // Dark blue
             case BiomeType.BIOME_SHALLOW_WATER:
-                return 0x285596 // Light blue
+                return 0x3c6eb4 // Light blue
             case BiomeType.BIOME_BEACH:
-                return 0xd2be8c // Sandy beach
+                return 0xdcc896 // Sandy beach
             case BiomeType.BIOME_GRASSLAND:
-                return 0x509446 // Green grass
+                return 0x78b450 // Green grass
             case BiomeType.BIOME_FOREST:
-                return 0x2d5a2d // Dark green
+                return 0x3c7832 // Dark green
             case BiomeType.BIOME_MOUNTAIN:
-                return 0x8b7355 // Brown mountain
+                return 0x8c8278 // Brown mountain
             case BiomeType.BIOME_PEAK:
                 return 0xe8e8e8 // Light gray peak
             default:
-                return 0xff00ff // Magenta for unknown
+                return 0x000000 // Black for unknown
         }
     }
 

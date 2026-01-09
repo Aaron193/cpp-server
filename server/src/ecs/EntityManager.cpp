@@ -74,6 +74,8 @@ entt::entity EntityManager::createPlayer() {
         (WORLD_SIZE_HEIGHTMAP / 2.0f) * TILE_SIZE;  // Center of island
     float spawnY = (WORLD_SIZE_HEIGHTMAP / 2.0f) * TILE_SIZE;
 
+    // float spawnX = 0.0f;
+    // float spawnY = 0.0f;
     bodyDef.position = {meters(spawnX), meters(spawnY)};
     bodyDef.fixedRotation = true;
 

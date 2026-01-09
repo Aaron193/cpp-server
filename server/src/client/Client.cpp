@@ -82,6 +82,9 @@ void Client::onSpawn() {
     m_writer.writeU32(static_cast<uint32_t>(m_entity));
     std::cout << "User " << m_name << " has connected" << std::endl;
 
+    // serialize the client with the map data
+    sendTerrainMeshes();
+
     // notify clients about our new player
     for (auto& [id, client] : m_gameServer.m_clients) {
         client->m_writer.writeU8(ServerHeader::PLAYER_JOIN);
@@ -319,53 +322,7 @@ void Client::writeGameState() {
         }
     }
 
-    // Handle biome mesh visibility - for now, send all terrain meshes
-    // (In a production system, you'd compute mesh bounding boxes and check
-    // against queryAABB)
-    std::unordered_set<size_t> currentlyVisibleBiomes;
-    for (size_t i = 0; i < m_gameServer.m_terrainMeshes.size(); ++i) {
-        currentlyVisibleBiomes.insert(i);
-    }
-
-    // Debug logging (only log occasionally to avoid spam)
-    static int frameCounter = 0;
-    if (frameCounter++ % 100 == 0) {
-        std::cout << "Client " << m_id << " sees "
-                  << currentlyVisibleBiomes.size()
-                  << " biome meshes (via Box2D query)\n";
-    }
-
-    // Send new biome meshes
-    for (size_t biomeIdx : currentlyVisibleBiomes) {
-        if (m_previousVisibleBiomes.find(biomeIdx) ==
-            m_previousVisibleBiomes.end()) {
-            const TerrainMesh& mesh = m_gameServer.m_terrainMeshes[biomeIdx];
-
-            std::cout << "Sending biome mesh " << biomeIdx << " to client "
-                      << m_id << "\n";
-            m_writer.writeU8(ServerHeader::BIOME_CREATE);
-            m_writer.writeU32(static_cast<uint32_t>(biomeIdx));
-            m_writer.writeU8(static_cast<uint8_t>(mesh.biome));
-
-            // Write vertices (convert from heightmap coords to world pixel
-            // coords)
-            m_writer.writeU32(static_cast<uint32_t>(mesh.vertices.size()));
-            for (const Vec2& v : mesh.vertices) {
-                m_writer.writeFloat(
-                    v.x * 64.0f);  // Scale from heightmap to world pixels
-                m_writer.writeFloat(v.y * 64.0f);
-            }
-
-            // Write indices
-            m_writer.writeU32(static_cast<uint32_t>(mesh.indices.size()));
-            for (uint32_t idx : mesh.indices) {
-                m_writer.writeU32(idx);
-            }
-        }
-    }
-
     m_previousVisibleEntities.swap(currentlyVisibleEntities);
-    m_previousVisibleBiomes.swap(currentlyVisibleBiomes);
 }
 
 void Client::sendBytes() {
@@ -388,4 +345,53 @@ void Client::changeBody(entt::entity entity) {
     m_writer.writeU8(ServerHeader::SET_CAMERA);
     Components::Camera& cam = reg.get<Components::Camera>(entity);
     m_writer.writeU32(static_cast<uint32_t>(cam.target));
+}
+
+// Send all terrain meshes once to this client. Uses a compact vertex encoding
+// when the world fits in 16-bit grid coordinates; otherwise falls back to
+// floats.
+void Client::sendTerrainMeshes() {
+    if (m_sentTerrainMeshes) return;
+
+    const auto& meshes = m_gameServer.m_terrainMeshes;
+    const uint32_t worldSize = m_gameServer.m_worldGenerator->GetWorldSize();
+    const bool useU16 = worldSize <= std::numeric_limits<uint16_t>::max();
+
+    for (size_t biomeIdx = 0; biomeIdx < meshes.size(); ++biomeIdx) {
+        const TerrainMesh& mesh = meshes[biomeIdx];
+
+        m_writer.writeU8(ServerHeader::BIOME_CREATE);
+        m_writer.writeU32(static_cast<uint32_t>(biomeIdx));
+        m_writer.writeU8(static_cast<uint8_t>(mesh.biome));
+
+        // Encoding flag: 0 = float world pixels, 1 = uint16 heightmap units
+        m_writer.writeU8(useU16 ? 1 : 0);
+
+        // Write vertices
+        m_writer.writeU32(static_cast<uint32_t>(mesh.vertices.size()));
+        if (useU16) {
+            for (const Vec2& v : mesh.vertices) {
+                // Clamp to u16 bounds just in case
+                uint16_t vx = static_cast<uint16_t>(
+                    std::clamp(v.x, 0.0f, static_cast<float>(worldSize)));
+                uint16_t vy = static_cast<uint16_t>(
+                    std::clamp(v.y, 0.0f, static_cast<float>(worldSize)));
+                m_writer.writeU16(vx);
+                m_writer.writeU16(vy);
+            }
+        } else {
+            for (const Vec2& v : mesh.vertices) {
+                m_writer.writeFloat(v.x * 64.0f);
+                m_writer.writeFloat(v.y * 64.0f);
+            }
+        }
+
+        // Write indices
+        m_writer.writeU32(static_cast<uint32_t>(mesh.indices.size()));
+        for (uint32_t idx : mesh.indices) {
+            m_writer.writeU32(idx);
+        }
+    }
+
+    m_sentTerrainMeshes = true;
 }

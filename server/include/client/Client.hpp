@@ -32,6 +32,7 @@ class Client {
     std::string m_name;
     // we are actively playing inside the game world, spectators are inactive
     bool m_active = false;
+    bool m_sentTerrainMeshes = false;
     std::unordered_set<entt::entity> m_previousVisibleEntities;
     std::unordered_set<size_t> m_previousVisibleBiomes;
 
@@ -54,6 +55,9 @@ class Client {
 
     void writeGameState();
     void sendBytes();
+
+   private:
+    void sendTerrainMeshes();
 
    private:
     GameServer& m_gameServer;
