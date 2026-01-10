@@ -19,11 +19,6 @@ export abstract class Entity extends PIXI.Container {
     interpolate: boolean = false
     snapshots: CircularBuffer<Snapshot> = new CircularBuffer<Snapshot>(16)
 
-    // Last rendered transform for interpolation fallbacks
-    lastRenderX?: number
-    lastRenderY?: number
-    lastRenderAngle?: number
-
     abstract update(delta: number, tick: number, now: number): void
 
     abstract setRot(angle: number): void

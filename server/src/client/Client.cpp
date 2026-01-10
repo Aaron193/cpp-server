@@ -171,9 +171,6 @@ void Client::writeGameState() {
 
     assert(reg.all_of<Components::Camera>(m_entity));
 
-    const uint32_t serverTick =
-        static_cast<uint32_t>(m_gameServer.getCurrentTick());
-
     // Static variables to avoid repeated allocations
     static std::vector<entt::entity> createEntities;
     static std::vector<entt::entity> updateEntities;
@@ -253,7 +250,6 @@ void Client::writeGameState() {
 
     if (!createEntities.empty()) {
         m_writer.writeU8(ServerHeader::ENTITY_CREATE);
-        m_writer.writeU32(serverTick);
         m_writer.writeU32(static_cast<uint32_t>(createEntities.size()));
 
         for (entt::entity entity : createEntities) {
@@ -276,7 +272,6 @@ void Client::writeGameState() {
 
     if (!updateEntities.empty()) {
         m_writer.writeU8(ServerHeader::ENTITY_UPDATE);
-        m_writer.writeU32(serverTick);
         m_writer.writeU32(static_cast<uint32_t>(updateEntities.size()));
 
         for (const entt::entity& entity : updateEntities) {
