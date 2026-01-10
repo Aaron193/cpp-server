@@ -23,7 +23,7 @@ class GameServer {
 
     std::mutex m_gameMutex;
 
-    const uint8_t m_tps = 30;
+    const uint8_t m_tps = 10;
 
     EntityManager m_entityManager;
     PhysicsWorld m_physicsWorld;
