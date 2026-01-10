@@ -3,13 +3,6 @@ import { BiomeType } from '../enums/BiomeType'
 import { Renderer } from '../Renderer'
 import { assert } from '../utils/assert'
 
-interface TerrainMesh {
-    id: number
-    biome: BiomeType
-    vertices: { x: number; y: number }[]
-    indices: number[]
-}
-
 const debug = false
 
 export class TerrainRenderer {
@@ -63,6 +56,10 @@ export class TerrainRenderer {
         this.container.addChild(graphics)
         // this.container.sortChildren()
         this.meshes.set(id, graphics)
+
+        // Add terrain to minimap
+        const minimap = this.renderer.hud.minimap
+        minimap.addTerrainMesh(biome, vertices, indices)
     }
 
     private getBiomeColor(biome: BiomeType): number {

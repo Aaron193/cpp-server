@@ -11,7 +11,7 @@ export class Renderer {
     canvas: HTMLCanvasElement
     stage: PIXI.Container
     camera: PIXI.Container
-    hud: Hud
+    hud!: Hud
     grid: Grid
     terrainRenderer: TerrainRenderer
     background: PIXI.Container
@@ -47,12 +47,9 @@ export class Renderer {
         this.camera.addChild(this.middleground)
         this.camera.addChild(this.foreground)
 
-        // also render group
-        this.hud = new Hud(this)
         this.stage = new PIXI.Container()
 
         this.stage.addChild(this.camera)
-        this.stage.addChild(this.hud)
 
         window.addEventListener('resize', () => {
             if (this.renderer) {
@@ -72,6 +69,9 @@ export class Renderer {
         })
 
         this.app = { renderer: this.renderer }
+
+        this.hud = new Hud(this)
+        this.stage.addChild(this.hud)
 
         this.resize()
     }
