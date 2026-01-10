@@ -2,6 +2,7 @@
 
 #include <uwebsockets/Loop.h>
 
+#include <cstdint>
 #include <memory>
 #include <mutex>
 
@@ -42,6 +43,8 @@ class GameServer {
     void run();
     void setServerRegistration(ServerRegistration* registration);
 
+    uint64_t getCurrentTick() const { return m_currentTick; }
+
    private:
     void processClientMessages();
     void tick(double delta);
@@ -61,4 +64,9 @@ class GameServer {
 
     void processJobs();
     void updateHeartbeat(double delta);
+
+    uint64_t m_tickCounter = 0;
+    uint64_t m_currentTick = 0;
+    double m_tickDurationMs = 0.0;
+    double m_currentServerTimeMs = 0.0;
 };

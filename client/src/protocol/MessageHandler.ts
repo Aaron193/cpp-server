@@ -34,6 +34,10 @@ export class MessageHandler {
             }
             case ServerHeader.ENTITY_CREATE: {
                 console.log('Entity create')
+                const serverTick = reader.readU32()
+                const serverTimeMs =
+                    serverTick * client.world.interpolator.serverTickDurationMs
+                client.world.interpolator.updateServerTimeOffset(serverTimeMs)
                 const count = reader.readU32()
 
                 for (let i = 0; i < count; i++) {
@@ -91,7 +95,7 @@ export class MessageHandler {
                     entity.zIndex = type
 
                     const interpolator = client.world.interpolator
-                    interpolator.addSnapshot(entity, x, y, angle)
+                    interpolator.addSnapshot(entity, x, y, angle, serverTimeMs)
 
                     // todo: do this in the class or something
                     entity._id = id
@@ -111,6 +115,10 @@ export class MessageHandler {
                 break
             }
             case ServerHeader.ENTITY_UPDATE: {
+                const serverTick = reader.readU32()
+                const serverTimeMs =
+                    serverTick * client.world.interpolator.serverTickDurationMs
+                client.world.interpolator.updateServerTimeOffset(serverTimeMs)
                 const count = reader.readU32()
 
                 for (let i = 0; i < count; i++) {
@@ -126,7 +134,7 @@ export class MessageHandler {
                     )
 
                     const interpolator = client.world.interpolator
-                    interpolator.addSnapshot(entity, x, y, angle)
+                    interpolator.addSnapshot(entity, x, y, angle, serverTimeMs)
 
                     // todo: do this in the class or some crap
                     entity._x = x

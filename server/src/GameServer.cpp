@@ -23,6 +23,8 @@
 GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {
     std::cout << "Initializing GameServer..." << std::endl;
 
+    m_tickDurationMs = 1000.0 / static_cast<double>(m_tps);
+
     // Initialize volcanic world generator
     m_worldGenerator = std::make_unique<World>();
 
@@ -78,10 +80,16 @@ void GameServer::run() {
         // socket server is ready
         if (m_socketLoop) {
             std::lock_guard<std::mutex> lock(m_gameMutex);
+
+            m_currentTick = m_tickCounter;
+            m_currentServerTimeMs =
+                static_cast<double>(m_currentTick) * m_tickDurationMs;
             tick(deltaTime.count());
 
             // Update heartbeat timer (send heartbeat every X seconds)
             updateHeartbeat(deltaTime.count());
+
+            ++m_tickCounter;
         }
 
         auto tickTime = std::chrono::steady_clock::now() - currentTime;
