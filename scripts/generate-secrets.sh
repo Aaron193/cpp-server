@@ -1,10 +1,3 @@
-#!/bin/bash
-
-# =============================================================================
-# Generate Secure Secrets
-# =============================================================================
-# This script generates secure random secrets for your .env file
-
 echo "Generating secure secrets for production..."
 echo ""
 echo "Add these to your .env file:"

@@ -83,14 +83,26 @@ This project is an educational multiplayer game implementation that showcases:
 
 -   Node.js and npm
 
-### Server
+### Postgres Setup
+```bash
+docker compose up -d db
+```
+This command will build the db image using docker and run it in the background.
+Use `docker compose down` to stop the database when you're done.
+
+
+### TypeScript Web Server
+
+Please consult the [web/README.md](web/README.md) for instructions on setting up and running the TypeScript web server.
+
+### C++ Game Server
 
 ```bash
 cd server
 ./build.sh [--release or --debug] [--run]
 ```
 
-### Client
+### TypeScript Client
 
 ```bash
 cd client

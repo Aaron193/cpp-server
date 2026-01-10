@@ -1,6 +1,4 @@
-# =============================================================================
-# Multi-stage Dockerfile for Client (Static Build)
-# =============================================================================
+# Dockerfile for Client (Static Build)
 
 FROM node:20-alpine AS builder
 
