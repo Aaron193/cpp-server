@@ -34,12 +34,26 @@ enum NewsType : uint8_t {
     KILL,
 };
 
+enum AmmoType : uint8_t {
+    AMMO_LIGHT,
+    AMMO_HEAVY,
+    AMMO_SHELL,
+    AMMO_ROCKET,
+    AMMO_COUNT,
+};
+
+enum GunFireMode : uint8_t {
+    FIRE_HITSCAN,
+    FIRE_PROJECTILE,
+};
+
 // Collision system for Box2D filtering
 enum CollisionCategory : uint16_t {
-    CAT_PLAYER = 1 << 0,  // 1
-    CAT_WALL = 1 << 1,    // 2
-    CAT_COVER = 1 << 2,   // 4
-    CAT_WATER = 1 << 3,   // 8
+    CAT_PLAYER = 1 << 0,
+    CAT_WALL = 1 << 1,
+    CAT_COVER = 1 << 2,
+    CAT_WATER = 1 << 3,
+    CAT_BULLET = 1 << 4,
 };
 
 enum CollisionMask : uint16_t {

@@ -6,7 +6,9 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <entt/entity/fwd.hpp>
+#include <glm/glm.hpp>
 #include <iostream>
 #include <stdexcept>
 #include <thread>
@@ -59,6 +61,8 @@ GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {
     // Initialize raycast system
     m_raycastSystem = std::make_unique<RaycastSystem>(
         m_entityManager.getRegistry(), m_physicsWorld.m_worldId);
+
+    m_entityManager.initProjectilePool(256);
 
     std::cout << "GameServer initialization complete!" << std::endl;
 }
@@ -131,6 +135,7 @@ void GameServer::tick(double delta) {
         m_physicsWorld.tick(delta);
 
         /* Post physics systems */
+        postPhysicsSystemUpdate(delta);
 
         m_entityManager.removeEntities();
     }
@@ -152,12 +157,18 @@ void GameServer::tick(double delta) {
 }
 
 void GameServer::prePhysicsSystemUpdate(double delta) {
-    biomeSystem();
+    // biomeSystem();
     stateSystem();
     inputSystem(delta);
+    gunSystem(delta);
+    projectileSystem(delta);
     meleeSystem(delta);
     healthSystem(delta);
     cameraSystem();
+}
+
+void GameServer::postPhysicsSystemUpdate(double /*delta*/) {
+    projectileImpactSystem();
 }
 
 void GameServer::biomeSystem() {
@@ -184,12 +195,9 @@ void GameServer::biomeSystem() {
             std::cout << "Entity " << static_cast<uint32_t>(entity)
                       << " is in biome: "
                       << m_worldGenerator->GetBiomeName(currentBiome) << "\n";
-            // TODO: Store biome on entity if needed
-            // For now, just log it for testing
-            // You can add a Biome component if you want to track it
-            // entt::component biomeComponent;
-            // biomeComponent.type = currentBiome;
-            // reg.emplace<Components::Biome>(entity, biomeComponent);
+            // print out entity type
+            std::cout << "Entity type: " << static_cast<uint32_t>(base.type)
+                      << "\n";
         }
     });
 }
@@ -276,6 +284,164 @@ void GameServer::meleeSystem(double delta) {
         });
 }
 
+void GameServer::gunSystem(double delta) {
+    entt::registry& reg = m_entityManager.getRegistry();
+
+    reg.view<Components::EntityBase, Components::Input, Components::Gun>().each(
+        [&](entt::entity entity, Components::EntityBase& base,
+            Components::Input& input, Components::Gun& gun) {
+            if (B2_IS_NULL(base.bodyId)) return;
+
+            bool wasReloading = gun.isReloading();
+            gun.update(static_cast<float>(delta));
+
+            bool wantsFire = gun.automatic
+                                 ? (input.mouseIsDown || input.dirtyClick)
+                                 : input.dirtyClick;
+
+            if (!gun.isReloading() && gun.ammoInMag < gun.ammoPerShot) {
+                if (reg.all_of<Components::Ammo>(entity)) {
+                    Components::Ammo& ammo = reg.get<Components::Ammo>(entity);
+                    if (ammo.get(gun.ammoType) > 0) {
+                        gun.startReload();
+                    }
+                }
+            }
+
+            if (wasReloading && !gun.isReloading()) {
+                if (reg.all_of<Components::Ammo>(entity)) {
+                    Components::Ammo& ammo = reg.get<Components::Ammo>(entity);
+                    int needed = gun.magazineSize - gun.ammoInMag;
+                    int taken = ammo.take(gun.ammoType, needed);
+                    gun.ammoInMag += taken;
+                }
+            }
+
+            if (!wantsFire) {
+                return;
+            }
+
+            if (!gun.canFire()) {
+                return;
+            }
+
+            gun.ammoInMag -= gun.ammoPerShot;
+            gun.triggerCooldown();
+            input.dirtyClick = false;
+
+            if (reg.all_of<Components::State>(entity)) {
+                Components::State& state = reg.get<Components::State>(entity);
+                state.setState(EntityStates::SHOOTING);
+            }
+
+            b2Vec2 position = b2Body_GetPosition(base.bodyId);
+
+            for (int pellet = 0; pellet < gun.pellets; ++pellet) {
+                float random01 = static_cast<float>(rand()) / RAND_MAX;
+                float spread = (random01 * 2.0f - 1.0f) * gun.spread;
+                float angle = input.angle + spread;
+
+                glm::vec2 origin = {position.x, position.y};
+                glm::vec2 direction = {std::cos(angle), std::sin(angle)};
+
+                if (gun.fireMode == GunFireMode::FIRE_HITSCAN) {
+                    RayHit hit = m_raycastSystem->FireBullet(
+                        entity, origin, direction, gun.range);
+
+                    if (hit.hit && hit.entity != entt::null) {
+                        applyDamage(entity, hit.entity, gun.damage);
+                    }
+                } else {
+                    entt::entity projectileEntity =
+                        m_entityManager.acquireProjectile();
+
+                    if (reg.valid(projectileEntity) &&
+                        reg.all_of<Components::Projectile,
+                                   Components::EntityBase>(projectileEntity)) {
+                        auto& projectile =
+                            reg.get<Components::Projectile>(projectileEntity);
+                        auto& projBase =
+                            reg.get<Components::EntityBase>(projectileEntity);
+
+                        projectile.owner = entity;
+                        projectile.damage = gun.damage;
+                        projectile.remainingLife = gun.projectileLifetime;
+                        projectile.active = true;
+
+                        b2Vec2 velocity = {direction.x * gun.projectileSpeed,
+                                           direction.y * gun.projectileSpeed};
+
+                        b2Body_SetTransform(projBase.bodyId, position,
+                                            b2MakeRot(angle));
+                        b2Body_SetLinearVelocity(projBase.bodyId, velocity);
+                        b2Body_Enable(projBase.bodyId);
+                    }
+                }
+            }
+        });
+}
+
+void GameServer::projectileSystem(double delta) {
+    entt::registry& reg = m_entityManager.getRegistry();
+
+    reg.view<Components::Projectile, Components::EntityBase>().each(
+        [&](entt::entity entity, Components::Projectile& proj,
+            Components::EntityBase& base) {
+            if (!proj.active) return;
+            if (B2_IS_NULL(base.bodyId)) return;
+
+            proj.remainingLife -= static_cast<float>(delta);
+            if (proj.remainingLife <= 0.0f) {
+                m_entityManager.releaseProjectile(entity);
+            }
+        });
+}
+
+void GameServer::projectileImpactSystem() {
+    entt::registry& reg = m_entityManager.getRegistry();
+
+    b2ContactEvents events = b2World_GetContactEvents(m_physicsWorld.m_worldId);
+
+    for (int i = 0; i < events.beginCount; ++i) {
+        b2ContactBeginTouchEvent& evt = events.beginEvents[i];
+
+        b2BodyId bodyA = b2Shape_GetBody(evt.shapeIdA);
+        b2BodyId bodyB = b2Shape_GetBody(evt.shapeIdB);
+
+        void* userDataA = b2Body_GetUserData(bodyA);
+        void* userDataB = b2Body_GetUserData(bodyB);
+
+        entt::entity entityA = entt::null;
+        entt::entity entityB = entt::null;
+
+        if (userDataA) {
+            entityA = reinterpret_cast<EntityBodyUserData*>(userDataA)->entity;
+        }
+        if (userDataB) {
+            entityB = reinterpret_cast<EntityBodyUserData*>(userDataB)->entity;
+        }
+
+        bool aIsProjectile = userDataA && reg.valid(entityA) &&
+                             reg.all_of<Components::Projectile>(entityA);
+        bool bIsProjectile = userDataB && reg.valid(entityB) &&
+                             reg.all_of<Components::Projectile>(entityB);
+
+        if (!aIsProjectile && !bIsProjectile) continue;
+
+        entt::entity projectileEntity = aIsProjectile ? entityA : entityB;
+        entt::entity targetEntity = aIsProjectile ? entityB : entityA;
+
+        auto& projectile = reg.get<Components::Projectile>(projectileEntity);
+        if (!projectile.active) continue;
+        if (projectile.owner == targetEntity) continue;
+
+        if (targetEntity != entt::null && reg.valid(targetEntity)) {
+            applyDamage(projectile.owner, targetEntity, projectile.damage);
+        }
+        m_entityManager.releaseProjectile(projectileEntity);
+    }
+}
+
 void GameServer::cameraSystem() {
     entt::registry& reg = m_entityManager.getRegistry();
     reg.view<Components::Camera>().each(
@@ -299,6 +465,27 @@ void GameServer::healthSystem(double delta) {
                 Die(entity);
             }
         });
+}
+
+void GameServer::applyDamage(entt::entity attacker, entt::entity target,
+                             float damage) {
+    entt::registry& reg = m_entityManager.getRegistry();
+
+    if (reg.valid(target) && reg.all_of<Components::Health>(target)) {
+        Components::Health& health = reg.get<Components::Health>(target);
+        health.decrement(damage, attacker);
+
+        if (reg.all_of<Components::State>(target)) {
+            Components::State& state = reg.get<Components::State>(target);
+            state.setState(EntityStates::HURT);
+        }
+    }
+
+    if (reg.valid(target) && reg.all_of<Components::Destructible>(target)) {
+        Components::Destructible& dest =
+            reg.get<Components::Destructible>(target);
+        dest.damage(damage);
+    }
 }
 
 void GameServer::Hit(entt::entity attacker, b2Vec2& pos, int radius) {

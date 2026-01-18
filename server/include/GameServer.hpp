@@ -46,14 +46,19 @@ class GameServer {
     void processClientMessages();
     void tick(double delta);
     void prePhysicsSystemUpdate(double delta);
+    void postPhysicsSystemUpdate(double delta);
     void biomeSystem();
     void stateSystem();
     void inputSystem(double delta);
     void meleeSystem(double delta);
+    void gunSystem(double delta);
+    void projectileSystem(double delta);
+    void projectileImpactSystem();
     void cameraSystem();
     void healthSystem(double delta);
 
     void Hit(entt::entity entity, b2Vec2& meleePos, int radius);
+    void applyDamage(entt::entity attacker, entt::entity target, float damage);
     void Die(entt::entity entity);
 
     void broadcastKill(entt::entity subject);

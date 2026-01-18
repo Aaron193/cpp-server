@@ -206,6 +206,9 @@ void Client::writeGameState() {
     for (auto entity : networkedView) {
         auto& base = networkedView.get<Components::EntityBase>(entity);
         if (B2_IS_NON_NULL(base.bodyId)) {
+            if (!b2Body_IsEnabled(base.bodyId)) {
+                continue;
+            }
             b2Vec2 entityPos = b2Body_GetPosition(base.bodyId);
             if (entityPos.x >= queryAABB.lowerBound.x &&
                 entityPos.x <= queryAABB.upperBound.x &&

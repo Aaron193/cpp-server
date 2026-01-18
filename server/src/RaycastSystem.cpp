@@ -5,7 +5,46 @@
 #include <cmath>
 
 #include "common/enums.hpp"
-#include "ecs/components.hpp"
+#include "ecs/EntityManager.hpp"
+
+namespace {
+struct RaycastContext {
+    entt::entity shooter = entt::null;
+    RayHit result;
+};
+
+float RaycastCallback(b2ShapeId shapeId, b2Vec2 point, b2Vec2 normal,
+                      float fraction, void* context) {
+    auto* ctx = reinterpret_cast<RaycastContext*>(context);
+
+    b2BodyId bodyId = b2Shape_GetBody(shapeId);
+    void* userData = b2Body_GetUserData(bodyId);
+    if (userData) {
+        auto* entityData = reinterpret_cast<EntityBodyUserData*>(userData);
+        if (entityData->entity == ctx->shooter) {
+            return -1.0f;
+        }
+    }
+
+    b2Filter filter = b2Shape_GetFilter(shapeId);
+
+    if (fraction < ctx->result.fraction) {
+        ctx->result.fraction = fraction;
+        ctx->result.point = {point.x, point.y};
+        ctx->result.normal = {normal.x, normal.y};
+        ctx->result.category = filter.categoryBits;
+        ctx->result.hit = true;
+        ctx->result.entity = entt::null;
+
+        if (userData) {
+            auto* entityData = reinterpret_cast<EntityBodyUserData*>(userData);
+            ctx->result.entity = entityData->entity;
+        }
+    }
+
+    return fraction;
+}
+}  // namespace
 
 RaycastSystem::RaycastSystem(entt::registry& registry, b2WorldId worldId)
     : m_registry(registry), m_worldId(worldId) {}
@@ -20,121 +59,36 @@ RayHit RaycastSystem::FireBullet(entt::entity shooter, glm::vec2 origin,
         direction.y /= len;
     }
 
-    RayHit result;
-    result.fraction = 1.0f;
-    result.hit = false;
+    RaycastContext ctx;
+    ctx.shooter = shooter;
+    ctx.result.fraction = 1.0f;
+    ctx.result.hit = false;
 
     b2Vec2 p1 = {origin.x, origin.y};
-    b2Vec2 p2 = {origin.x + direction.x * maxDistance,
-                 origin.y + direction.y * maxDistance};
+    b2Vec2 translation = {direction.x * maxDistance, direction.y * maxDistance};
 
-    // Create AABB for ray line segment
-    b2AABB rayAABB;
-    rayAABB.lowerBound = {std::min(p1.x, p2.x), std::min(p1.y, p2.y)};
-    rayAABB.upperBound = {std::max(p1.x, p2.x), std::max(p1.y, p2.y)};
+    b2QueryFilter filter = b2DefaultQueryFilter();
+    filter.categoryBits = CAT_BULLET;
+    filter.maskBits = MASK_BULLET;
 
-    // Iterate through all entities and test ray intersection
-    auto allShapesView = m_registry.view<Components::EntityBase>();
-    for (auto entity : allShapesView) {
-        auto& base = allShapesView.get<Components::EntityBase>(entity);
-        if (B2_IS_NULL(base.bodyId)) continue;
-        if (entity == shooter) continue;
+    b2World_CastRay(m_worldId, p1, translation, filter, RaycastCallback, &ctx);
 
-        int shapeCount = b2Body_GetShapeCount(base.bodyId);
-        b2ShapeId* shapes = new b2ShapeId[shapeCount];
-        b2Body_GetShapes(base.bodyId, shapes, shapeCount);
-
-        for (int i = 0; i < shapeCount; ++i) {
-            b2ShapeId shapeId = shapes[i];
-            b2Filter shapeFilter = b2Shape_GetFilter(shapeId);
-
-            // Check if this shape is something bullets should collide with
-            if (!(shapeFilter.categoryBits & MASK_BULLET)) {
-                continue;
-            }
-
-            // Get shape AABB and check intersection with ray
-            b2AABB shapeAABB = b2Shape_GetAABB(shapeId);
-            if (shapeAABB.lowerBound.x <= rayAABB.upperBound.x &&
-                shapeAABB.upperBound.x >= rayAABB.lowerBound.x &&
-                shapeAABB.lowerBound.y <= rayAABB.upperBound.y &&
-                shapeAABB.upperBound.y >= rayAABB.lowerBound.y) {
-                // Simple distance check for closest hit
-                b2Vec2 entityPos = b2Body_GetPosition(base.bodyId);
-                float diffX = entityPos.x - p1.x;
-                float diffY = entityPos.y - p1.y;
-                float distSq = diffX * diffX + diffY * diffY;
-                float maxDistSq = maxDistance * maxDistance;
-
-                if (distSq < maxDistSq) {
-                    float dist = std::sqrt(distSq);
-                    float fraction = dist / maxDistance;
-
-                    if (fraction < result.fraction) {
-                        result.fraction = fraction;
-                        result.point = {entityPos.x, entityPos.y};
-                        result.normal = {diffX / dist, diffY / dist};
-                        result.category = shapeFilter.categoryBits;
-                        result.hit = true;
-                        result.entity = entity;
-                    }
-                }
-            }
-        }
-        delete[] shapes;
-    }
-
-    // Don't hit yourself
-    if (result.entity == shooter) {
-        result.hit = false;
-        result.entity = entt::null;
-    }
-
-    return result;
+    return ctx.result;
 }
 
 bool RaycastSystem::HasLineOfSight(glm::vec2 from, glm::vec2 to) {
     b2Vec2 p1 = {from.x, from.y};
     b2Vec2 p2 = {to.x, to.y};
 
-    // Check if there's a wall or cover between the two points
-    auto baseView = m_registry.view<Components::EntityBase>();
-    for (auto entity : baseView) {
-        auto& base = baseView.get<Components::EntityBase>(entity);
-        if (B2_IS_NULL(base.bodyId)) continue;
+    b2Vec2 translation = {p2.x - p1.x, p2.y - p1.y};
 
-        int shapeCount = b2Body_GetShapeCount(base.bodyId);
-        b2ShapeId* shapes = new b2ShapeId[shapeCount];
-        b2Body_GetShapes(base.bodyId, shapes, shapeCount);
+    b2QueryFilter filter = b2DefaultQueryFilter();
+    filter.categoryBits = CAT_BULLET;
+    filter.maskBits = (CAT_WALL | CAT_COVER);
 
-        for (int i = 0; i < shapeCount; ++i) {
-            b2ShapeId shapeId = shapes[i];
-            b2Filter filter = b2Shape_GetFilter(shapeId);
-
-            // Only check walls and cover
-            if (filter.categoryBits & (CAT_WALL | CAT_COVER)) {
-                b2AABB shapeAABB = b2Shape_GetAABB(shapeId);
-
-                // Simple AABB intersection with line segment
-                b2AABB rayAABB;
-                rayAABB.lowerBound = {std::min(p1.x, p2.x),
-                                      std::min(p1.y, p2.y)};
-                rayAABB.upperBound = {std::max(p1.x, p2.x),
-                                      std::max(p1.y, p2.y)};
-
-                if (shapeAABB.lowerBound.x <= rayAABB.upperBound.x &&
-                    shapeAABB.upperBound.x >= rayAABB.lowerBound.x &&
-                    shapeAABB.lowerBound.y <= rayAABB.upperBound.y &&
-                    shapeAABB.upperBound.y >= rayAABB.lowerBound.y) {
-                    delete[] shapes;
-                    return false;
-                }
-            }
-        }
-        delete[] shapes;
-    }
-
-    return true;
+    b2RayResult result =
+        b2World_CastRayClosest(m_worldId, p1, translation, filter);
+    return !result.hit;
 }
 
 float RaycastSystem::ComputeLongestSightline(glm::vec2 position,

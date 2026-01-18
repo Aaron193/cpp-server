@@ -23,6 +23,7 @@ EntityManager::EntityManager(GameServer& gameServer)
     m_variants[EntityTypes::WALL] = 0;
     m_variants[EntityTypes::FENCE] = 0;
     m_variants[EntityTypes::TREE] = 2;
+    m_variants[EntityTypes::BULLET] = 0;
 }
 
 uint8_t EntityManager::getVariantCount(EntityTypes type) {
@@ -60,6 +61,22 @@ entt::entity EntityManager::createPlayer() {
     m_registry.emplace<Health>(entity, 100, 100);
     m_registry.emplace<AttackCooldown>(entity,
                                        1.0f / 3.0f);  // 333ms attack cooldown
+    auto& ammo = m_registry.emplace<Ammo>(entity);
+    ammo.add(AmmoType::AMMO_LIGHT, 120);
+
+    Components::Gun gun;
+    gun.fireMode = GunFireMode::FIRE_HITSCAN;
+    gun.ammoType = AmmoType::AMMO_LIGHT;
+    gun.magazineSize = 30;
+    gun.ammoInMag = 30;
+    gun.fireRate = 8.0f;
+    gun.reloadTime = 1.2f;
+    gun.damage = 12.0f;
+    gun.range = meters(1200.0f);
+    gun.spread = 0.02f;
+    gun.projectileSpeed = 35.0f;
+    gun.projectileLifetime = 1.2f;
+    m_registry.emplace<Gun>(entity, gun);
 
     // Define the body
     b2BodyDef bodyDef = b2DefaultBodyDef();
@@ -92,12 +109,86 @@ entt::entity EntityManager::createPlayer() {
     shapeDef.density = 1.0f;
     shapeDef.isSensor = false;
     shapeDef.filter.categoryBits = CAT_PLAYER;
-    shapeDef.filter.maskBits = MASK_PLAYER_MOVE | CAT_PLAYER;
+    shapeDef.filter.maskBits = MASK_PLAYER_MOVE | CAT_PLAYER | CAT_BULLET;
 
     b2Circle circle = {{0.0f, 0.0f}, meters(25.0f)};
     b2CreateCircleShape(base.bodyId, &shapeDef, &circle);
 
     return entity;
+}
+
+entt::entity EntityManager::createProjectileEntity() {
+    entt::entity entity = m_registry.create();
+
+    auto& base = m_registry.emplace<EntityBase>(entity, EntityTypes::BULLET);
+    m_registry.emplace<Networked>(entity);
+    m_registry.emplace<Projectile>(entity);
+
+    b2BodyDef bodyDef = b2DefaultBodyDef();
+    bodyDef.type = b2_dynamicBody;
+    bodyDef.position = {0.0f, 0.0f};
+    bodyDef.fixedRotation = true;
+    bodyDef.isBullet = true;
+
+    EntityBodyUserData* userData = new EntityBodyUserData{entity};
+    bodyDef.userData = reinterpret_cast<void*>(userData);
+
+    base.bodyId = b2CreateBody(m_gameServer.m_physicsWorld.m_worldId, &bodyDef);
+
+    b2ShapeDef shapeDef = b2DefaultShapeDef();
+    shapeDef.density = 1.0f;
+    shapeDef.isSensor = false;
+    shapeDef.enableContactEvents = true;
+    shapeDef.filter.categoryBits = CAT_BULLET;
+    shapeDef.filter.maskBits = MASK_BULLET;
+
+    b2Circle circle = {{0.0f, 0.0f}, meters(2.0f)};
+    b2CreateCircleShape(base.bodyId, &shapeDef, &circle);
+
+    b2Body_Disable(base.bodyId);
+
+    return entity;
+}
+
+void EntityManager::initProjectilePool(size_t count) {
+    m_projectilePool.clear();
+    m_projectilePool.reserve(count);
+
+    for (size_t i = 0; i < count; ++i) {
+        entt::entity entity = createProjectileEntity();
+        m_projectilePool.push_back(entity);
+    }
+}
+
+entt::entity EntityManager::acquireProjectile() {
+    if (m_projectilePool.empty()) {
+        return createProjectileEntity();
+    }
+
+    entt::entity entity = m_projectilePool.back();
+    m_projectilePool.pop_back();
+    return entity;
+}
+
+void EntityManager::releaseProjectile(entt::entity entity) {
+    if (!m_registry.valid(entity)) return;
+    if (!m_registry.all_of<Projectile, EntityBase>(entity)) return;
+
+    auto& proj = m_registry.get<Projectile>(entity);
+    auto& base = m_registry.get<EntityBase>(entity);
+
+    proj.active = false;
+    proj.remainingLife = 0.0f;
+    proj.owner = entt::null;
+    proj.damage = 0.0f;
+
+    if (B2_IS_NON_NULL(base.bodyId)) {
+        b2Body_SetLinearVelocity(base.bodyId, {0.0f, 0.0f});
+        b2Body_SetAngularVelocity(base.bodyId, 0.0f);
+        b2Body_Disable(base.bodyId);
+    }
+
+    m_projectilePool.push_back(entity);
 }
 
 entt::entity EntityManager::createCrate() {
