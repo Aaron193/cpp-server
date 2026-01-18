@@ -47,8 +47,7 @@ class EntityManager {
     entt::entity createCrate();
     entt::entity createBush();
     entt::entity createRock();
-    entt::entity createWall(float x, float y, bool destructible = false);
-    entt::entity createFence(float x, float y);
+    entt::entity createWall(float x, float y);
     entt::entity createTree(float x, float y);
 
     void scheduleForRemoval(entt::entity entity);

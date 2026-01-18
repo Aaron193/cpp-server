@@ -3,7 +3,6 @@
 #include <box2d/box2d.h>
 
 #include <entt/entt.hpp>
-#include <unordered_map>
 
 #include "ecs/EntityManager.hpp"
 
@@ -81,8 +80,8 @@ struct Health {
 };
 
 struct Destructible {
-    float maxHealth;
-    float currentHealth;
+    float maxHealth = 100.0f;
+    float currentHealth = 100.0f;
     bool destroyed = false;
 
     void damage(float amount) {

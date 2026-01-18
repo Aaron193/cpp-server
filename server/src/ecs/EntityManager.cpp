@@ -1,6 +1,7 @@
 #include "ecs/EntityManager.hpp"
 
 #include <box2d/box2d.h>
+#include <box2d/types.h>
 
 #include <entt/entt.hpp>
 
@@ -105,9 +106,12 @@ entt::entity EntityManager::createCrate() {
     auto& base = m_registry.emplace<EntityBase>(entity, EntityTypes::CRATE);
     m_registry.emplace<Networked>(entity);
 
+    Components::Destructible dest;
+    m_registry.emplace<Components::Destructible>(entity, dest);
+
     // Define the body
     b2BodyDef bodyDef = b2DefaultBodyDef();
-    bodyDef.type = b2_staticBody;
+    bodyDef.type = b2_kinematicBody;
 
     float x = static_cast<float>(rand()) / (float)RAND_MAX * 1500.0f;
     float y = static_cast<float>(rand()) / (float)RAND_MAX * 1500.0f;
@@ -202,22 +206,18 @@ entt::entity EntityManager::createRock() {
     return entity;
 }
 
-entt::entity EntityManager::createWall(float x, float y, bool destructible) {
+entt::entity EntityManager::createWall(float x, float y) {
     entt::entity entity = m_registry.create();
 
     auto& base = m_registry.emplace<EntityBase>(entity, EntityTypes::WALL);
     m_registry.emplace<Networked>(entity);
 
-    if (destructible) {
-        Components::Destructible dest;
-        dest.maxHealth = 100.0f;
-        dest.currentHealth = 100.0f;
-        m_registry.emplace<Components::Destructible>(entity, dest);
-    }
+    Components::Destructible dest;
+    m_registry.emplace<Components::Destructible>(entity, dest);
 
     // Create Box2D body
     b2BodyDef bodyDef = b2DefaultBodyDef();
-    bodyDef.type = destructible ? b2_dynamicBody : b2_staticBody;
+    bodyDef.type = b2_dynamicBody;
     bodyDef.position = {meters(x), meters(y)};
     bodyDef.fixedRotation = true;
 
@@ -234,36 +234,6 @@ entt::entity EntityManager::createWall(float x, float y, bool destructible) {
     shapeDef.filter.maskBits = MASK_PLAYER_MOVE | MASK_BULLET;
 
     b2Polygon boxShape = b2MakeBox(meters(50.0f), meters(50.0f));
-    b2CreatePolygonShape(base.bodyId, &shapeDef, &boxShape);
-
-    return entity;
-}
-
-entt::entity EntityManager::createFence(float x, float y) {
-    entt::entity entity = m_registry.create();
-
-    auto& base = m_registry.emplace<EntityBase>(entity, EntityTypes::FENCE);
-    m_registry.emplace<Networked>(entity);
-
-    // Create Box2D body (static)
-    b2BodyDef bodyDef = b2DefaultBodyDef();
-    bodyDef.type = b2_staticBody;
-    bodyDef.position = {meters(x), meters(y)};
-
-    base.bodyId = b2CreateBody(m_gameServer.m_physicsWorld.m_worldId, &bodyDef);
-
-    EntityBodyUserData* userData = new EntityBodyUserData();
-    userData->entity = entity;
-    b2Body_SetUserData(base.bodyId, reinterpret_cast<void*>(userData));
-
-    // Create box collider (blocks bullets, not players)
-    b2ShapeDef shapeDef = b2DefaultShapeDef();
-    shapeDef.density = 0.0f;
-    shapeDef.isSensor = false;
-    shapeDef.filter.categoryBits = CAT_COVER;
-    shapeDef.filter.maskBits = MASK_BULLET;  // Only blocks bullets
-
-    b2Polygon boxShape = b2MakeBox(meters(40.0f), meters(10.0f));
     b2CreatePolygonShape(base.bodyId, &shapeDef, &boxShape);
 
     return entity;
