@@ -2,6 +2,7 @@
 
 #include <uwebsockets/Loop.h>
 
+#include <glm/glm.hpp>
 #include <memory>
 #include <mutex>
 
@@ -63,6 +64,8 @@ class GameServer {
 
     void broadcastKill(entt::entity subject);
     void broadcastMessage(const std::string& message);
+    void broadcastBulletTrace(entt::entity shooter, glm::vec2 start,
+                              glm::vec2 end);
 
     void processJobs();
     void updateHeartbeat(double delta);

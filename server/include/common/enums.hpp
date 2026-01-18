@@ -9,6 +9,8 @@ enum ClientHeader : uint8_t {
     MOUSE_DOWN,
     MOUSE_UP,
     CLIENT_CHAT,
+    RELOAD,
+    SWITCH_ITEM,
 };
 
 enum ServerHeader : uint8_t {
@@ -27,6 +29,9 @@ enum ServerHeader : uint8_t {
     SERVER_CHAT,
     MAP_INIT,
     BIOME_CREATE,
+    INVENTORY_UPDATE,
+    AMMO_UPDATE,
+    BULLET_TRACE,
 };
 
 enum NewsType : uint8_t {
@@ -45,6 +50,13 @@ enum AmmoType : uint8_t {
 enum GunFireMode : uint8_t {
     FIRE_HITSCAN,
     FIRE_PROJECTILE,
+};
+
+enum ItemType : uint8_t {
+    ITEM_NONE,
+    ITEM_GUN_PISTOL,
+    ITEM_GUN_RIFLE,
+    ITEM_GUN_SHOTGUN,
 };
 
 // Collision system for Box2D filtering

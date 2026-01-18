@@ -7,4 +7,5 @@ export enum EntityTypes {
     WALL,
     FENCE,
     TREE,
+    BULLET,
 }

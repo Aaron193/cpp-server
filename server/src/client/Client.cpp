@@ -62,6 +62,12 @@ void Client::onMessage(const std::string_view& message) {
             case ClientHeader::CLIENT_CHAT:
                 onChat();
                 break;
+            case ClientHeader::RELOAD:
+                onReload();
+                break;
+            case ClientHeader::SWITCH_ITEM:
+                onSwitchItem();
+                break;
         }
     }
 }
@@ -164,6 +170,30 @@ void Client::onChat() {
             client->m_writer.writeString(message);
         }
     }
+}
+
+void Client::onReload() {
+    if (!m_active) {
+        return;
+    }
+
+    entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
+    if (!reg.all_of<Components::Input>(m_entity)) return;
+    Components::Input& input = reg.get<Components::Input>(m_entity);
+    input.reloadRequested = true;
+}
+
+void Client::onSwitchItem() {
+    if (!m_active) {
+        return;
+    }
+
+    const uint8_t slot = m_reader.readU8();
+
+    entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
+    if (!reg.all_of<Components::Input>(m_entity)) return;
+    Components::Input& input = reg.get<Components::Input>(m_entity);
+    input.switchSlot = static_cast<int8_t>(slot);
 }
 
 void Client::writeGameState() {
@@ -322,6 +352,56 @@ void Client::writeGameState() {
             m_writer.writeU8(ServerHeader::HEALTH);
             m_writer.writeFloat(health.current / health.max);
             health.dirty = false;
+        }
+    }
+
+    if (reg.all_of<Components::Inventory>(m_entity)) {
+        Components::Inventory& inventory =
+            reg.get<Components::Inventory>(m_entity);
+
+        bool inventoryDirty = inventory.dirty;
+
+        if (inventoryDirty) {
+            m_writer.writeU8(ServerHeader::INVENTORY_UPDATE);
+            m_writer.writeU8(inventory.activeSlot);
+
+            for (const auto& slot : inventory.slots) {
+                m_writer.writeU8(static_cast<uint8_t>(slot.type));
+
+                if (slot.isGun()) {
+                    m_writer.writeU8(static_cast<uint8_t>(slot.gun.fireMode));
+                    m_writer.writeU8(static_cast<uint8_t>(slot.gun.ammoType));
+                    m_writer.writeU16(
+                        static_cast<uint16_t>(slot.gun.magazineSize));
+                    m_writer.writeU16(
+                        static_cast<uint16_t>(slot.gun.ammoInMag));
+                    m_writer.writeFloat(slot.gun.reloadRemaining);
+                } else {
+                    m_writer.writeU8(0);
+                    m_writer.writeU8(0);
+                    m_writer.writeU16(0);
+                    m_writer.writeU16(0);
+                    m_writer.writeFloat(0.0f);
+                }
+            }
+
+            inventory.dirty = false;
+        }
+
+        const auto& activeSlot = inventory.getActive();
+        bool needsAmmoUpdate = inventoryDirty;
+        if (activeSlot.isGun() && activeSlot.gun.reloadRemaining > 0.0f) {
+            needsAmmoUpdate = true;
+        }
+
+        if (needsAmmoUpdate && activeSlot.isGun() &&
+            reg.all_of<Components::Ammo>(m_entity)) {
+            Components::Ammo& ammo = reg.get<Components::Ammo>(m_entity);
+            m_writer.writeU8(ServerHeader::AMMO_UPDATE);
+            m_writer.writeU16(static_cast<uint16_t>(activeSlot.gun.ammoInMag));
+            m_writer.writeU16(
+                static_cast<uint16_t>(ammo.get(activeSlot.gun.ammoType)));
+            m_writer.writeFloat(activeSlot.gun.reloadRemaining);
         }
     }
 

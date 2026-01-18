@@ -257,6 +257,13 @@ void GameServer::meleeSystem(double delta) {
                   Components::Input& input,
                   Components::AttackCooldown& cooldown,
                   Components::State& state) {
+            if (reg.all_of<Components::Inventory>(entity)) {
+                const auto& inventory = reg.get<Components::Inventory>(entity);
+                if (inventory.hasGunInHands()) {
+                    return;
+                }
+            }
+
             assert(B2_IS_NON_NULL(base.bodyId));
 
             const bool shouldAttack = input.mouseIsDown || input.dirtyClick;
@@ -287,23 +294,40 @@ void GameServer::meleeSystem(double delta) {
 void GameServer::gunSystem(double delta) {
     entt::registry& reg = m_entityManager.getRegistry();
 
-    reg.view<Components::EntityBase, Components::Input, Components::Gun>().each(
-        [&](entt::entity entity, Components::EntityBase& base,
-            Components::Input& input, Components::Gun& gun) {
+    reg.view<Components::EntityBase, Components::Input, Components::Inventory>()
+        .each([&](entt::entity entity, Components::EntityBase& base,
+                  Components::Input& input, Components::Inventory& inventory) {
             if (B2_IS_NULL(base.bodyId)) return;
 
+            if (input.switchSlot >= 0) {
+                uint8_t slot = static_cast<uint8_t>(input.switchSlot);
+                if (slot < inventory.slots.size()) {
+                    inventory.activeSlot = slot;
+                    inventory.dirty = true;
+                }
+                input.switchSlot = -1;
+            }
+
+            auto& slot = inventory.getActive();
+            if (!slot.isGun()) {
+                input.dirtyClick = false;
+                input.reloadRequested = false;
+                return;
+            }
+
+            Components::Gun& gun = slot.gun;
             bool wasReloading = gun.isReloading();
             gun.update(static_cast<float>(delta));
 
-            bool wantsFire = gun.automatic
-                                 ? (input.mouseIsDown || input.dirtyClick)
-                                 : input.dirtyClick;
-
-            if (!gun.isReloading() && gun.ammoInMag < gun.ammoPerShot) {
-                if (reg.all_of<Components::Ammo>(entity)) {
-                    Components::Ammo& ammo = reg.get<Components::Ammo>(entity);
-                    if (ammo.get(gun.ammoType) > 0) {
-                        gun.startReload();
+            if (input.reloadRequested) {
+                input.reloadRequested = false;
+                if (!gun.isReloading() && gun.ammoInMag < gun.magazineSize) {
+                    if (reg.all_of<Components::Ammo>(entity)) {
+                        Components::Ammo& ammo =
+                            reg.get<Components::Ammo>(entity);
+                        if (ammo.get(gun.ammoType) > 0) {
+                            gun.startReload();
+                        }
                     }
                 }
             }
@@ -314,8 +338,13 @@ void GameServer::gunSystem(double delta) {
                     int needed = gun.magazineSize - gun.ammoInMag;
                     int taken = ammo.take(gun.ammoType, needed);
                     gun.ammoInMag += taken;
+                    inventory.dirty = true;
                 }
             }
+
+            bool wantsFire = gun.automatic
+                                 ? (input.mouseIsDown || input.dirtyClick)
+                                 : input.dirtyClick;
 
             if (!wantsFire) {
                 return;
@@ -328,6 +357,7 @@ void GameServer::gunSystem(double delta) {
             gun.ammoInMag -= gun.ammoPerShot;
             gun.triggerCooldown();
             input.dirtyClick = false;
+            inventory.dirty = true;
 
             if (reg.all_of<Components::State>(entity)) {
                 Components::State& state = reg.get<Components::State>(entity);
@@ -347,6 +377,13 @@ void GameServer::gunSystem(double delta) {
                 if (gun.fireMode == GunFireMode::FIRE_HITSCAN) {
                     RayHit hit = m_raycastSystem->FireBullet(
                         entity, origin, direction, gun.range);
+
+                    glm::vec2 endPoint =
+                        hit.hit ? hit.point
+                                : glm::vec2{origin.x + direction.x * gun.range,
+                                            origin.y + direction.y * gun.range};
+
+                    broadcastBulletTrace(entity, origin, endPoint);
 
                     if (hit.hit && hit.entity != entt::null) {
                         applyDamage(entity, hit.entity, gun.damage);
@@ -612,6 +649,23 @@ void GameServer::broadcastMessage(const std::string& message) {
         client->m_writer.writeU8(ServerHeader::NEWS);
         client->m_writer.writeU8(NewsType::TEXT);
         client->m_writer.writeString(message);
+    }
+}
+
+void GameServer::broadcastBulletTrace(entt::entity shooter, glm::vec2 start,
+                                      glm::vec2 end) {
+    float startX = pixels(start.x);
+    float startY = pixels(start.y);
+    float endX = pixels(end.x);
+    float endY = pixels(end.y);
+
+    for (auto& [id, client] : m_clients) {
+        client->m_writer.writeU8(ServerHeader::BULLET_TRACE);
+        client->m_writer.writeU32(static_cast<uint32_t>(shooter));
+        client->m_writer.writeFloat(startX);
+        client->m_writer.writeFloat(startY);
+        client->m_writer.writeFloat(endX);
+        client->m_writer.writeFloat(endY);
     }
 }
 

@@ -5,6 +5,8 @@ export const enum ClientHeader {
     MOUSE_DOWN,
     MOUSE_UP,
     CLIENT_CHAT,
+    RELOAD,
+    SWITCH_ITEM,
 }
 
 export const enum ServerHeader {
@@ -23,4 +25,7 @@ export const enum ServerHeader {
     SERVER_CHAT,
     MAP_INIT,
     BIOME_CREATE,
+    INVENTORY_UPDATE,
+    AMMO_UPDATE,
+    BULLET_TRACE,
 }

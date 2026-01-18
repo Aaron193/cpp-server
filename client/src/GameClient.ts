@@ -134,6 +134,29 @@ export class GameClient {
                     minimap.toggleExpanded()
                     break
                 }
+                case 'r':
+                case 'R': {
+                    if (this.world.isControllingPlayer()) {
+                        this.socket.streamWriter.writeU8(ClientHeader.RELOAD)
+                        this.socket.flush()
+                    }
+                    break
+                }
+                case '1':
+                case '2':
+                case '3':
+                case '4':
+                case '5': {
+                    if (this.world.isControllingPlayer()) {
+                        const slot = Number(event.key) - 1
+                        this.socket.streamWriter.writeU8(
+                            ClientHeader.SWITCH_ITEM
+                        )
+                        this.socket.streamWriter.writeU8(slot)
+                        this.socket.flush()
+                    }
+                    break
+                }
             }
     }
 

@@ -8,6 +8,9 @@ import { Crate } from '../graphics/Crate'
 import { BasicSprite } from '../graphics/BasicSprite'
 import { NewsType } from '../enums/NewsType'
 import { AssetLoader } from '../graphics/utils/AssetLoader'
+import { Bullet } from '../graphics/Bullet'
+import { HitscanTracer } from '../graphics/HitscanTracer'
+import { ItemType } from '../enums/ItemType'
 
 export class MessageHandler {
     static handle(reader: PacketReader, client: GameClient): void {
@@ -56,6 +59,7 @@ export class MessageHandler {
                         'WALL',
                         'FENCE',
                         'TREE',
+                        'BULLET',
                     ]
                     const typeName = typeNames[type] || `TYPE_${type}`
 
@@ -80,6 +84,10 @@ export class MessageHandler {
                                 debugLabel
                             )
                             console.log('creating from type: ', type)
+                            break
+                        }
+                        case EntityTypes.BULLET: {
+                            entity = new Bullet(client)
                             break
                         }
                         default: {
@@ -160,6 +168,51 @@ export class MessageHandler {
                 assert(entity != undefined, `Entity with ID: ${id} not found`)
 
                 entity._state |= state
+                break
+            }
+            case ServerHeader.INVENTORY_UPDATE: {
+                const activeSlot = reader.readU8()
+                client.world.activeSlot = activeSlot
+
+                for (let i = 0; i < 5; i++) {
+                    const type = reader.readU8() as ItemType
+                    const fireMode = reader.readU8()
+                    const ammoType = reader.readU8()
+                    const magazineSize = reader.readU16()
+                    const ammoInMag = reader.readU16()
+                    const reloadRemaining = reader.readFloat()
+
+                    client.world.inventorySlots[i] = {
+                        type,
+                        fireMode,
+                        ammoType,
+                        magazineSize,
+                        ammoInMag,
+                        reloadRemaining,
+                    }
+                }
+                break
+            }
+            case ServerHeader.AMMO_UPDATE: {
+                const ammoInMag = reader.readU16()
+                const ammoReserve = reader.readU16()
+                const reloadRemaining = reader.readFloat()
+
+                client.world.activeAmmoInMag = ammoInMag
+                client.world.activeAmmoReserve = ammoReserve
+                client.world.activeReloadRemaining = reloadRemaining
+                break
+            }
+            case ServerHeader.BULLET_TRACE: {
+                reader.readU32()
+                const startX = reader.readFloat()
+                const startY = reader.readFloat()
+                const endX = reader.readFloat()
+                const endY = reader.readFloat()
+
+                const tracer = new HitscanTracer(startX, startY, endX, endY)
+                client.world.renderer.foreground.addChild(tracer)
+                client.world.addEffect(tracer)
                 break
             }
             case ServerHeader.HEALTH: {

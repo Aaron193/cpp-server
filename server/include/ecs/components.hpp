@@ -37,6 +37,8 @@ struct Input {
     bool mouseIsDown = false;
     // true if the mouse was ever down during the current tick
     bool dirtyClick = false;
+    bool reloadRequested = false;
+    int8_t switchSlot = -1;
 };
 
 struct AttackCooldown {
@@ -165,6 +167,27 @@ struct Gun {
             cooldown = 0.0f;
         }
     }
+};
+
+struct InventorySlot {
+    ItemType type = ItemType::ITEM_NONE;
+    Gun gun{};
+
+    bool isGun() const {
+        return type == ItemType::ITEM_GUN_PISTOL ||
+               type == ItemType::ITEM_GUN_RIFLE ||
+               type == ItemType::ITEM_GUN_SHOTGUN;
+    }
+};
+
+struct Inventory {
+    std::array<InventorySlot, 5> slots{};
+    uint8_t activeSlot = 0;
+    bool dirty = true;
+
+    InventorySlot& getActive() { return slots[activeSlot]; }
+    const InventorySlot& getActive() const { return slots[activeSlot]; }
+    bool hasGunInHands() const { return getActive().isGun(); }
 };
 
 struct Projectile {

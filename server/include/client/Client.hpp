@@ -50,6 +50,8 @@ class Client {
     void onMouse();
     void onMouseClick(bool isDown);
     void onChat();
+    void onReload();
+    void onSwitchItem();
 
     void updateCamera();
 

@@ -6,6 +6,7 @@ import { Animation, LinearFastInSlowOut, LinearInOut } from './utils/Animation'
 import { assert } from '../utils/assert'
 import { COLORS, STROKE_WIDTH } from '../utils/constants'
 import { ChatContainer } from './ChatContainer'
+import { ItemType } from '../enums/ItemType'
 
 export const Nicknames = new Map<number, string>()
 
@@ -13,6 +14,7 @@ enum STATE {
     IDLE = 0,
     MELEE = 1 << 0,
     HURT = 1 << 1,
+    SHOOTING = 1 << 2,
 }
 
 export class Player extends Entity {
@@ -20,6 +22,7 @@ export class Player extends Entity {
     body: PIXI.Graphics
     leftHand: PIXI.Graphics
     rightHand: PIXI.Graphics
+    gun: PIXI.Graphics
     chatContainer: ChatContainer = new ChatContainer()
 
     client: GameClient
@@ -81,9 +84,16 @@ export class Player extends Entity {
             alignment: 0,
         })
 
+        this.gun = new PIXI.Graphics()
+        this.gun.rect(0, -3, 28, 6)
+        this.gun.fill({ color: 0x2b2b2b })
+        this.gun.position.set(20, 0)
+        this.gun.visible = false
+
         this.addChild(this.body)
         this.body.addChild(this.leftHand)
         this.body.addChild(this.rightHand)
+        this.body.addChild(this.gun)
         this.addChild(this.nameTag)
 
         // Chat renders above nametag
@@ -110,6 +120,15 @@ export class Player extends Entity {
 
         if (this._id === cameraEntityId && this.client.world.active) {
             this.body.rotation = this.getAngleToMouse()
+        }
+
+        const isLocal = this._id === cameraEntityId && this.client.world.active
+        if (isLocal) {
+            const activeSlot = this.client.world.activeSlot
+            const slot = this.client.world.inventorySlots[activeSlot]
+            this.gun.visible = slot && slot.type !== ItemType.ITEM_NONE
+        } else {
+            this.gun.visible = false
         }
 
         if (this._state & STATE.MELEE) {
