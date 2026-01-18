@@ -7,7 +7,6 @@ export class HitscanTracer extends PIXI.Graphics implements WorldEffect {
     destroyed: boolean
 
     constructor(startX: number, startY: number, endX: number, endY: number) {
-        console.log('Creating HitscanTracer', startX, startY, endX, endY)
         super()
         this.lifetime = 0.15
         this.remaining = this.lifetime

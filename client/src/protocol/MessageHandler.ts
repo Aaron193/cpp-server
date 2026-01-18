@@ -204,7 +204,7 @@ export class MessageHandler {
                 break
             }
             case ServerHeader.BULLET_TRACE: {
-                reader.readU32()
+                const shooter = reader.readU32() // prob can get rid of this
                 const startX = reader.readFloat()
                 const startY = reader.readFloat()
                 const endX = reader.readFloat()

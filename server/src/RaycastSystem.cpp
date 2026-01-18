@@ -6,6 +6,7 @@
 
 #include "common/enums.hpp"
 #include "ecs/EntityManager.hpp"
+#include "physics/PhysicsWorld.hpp"
 
 namespace {
 struct RaycastContext {
@@ -21,6 +22,14 @@ float RaycastCallback(b2ShapeId shapeId, b2Vec2 point, b2Vec2 normal,
     // self-overlaps or spawn-in-solid artifacts that collapse the trace.
     if (fraction <= 1e-4f) {
         return 1.0f;  // keep scanning
+    }
+
+    // Ignore terrain sensor triangles (biome meshes) so bullets don't stop on
+    // them. These shapes attach TerrainShapeUserData via shape user data.
+    if (void* shapeUser = b2Shape_GetUserData(shapeId)) {
+        auto* terrainData = reinterpret_cast<TerrainShapeUserData*>(shapeUser);
+        (void)terrainData;  // type check only
+        return 1.0f;
     }
 
     b2BodyId bodyId = b2Shape_GetBody(shapeId);
