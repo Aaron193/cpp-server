@@ -17,6 +17,12 @@ float RaycastCallback(b2ShapeId shapeId, b2Vec2 point, b2Vec2 normal,
                       float fraction, void* context) {
     auto* ctx = reinterpret_cast<RaycastContext*>(context);
 
+    // Ignore hits at or extremely near the ray origin; these are typically
+    // self-overlaps or spawn-in-solid artifacts that collapse the trace.
+    if (fraction <= 1e-4f) {
+        return 1.0f;  // keep scanning
+    }
+
     b2BodyId bodyId = b2Shape_GetBody(shapeId);
     void* userData = b2Body_GetUserData(bodyId);
     if (userData) {

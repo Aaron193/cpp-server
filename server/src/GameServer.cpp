@@ -365,6 +365,7 @@ void GameServer::gunSystem(double delta) {
             }
 
             b2Vec2 position = b2Body_GetPosition(base.bodyId);
+            const float playerRadiusMeters = meters(25.0f);
 
             for (int pellet = 0; pellet < gun.pellets; ++pellet) {
                 float random01 = static_cast<float>(rand()) / RAND_MAX;
@@ -373,17 +374,20 @@ void GameServer::gunSystem(double delta) {
 
                 glm::vec2 origin = {position.x, position.y};
                 glm::vec2 direction = {std::cos(angle), std::sin(angle)};
+                float muzzleOffset = playerRadiusMeters + gun.barrelLength;
+                glm::vec2 muzzleOrigin = origin + direction * muzzleOffset;
 
                 if (gun.fireMode == GunFireMode::FIRE_HITSCAN) {
                     RayHit hit = m_raycastSystem->FireBullet(
-                        entity, origin, direction, gun.range);
+                        entity, muzzleOrigin, direction, gun.range);
 
                     glm::vec2 endPoint =
                         hit.hit ? hit.point
-                                : glm::vec2{origin.x + direction.x * gun.range,
-                                            origin.y + direction.y * gun.range};
+                                : glm::vec2{
+                                      muzzleOrigin.x + direction.x * gun.range,
+                                      muzzleOrigin.y + direction.y * gun.range};
 
-                    broadcastBulletTrace(entity, origin, endPoint);
+                    broadcastBulletTrace(entity, muzzleOrigin, endPoint);
 
                     if (hit.hit && hit.entity != entt::null) {
                         applyDamage(entity, hit.entity, gun.damage);
@@ -408,7 +412,9 @@ void GameServer::gunSystem(double delta) {
                         b2Vec2 velocity = {direction.x * gun.projectileSpeed,
                                            direction.y * gun.projectileSpeed};
 
-                        b2Body_SetTransform(projBase.bodyId, position,
+                        b2Vec2 muzzlePos = {muzzleOrigin.x, muzzleOrigin.y};
+
+                        b2Body_SetTransform(projBase.bodyId, muzzlePos,
                                             b2MakeRot(angle));
                         b2Body_SetLinearVelocity(projBase.bodyId, velocity);
                         b2Body_Enable(projBase.bodyId);

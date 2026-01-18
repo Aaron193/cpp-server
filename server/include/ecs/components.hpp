@@ -136,6 +136,8 @@ struct Gun {
     float spread = 0.02f;  // radians
     int pellets = 1;
 
+    float barrelLength = 0.6f;  // meters, muzzle offset from player surface
+
     float projectileSpeed = 30.0f;    // meters per second
     float projectileLifetime = 1.5f;  // seconds
 

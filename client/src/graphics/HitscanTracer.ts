@@ -13,15 +13,17 @@ export class HitscanTracer extends PIXI.Graphics implements WorldEffect {
         this.remaining = this.lifetime
         this.destroyed = false
 
-        this.setStrokeStyle({ width: 2, color: 0xfff0a6, alpha: 0.9 })
         this.moveTo(startX, startY)
         this.lineTo(endX, endY)
+        this.stroke({ width: 2, color: 0xfff0a6, alpha: 0.9 })
     }
 
     update(delta: number, _tick?: number, _now?: number) {
         this.remaining -= delta
         const t = Math.max(this.remaining / this.lifetime, 0)
         this.alpha = t
+        console.log('alpha:', this.alpha)
+        console.log('remaining:', this.remaining)
 
         if (this.remaining <= 0) {
             this.destroyed = true
