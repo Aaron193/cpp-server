@@ -75,8 +75,8 @@ export class HomeScreen {
             <div class="home-content">
                 <!-- Header -->
                 <header class="header">
-                    <h1 class="game-title">Arena.io</h1>
-                    <p class="game-subtitle">Battle Royale Multiplayer</p>
+                    <h1 class="game-title">Game.io</h1>
+                    <p class="game-subtitle">Multiplayer Battle Royale</p>
                 </header>
 
                 <!-- Player Identity Section -->
