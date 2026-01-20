@@ -1,6 +1,7 @@
 #include "GameServer.hpp"
 
 #include <box2d/box2d.h>
+#include <box2d/math_functions.h>
 
 #include <cassert>
 #include <chrono>
@@ -281,9 +282,8 @@ void GameServer::meleeSystem(double delta) {
                 state.setState(EntityStates::MELEE);
 
                 const b2Vec2& pos = b2Body_GetPosition(base.bodyId);
-                b2Rot rot = b2Body_GetRotation(base.bodyId);
                 const float angle =
-                    atan2f(2.0f * rot.c * rot.s, 1.0f - 2.0f * rot.s * rot.s);
+                    b2Rot_GetAngle(b2Body_GetRotation(base.bodyId));
                 int playerRadius = 25;
 
                 b2Vec2 meleePos = {

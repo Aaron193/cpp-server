@@ -299,7 +299,7 @@ void Client::writeGameState() {
             m_writer.writeU8(base.variant);
             m_writer.writeFloat(pixels(position.x));
             m_writer.writeFloat(pixels(position.y));
-            m_writer.writeFloat(b2Body_GetRotation(bodyId).s);
+            m_writer.writeFloat(b2Rot_GetAngle(b2Body_GetRotation(bodyId)));
         }
     }
 
@@ -318,7 +318,7 @@ void Client::writeGameState() {
             m_writer.writeU32(static_cast<uint32_t>(entity));
             m_writer.writeFloat(pixels(position.x));
             m_writer.writeFloat(pixels(position.y));
-            m_writer.writeFloat(b2Body_GetRotation(bodyId).s);
+            m_writer.writeFloat(b2Rot_GetAngle(b2Body_GetRotation(bodyId)));
         }
     }
 
