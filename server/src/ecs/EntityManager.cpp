@@ -174,6 +174,11 @@ void EntityManager::releaseProjectile(entt::entity entity) {
     proj.owner = entt::null;
     proj.damage = 0.0f;
     proj.spawnTick = 0;
+    proj.originX = 0.0f;
+    proj.originY = 0.0f;
+    proj.dirX = 0.0f;
+    proj.dirY = 0.0f;
+    proj.speed = 0.0f;
 
     if (B2_IS_NON_NULL(base.bodyId)) {
         b2Body_SetLinearVelocity(base.bodyId, {0.0f, 0.0f});

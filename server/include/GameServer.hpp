@@ -46,17 +46,6 @@ class GameServer {
     void setServerRegistration(ServerRegistration* registration);
 
    private:
-    struct ProjectileSpawnData {
-        uint32_t id;
-        float originX;
-        float originY;
-        float dirX;
-        float dirY;
-        float speed;
-        uint64_t spawnTick;
-    };
-
-    std::vector<ProjectileSpawnData> m_projectileSpawnQueue;
     std::vector<uint32_t> m_projectileDestroyQueue;
 
     void processClientMessages();

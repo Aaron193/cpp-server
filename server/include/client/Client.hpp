@@ -35,6 +35,7 @@ class Client {
     bool m_sentTerrainMeshes = false;
     std::unordered_set<entt::entity> m_previousVisibleEntities;
     std::unordered_set<size_t> m_previousVisibleBiomes;
+    std::unordered_set<uint32_t> m_visibleProjectiles;
 
     Client(GameServer& gameServer,
            uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id);

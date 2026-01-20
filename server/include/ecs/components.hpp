@@ -227,13 +227,26 @@ struct Projectile {
     float remainingLife = 0.0f;
     bool active = false;
     uint64_t spawnTick = 0;
+    // todo : use vec2?
+    float originX = 0.0f;
+    float originY = 0.0f;
+    float dirX = 0.0f;
+    float dirY = 0.0f;
+    float speed = 0.0f;
 
-    void init(entt::entity ownerEntity, const Gun& gun, uint64_t tick) {
+    void init(entt::entity ownerEntity, const Gun& gun, uint64_t tick,
+              float spawnX, float spawnY, float directionX, float directionY,
+              float projectileSpeed) {
         owner = ownerEntity;
         damage = gun.damage;
         remainingLife = gun.projectileLifetime;
         active = true;
         spawnTick = tick;
+        originX = spawnX;
+        originY = spawnY;
+        dirX = directionX;
+        dirY = directionY;
+        speed = projectileSpeed;
     }
 };
 

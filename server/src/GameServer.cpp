@@ -405,7 +405,13 @@ void GameServer::gunSystem(double delta) {
                         auto& projBase =
                             reg.get<Components::EntityBase>(projectileEntity);
 
-                        projectile.init(entity, gun, m_currentTick);
+                        const float projectileSpeedPixels =
+                            pixels(gun.projectileSpeed);
+
+                        projectile.init(entity, gun, m_currentTick,
+                                        pixels(muzzleOrigin.x),
+                                        pixels(muzzleOrigin.y), direction.x,
+                                        direction.y, projectileSpeedPixels);
 
                         b2Vec2 velocity = {direction.x * gun.projectileSpeed,
                                            direction.y * gun.projectileSpeed};
@@ -417,16 +423,6 @@ void GameServer::gunSystem(double delta) {
                                             b2MakeRot(angle));
                         b2Body_SetLinearVelocity(projBase.bodyId, velocity);
                         b2Body_SetAngularVelocity(projBase.bodyId, 0.0f);
-
-                        m_projectileSpawnQueue.push_back({
-                            static_cast<uint32_t>(projectileEntity),
-                            pixels(muzzleOrigin.x),
-                            pixels(muzzleOrigin.y),
-                            direction.x,
-                            direction.y,
-                            pixels(gun.projectileSpeed),
-                            projectile.spawnTick,
-                        });
                     }
                 }
             }
@@ -499,18 +495,81 @@ void GameServer::projectileImpactSystem() {
 }
 
 void GameServer::flushProjectileSpawnBatch() {
-    if (m_projectileSpawnQueue.empty()) {
+    entt::registry& reg = m_entityManager.getRegistry();
+    auto projectileView =
+        reg.view<Components::Projectile, Components::EntityBase>();
+
+    if (projectileView.begin() == projectileView.end()) {
         return;
     }
 
-    const uint32_t count = static_cast<uint32_t>(m_projectileSpawnQueue.size());
-
     for (auto& [id, client] : m_clients) {
+        if (!reg.valid(client->m_entity) ||
+            !reg.all_of<Components::Camera>(client->m_entity)) {
+            continue;
+        }
+
+        Components::Camera& cam = reg.get<Components::Camera>(client->m_entity);
+        bool targetValid = (cam.target != entt::null && reg.valid(cam.target));
+        const b2Vec2& camPos =
+            targetValid
+                ? b2Body_GetPosition(
+                      reg.get<Components::EntityBase>(cam.target).bodyId)
+                : cam.position;
+        float halfViewX = meters(cam.width) * 0.5f;
+        float halfViewY = meters(cam.height) * 0.5f;
+
+        b2AABB queryAABB;
+        queryAABB.lowerBound = {camPos.x - halfViewX, camPos.y - halfViewY};
+        queryAABB.upperBound = {camPos.x + halfViewX, camPos.y + halfViewY};
+
+        struct SpawnPayload {
+            uint32_t id;
+            float originX;
+            float originY;
+            float dirX;
+            float dirY;
+            float speed;
+            uint64_t spawnTick;
+        };
+
+        std::vector<SpawnPayload> newlyVisible;
+
+        for (auto entity : projectileView) {
+            auto& projectile =
+                projectileView.get<Components::Projectile>(entity);
+            auto& base = projectileView.get<Components::EntityBase>(entity);
+
+            if (!projectile.active) continue;
+            if (B2_IS_NULL(base.bodyId)) continue;
+            if (!b2Body_IsEnabled(base.bodyId)) continue;
+
+            const b2Vec2& pos = b2Body_GetPosition(base.bodyId);
+            if (pos.x < queryAABB.lowerBound.x ||
+                pos.x > queryAABB.upperBound.x ||
+                pos.y < queryAABB.lowerBound.y ||
+                pos.y > queryAABB.upperBound.y) {
+                continue;
+            }
+
+            uint32_t projectileId = static_cast<uint32_t>(entity);
+            if (client->m_visibleProjectiles.insert(projectileId).second) {
+                newlyVisible.push_back({projectileId, projectile.originX,
+                                        projectile.originY, projectile.dirX,
+                                        projectile.dirY, projectile.speed,
+                                        projectile.spawnTick});
+            }
+        }
+
+        if (newlyVisible.empty()) {
+            continue;
+        }
+
         client->m_writer.writeU8(ServerHeader::PROJECTILE_SPAWN_BATCH);
         client->m_writer.writeU64(m_currentTick);
-        client->m_writer.writeU32(count);
+        client->m_writer.writeU32(static_cast<uint32_t>(newlyVisible.size()));
 
-        for (const auto& spawn : m_projectileSpawnQueue) {
+        for (const auto& spawn : newlyVisible) {
             client->m_writer.writeU32(spawn.id);
             client->m_writer.writeFloat(spawn.originX);
             client->m_writer.writeFloat(spawn.originY);
@@ -520,8 +579,6 @@ void GameServer::flushProjectileSpawnBatch() {
             client->m_writer.writeU64(spawn.spawnTick);
         }
     }
-
-    m_projectileSpawnQueue.clear();
 }
 
 void GameServer::flushProjectileDestroyBatch() {
@@ -531,6 +588,11 @@ void GameServer::flushProjectileDestroyBatch() {
 
     for (auto& [id, client] : m_clients) {
         for (uint32_t projectileId : m_projectileDestroyQueue) {
+            auto it = client->m_visibleProjectiles.find(projectileId);
+            if (it == client->m_visibleProjectiles.end()) {
+                continue;
+            }
+            client->m_visibleProjectiles.erase(it);
             client->m_writer.writeU8(ServerHeader::PROJECTILE_DESTROY);
             client->m_writer.writeU32(projectileId);
         }
