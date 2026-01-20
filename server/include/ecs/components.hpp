@@ -119,7 +119,7 @@ struct Ammo {
 };
 
 struct Gun {
-    GunFireMode fireMode = GunFireMode::FIRE_HITSCAN;
+    GunFireMode fireMode = GunFireMode::FIRE_PROJECTILE;
     AmmoType ammoType = AmmoType::AMMO_LIGHT;
 
     int magazineSize = 12;
@@ -138,7 +138,7 @@ struct Gun {
 
     float barrelLength = 0.6f;  // meters, muzzle offset from player surface
 
-    float projectileSpeed = 30.0f;    // meters per second
+    float projectileSpeed = 10.0f;    // meters per second
     float projectileLifetime = 1.5f;  // seconds
 
     bool automatic = true;
@@ -187,6 +187,34 @@ struct Inventory {
     uint8_t activeSlot = 0;
     bool dirty = true;
 
+    bool setActiveSlot(uint8_t slot) {
+        if (slot >= slots.size()) {
+            return false;
+        }
+        activeSlot = slot;
+        dirty = true;
+        return true;
+    }
+
+    bool setGunSlot(uint8_t slot, ItemType type, const Gun& gun) {
+        if (slot >= slots.size()) {
+            return false;
+        }
+        slots[slot].type = type;
+        slots[slot].gun = gun;
+        dirty = true;
+        return true;
+    }
+
+    bool clearSlot(uint8_t slot) {
+        if (slot >= slots.size()) {
+            return false;
+        }
+        slots[slot] = InventorySlot{};
+        dirty = true;
+        return true;
+    }
+
     InventorySlot& getActive() { return slots[activeSlot]; }
     const InventorySlot& getActive() const { return slots[activeSlot]; }
     bool hasGunInHands() const { return getActive().isGun(); }
@@ -197,6 +225,13 @@ struct Projectile {
     float damage = 0.0f;
     float remainingLife = 0.0f;
     bool active = false;
+
+    void init(entt::entity ownerEntity, const Gun& gun) {
+        owner = ownerEntity;
+        damage = gun.damage;
+        remainingLife = gun.projectileLifetime;
+        active = true;
+    }
 };
 
 };  // namespace Components

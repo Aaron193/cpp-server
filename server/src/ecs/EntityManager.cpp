@@ -7,6 +7,7 @@
 
 #include "GameServer.hpp"
 #include "common/enums.hpp"
+#include "ecs/GunFactory.hpp"
 #include "ecs/components.hpp"
 #include "physics/PhysicsWorld.hpp"
 #include "util/units.hpp"
@@ -65,23 +66,10 @@ entt::entity EntityManager::createPlayer() {
     ammo.add(AmmoType::AMMO_LIGHT, 120);
 
     auto& inventory = m_registry.emplace<Inventory>(entity);
-    inventory.activeSlot = 0;
+    inventory.setActiveSlot(0);
 
-    Components::Gun pistol;
-    pistol.fireMode = GunFireMode::FIRE_HITSCAN;
-    pistol.ammoType = AmmoType::AMMO_LIGHT;
-    pistol.magazineSize = 30;
-    pistol.ammoInMag = 30;
-    pistol.fireRate = 8.0f;
-    pistol.reloadTime = 1.2f;
-    pistol.damage = 12.0f;
-    pistol.range = meters(1200.0f);
-    pistol.spread = 0.02f;
-    pistol.projectileSpeed = 35.0f;
-    pistol.projectileLifetime = 1.2f;
-
-    inventory.slots[0].type = ItemType::ITEM_GUN_PISTOL;
-    inventory.slots[0].gun = pistol;
+    Components::Gun pistol = GunFactory::makePistol(false);
+    inventory.setGunSlot(0, ItemType::ITEM_GUN_PISTOL, pistol);
 
     // Define the body
     b2BodyDef bodyDef = b2DefaultBodyDef();

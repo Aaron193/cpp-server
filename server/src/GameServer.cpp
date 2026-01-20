@@ -301,10 +301,7 @@ void GameServer::gunSystem(double delta) {
 
             if (input.switchSlot >= 0) {
                 uint8_t slot = static_cast<uint8_t>(input.switchSlot);
-                if (slot < inventory.slots.size()) {
-                    inventory.activeSlot = slot;
-                    inventory.dirty = true;
-                }
+                inventory.setActiveSlot(slot);
                 input.switchSlot = -1;
             }
 
@@ -404,20 +401,18 @@ void GameServer::gunSystem(double delta) {
                         auto& projBase =
                             reg.get<Components::EntityBase>(projectileEntity);
 
-                        projectile.owner = entity;
-                        projectile.damage = gun.damage;
-                        projectile.remainingLife = gun.projectileLifetime;
-                        projectile.active = true;
+                        projectile.init(entity, gun);
 
                         b2Vec2 velocity = {direction.x * gun.projectileSpeed,
                                            direction.y * gun.projectileSpeed};
 
                         b2Vec2 muzzlePos = {muzzleOrigin.x, muzzleOrigin.y};
 
+                        b2Body_Enable(projBase.bodyId);
                         b2Body_SetTransform(projBase.bodyId, muzzlePos,
                                             b2MakeRot(angle));
                         b2Body_SetLinearVelocity(projBase.bodyId, velocity);
-                        b2Body_Enable(projBase.bodyId);
+                        b2Body_SetAngularVelocity(projBase.bodyId, 0.0f);
                     }
                 }
             }
@@ -658,6 +653,8 @@ void GameServer::broadcastMessage(const std::string& message) {
     }
 }
 
+// TODO: this should maybe be serialized from within Client.cpp game state AND
+// this should not send to every client, only those who can see the trace
 void GameServer::broadcastBulletTrace(entt::entity shooter, glm::vec2 start,
                                       glm::vec2 end) {
     float startX = pixels(start.x);

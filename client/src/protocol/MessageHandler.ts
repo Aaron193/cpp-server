@@ -112,7 +112,7 @@ export class MessageHandler {
                     entity.position.y = y
                     entity.setRot(angle)
 
-                    // set render position on entities as they are creaed
+                    // set render position on entities as they are created
 
                     client.world.entities.set(id, entity)
                 }
