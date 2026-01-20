@@ -377,6 +377,8 @@ void Client::writeGameState() {
                         static_cast<uint16_t>(slot.gun.ammoInMag));
                     m_writer.writeFloat(slot.gun.reloadRemaining);
                 } else {
+                    // TODO: this is dumb. just remove this and put slot idx or
+                    // something in the other part
                     m_writer.writeU8(0);
                     m_writer.writeU8(0);
                     m_writer.writeU16(0);

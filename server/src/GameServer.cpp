@@ -545,6 +545,8 @@ void GameServer::flushProjectileSpawnBatch() {
             if (!b2Body_IsEnabled(base.bodyId)) continue;
 
             const b2Vec2& pos = b2Body_GetPosition(base.bodyId);
+            // TODO: this logic can be extracted into its own function... it is
+            // also repeated on Client writeGameState
             if (pos.x < queryAABB.lowerBound.x ||
                 pos.x > queryAABB.upperBound.x ||
                 pos.y < queryAABB.lowerBound.y ||
