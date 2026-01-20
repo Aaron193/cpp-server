@@ -28,4 +28,6 @@ export const enum ServerHeader {
     INVENTORY_UPDATE,
     AMMO_UPDATE,
     BULLET_TRACE,
+    PROJECTILE_SPAWN_BATCH,
+    PROJECTILE_DESTROY,
 }

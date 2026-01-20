@@ -3,6 +3,7 @@ interface IPacketReader {
     readU8(): number
     readU16(): number
     readU32(): number
+    readU64(): number
     readFloat(): number
     readString(): string
     getOffset(): number
@@ -37,6 +38,13 @@ export class PacketReader implements IPacketReader {
         const value = this.view.getUint32(this.offset, true)
         this.offset += 4
         return value
+    }
+
+    readU64(): number {
+        const low = this.view.getUint32(this.offset, true)
+        const high = this.view.getUint32(this.offset + 4, true)
+        this.offset += 8
+        return high * 0x100000000 + low
     }
 
     readFloat(): number {

@@ -12,6 +12,7 @@ class PacketReader {
     uint8_t readU8();
     uint16_t readU16();
     uint32_t readU32();
+    uint64_t readU64();
     float readFloat();
     std::string readString();
     template <class T>

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <entt/entt.hpp>
 
 #include "common/enums.hpp"
@@ -225,12 +226,14 @@ struct Projectile {
     float damage = 0.0f;
     float remainingLife = 0.0f;
     bool active = false;
+    uint64_t spawnTick = 0;
 
-    void init(entt::entity ownerEntity, const Gun& gun) {
+    void init(entt::entity ownerEntity, const Gun& gun, uint64_t tick) {
         owner = ownerEntity;
         damage = gun.damage;
         remainingLife = gun.projectileLifetime;
         active = true;
+        spawnTick = tick;
     }
 };
 

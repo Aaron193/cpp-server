@@ -1,3 +1,4 @@
+import { Bullet } from './graphics/Bullet'
 import { Entity } from './graphics/Entity'
 import { ItemType } from './enums/ItemType'
 import { Interpolator } from './Interpolator'
@@ -21,6 +22,9 @@ export class World {
     renderer: Renderer
     interpolator: Interpolator = new Interpolator(this)
     entities: Map<number, Entity> = new Map()
+    projectiles: Map<number, Bullet> = new Map()
+    pendingProjectileDestroys: Set<number> = new Set()
+    lastKnownServerTick: number = 0
     // maybe we can rethink these two identifiers... maybe a controlled entity id, and a camera entity id?
     cameraEntityId: number = -1
     active: boolean = false // actively in world vs non active in world, eg: spectator vs player
@@ -59,11 +63,30 @@ export class World {
         this.effects.push(effect)
     }
 
+    addProjectile(projectile: Bullet) {
+        this.projectiles.set(projectile._id, projectile)
+    }
+
+    removeProjectile(id: number) {
+        const projectile = this.projectiles.get(id)
+        if (!projectile) {
+            this.pendingProjectileDestroys.add(id)
+            return
+        }
+
+        projectile.destroy()
+        this.projectiles.delete(id)
+    }
+
     update(delta: number, tick: number, now: number) {
         this.interpolator.update(delta, tick, now)
 
         this.entities.forEach((entity) => {
             entity.update(delta, tick, now)
+        })
+
+        this.projectiles.forEach((projectile) => {
+            projectile.update(delta, tick, now)
         })
 
         this.effects.forEach((effect) => effect.update(delta, tick, now))

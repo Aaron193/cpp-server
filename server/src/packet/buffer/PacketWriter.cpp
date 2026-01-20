@@ -9,6 +9,8 @@ void PacketWriter::writeU16(uint16_t x) { writeBytes<uint16_t>(x); }
 
 void PacketWriter::writeU32(uint32_t x) { writeBytes<uint32_t>(x); }
 
+void PacketWriter::writeU64(uint64_t x) { writeBytes<uint64_t>(x); }
+
 void PacketWriter::writeFloat(float x) {
     writeBytes<uint32_t>(*reinterpret_cast<uint32_t*>(&x));
 }

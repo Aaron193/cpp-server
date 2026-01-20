@@ -26,6 +26,8 @@ uint16_t PacketReader::readU16() { return readBytes<uint16_t>(); }
 
 uint32_t PacketReader::readU32() { return readBytes<uint32_t>(); }
 
+uint64_t PacketReader::readU64() { return readBytes<uint64_t>(); }
+
 float PacketReader::readFloat() {
     uint32_t value = readBytes<uint32_t>();
     return *reinterpret_cast<float*>(&value);

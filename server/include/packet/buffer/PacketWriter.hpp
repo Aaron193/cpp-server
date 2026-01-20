@@ -14,6 +14,7 @@ class PacketWriter {
     void writeU8(uint8_t x);
     void writeU16(uint16_t x);
     void writeU32(uint32_t x);
+    void writeU64(uint64_t x);
     void writeFloat(float x);
     void writeString(const std::string& x);
     template <class T>

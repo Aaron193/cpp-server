@@ -3,6 +3,8 @@ import type { BLEND_MODES } from 'pixi.js'
 import { GameClient } from '../GameClient'
 import { Entity } from './Entity'
 
+const EPSILON = 0.0001
+
 export class Bullet extends Entity {
     private static readonly CORE_WIDTH = 4
     private static readonly GLOW_WIDTH = 12
@@ -18,10 +20,12 @@ export class Bullet extends Entity {
     private glowMesh: PIXI.MeshSimple
     private lastX: number | null = null
     private lastY: number | null = null
+    private velocityX: number = 0
+    private velocityY: number = 0
 
     constructor(client: GameClient) {
         super()
-        this.interpolate = true
+        this.interpolate = false
         this.client = client
 
         this.coreMesh = Bullet.createStreakMesh(
@@ -55,6 +59,9 @@ export class Bullet extends Entity {
     }
 
     update(delta: number, _tick: number, _now: number) {
+        this.position.x += this.velocityX * delta
+        this.position.y += this.velocityY * delta
+
         const currentX = this.position.x
         const currentY = this.position.y
 
@@ -118,6 +125,14 @@ export class Bullet extends Entity {
 
     setRot(angle: number) {
         this.rotation = angle
+    }
+
+    setMotion(dirX: number, dirY: number, speed: number) {
+        this.velocityX = dirX * speed
+        this.velocityY = dirY * speed
+        if (Math.abs(dirX) > EPSILON || Math.abs(dirY) > EPSILON) {
+            this.rotation = Math.atan2(dirY, dirX)
+        }
     }
 
     getRot(): number {

@@ -2,6 +2,7 @@ interface IPacketWriter {
     writeU8(value: number): void
     writeU16(value: number): void
     writeU32(value: number): void
+    writeU64(value: number): void
     writeFloat(value: number): void
     writeString(value: string): void
     getMessage(): ArrayBuffer
@@ -32,6 +33,14 @@ export class PacketWriter implements IPacketWriter {
     writeU32(value: number) {
         this.view.setUint32(this.offset, value, true)
         this.offset += 4
+    }
+
+    writeU64(value: number) {
+        const low = value >>> 0
+        const high = Math.floor(value / 0x100000000)
+        this.view.setUint32(this.offset, low, true)
+        this.view.setUint32(this.offset + 4, high, true)
+        this.offset += 8
     }
 
     writeFloat(value: number) {

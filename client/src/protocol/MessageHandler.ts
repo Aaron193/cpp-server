@@ -215,6 +215,58 @@ export class MessageHandler {
                 client.world.addEffect(tracer)
                 break
             }
+            case ServerHeader.PROJECTILE_SPAWN_BATCH: {
+                const serverTick = reader.readU64()
+                client.world.lastKnownServerTick = serverTick
+
+                const count = reader.readU32()
+                const tickRate = client.world.interpolator.getTickrate()
+                const maxCatchupTicks = 200
+
+                for (let i = 0; i < count; i++) {
+                    const id = reader.readU32()
+                    const originX = reader.readFloat()
+                    const originY = reader.readFloat()
+                    const dirX = reader.readFloat()
+                    const dirY = reader.readFloat()
+                    const speed = reader.readFloat()
+                    const spawnTick = reader.readU64()
+
+                    if (client.world.pendingProjectileDestroys.has(id)) {
+                        client.world.pendingProjectileDestroys.delete(id)
+                        continue
+                    }
+
+                    const elapsedTicks = Math.max(0, serverTick - spawnTick)
+
+                    if (elapsedTicks > maxCatchupTicks) {
+                        continue
+                    }
+
+                    const elapsedTime = elapsedTicks / tickRate
+                    const posX = originX + dirX * speed * elapsedTime
+                    const posY = originY + dirY * speed * elapsedTime
+
+                    const existing = client.world.projectiles.get(id)
+                    if (existing) {
+                        existing.destroy()
+                        client.world.projectiles.delete(id)
+                    }
+
+                    const bullet = new Bullet(client)
+                    bullet._id = id
+                    bullet._type = EntityTypes.BULLET
+                    bullet.position.set(posX, posY)
+                    bullet.setMotion(dirX, dirY, speed)
+                    client.world.addProjectile(bullet)
+                }
+                break
+            }
+            case ServerHeader.PROJECTILE_DESTROY: {
+                const id = reader.readU32()
+                client.world.removeProjectile(id)
+                break
+            }
             case ServerHeader.HEALTH: {
                 console.log('Entity health')
                 const health = reader.readFloat()

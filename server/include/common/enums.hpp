@@ -32,6 +32,8 @@ enum ServerHeader : uint8_t {
     INVENTORY_UPDATE,
     AMMO_UPDATE,
     BULLET_TRACE,
+    PROJECTILE_SPAWN_BATCH,
+    PROJECTILE_DESTROY,
 };
 
 enum NewsType : uint8_t {

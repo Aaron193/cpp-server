@@ -114,7 +114,6 @@ entt::entity EntityManager::createProjectileEntity() {
     entt::entity entity = m_registry.create();
 
     auto& base = m_registry.emplace<EntityBase>(entity, EntityTypes::BULLET);
-    m_registry.emplace<Networked>(entity);
     m_registry.emplace<Projectile>(entity);
 
     b2BodyDef bodyDef = b2DefaultBodyDef();
@@ -174,6 +173,7 @@ void EntityManager::releaseProjectile(entt::entity entity) {
     proj.remainingLife = 0.0f;
     proj.owner = entt::null;
     proj.damage = 0.0f;
+    proj.spawnTick = 0;
 
     if (B2_IS_NON_NULL(base.bodyId)) {
         b2Body_SetLinearVelocity(base.bodyId, {0.0f, 0.0f});

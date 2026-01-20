@@ -2,6 +2,7 @@
 
 #include <uwebsockets/Loop.h>
 
+#include <cstdint>
 #include <glm/glm.hpp>
 #include <memory>
 #include <mutex>
@@ -24,6 +25,7 @@ class GameServer {
     std::mutex m_gameMutex;
 
     const uint8_t m_tps = 10;
+    uint64_t m_currentTick = 0;
 
     EntityManager m_entityManager;
     PhysicsWorld m_physicsWorld;
@@ -44,6 +46,19 @@ class GameServer {
     void setServerRegistration(ServerRegistration* registration);
 
    private:
+    struct ProjectileSpawnData {
+        uint32_t id;
+        float originX;
+        float originY;
+        float dirX;
+        float dirY;
+        float speed;
+        uint64_t spawnTick;
+    };
+
+    std::vector<ProjectileSpawnData> m_projectileSpawnQueue;
+    std::vector<uint32_t> m_projectileDestroyQueue;
+
     void processClientMessages();
     void tick(double delta);
     void prePhysicsSystemUpdate(double delta);
@@ -66,6 +81,8 @@ class GameServer {
     void broadcastMessage(const std::string& message);
     void broadcastBulletTrace(entt::entity shooter, glm::vec2 start,
                               glm::vec2 end);
+    void flushProjectileSpawnBatch();
+    void flushProjectileDestroyBatch();
 
     void processJobs();
     void updateHeartbeat(double delta);

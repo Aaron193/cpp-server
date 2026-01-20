@@ -18,6 +18,10 @@ export class Interpolator {
         console.log('setting tickrate to ', tickrate)
     }
 
+    getTickrate(): number {
+        return 1000 / this.timestep
+    }
+
     addSnapshot(entity: Entity, x: number, y: number, angle: number) {
         if (!entity.interpolate) {
             return

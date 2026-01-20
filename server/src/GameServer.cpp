@@ -124,6 +124,7 @@ void GameServer::processClientMessages() {
 }
 
 void GameServer::tick(double delta) {
+    ++m_currentTick;
     processClientMessages();
 
     {  // game world update
@@ -139,6 +140,9 @@ void GameServer::tick(double delta) {
 
         m_entityManager.removeEntities();
     }
+
+    flushProjectileSpawnBatch();
+    flushProjectileDestroyBatch();
 
     {  // server update
         for (auto& c : m_clients) {
@@ -401,7 +405,7 @@ void GameServer::gunSystem(double delta) {
                         auto& projBase =
                             reg.get<Components::EntityBase>(projectileEntity);
 
-                        projectile.init(entity, gun);
+                        projectile.init(entity, gun, m_currentTick);
 
                         b2Vec2 velocity = {direction.x * gun.projectileSpeed,
                                            direction.y * gun.projectileSpeed};
@@ -413,6 +417,16 @@ void GameServer::gunSystem(double delta) {
                                             b2MakeRot(angle));
                         b2Body_SetLinearVelocity(projBase.bodyId, velocity);
                         b2Body_SetAngularVelocity(projBase.bodyId, 0.0f);
+
+                        m_projectileSpawnQueue.push_back({
+                            static_cast<uint32_t>(projectileEntity),
+                            pixels(muzzleOrigin.x),
+                            pixels(muzzleOrigin.y),
+                            direction.x,
+                            direction.y,
+                            pixels(gun.projectileSpeed),
+                            projectile.spawnTick,
+                        });
                     }
                 }
             }
@@ -430,6 +444,8 @@ void GameServer::projectileSystem(double delta) {
 
             proj.remainingLife -= static_cast<float>(delta);
             if (proj.remainingLife <= 0.0f) {
+                m_projectileDestroyQueue.push_back(
+                    static_cast<uint32_t>(entity));
                 m_entityManager.releaseProjectile(entity);
             }
         });
@@ -476,8 +492,51 @@ void GameServer::projectileImpactSystem() {
         if (targetEntity != entt::null && reg.valid(targetEntity)) {
             applyDamage(projectile.owner, targetEntity, projectile.damage);
         }
+        m_projectileDestroyQueue.push_back(
+            static_cast<uint32_t>(projectileEntity));
         m_entityManager.releaseProjectile(projectileEntity);
     }
+}
+
+void GameServer::flushProjectileSpawnBatch() {
+    if (m_projectileSpawnQueue.empty()) {
+        return;
+    }
+
+    const uint32_t count = static_cast<uint32_t>(m_projectileSpawnQueue.size());
+
+    for (auto& [id, client] : m_clients) {
+        client->m_writer.writeU8(ServerHeader::PROJECTILE_SPAWN_BATCH);
+        client->m_writer.writeU64(m_currentTick);
+        client->m_writer.writeU32(count);
+
+        for (const auto& spawn : m_projectileSpawnQueue) {
+            client->m_writer.writeU32(spawn.id);
+            client->m_writer.writeFloat(spawn.originX);
+            client->m_writer.writeFloat(spawn.originY);
+            client->m_writer.writeFloat(spawn.dirX);
+            client->m_writer.writeFloat(spawn.dirY);
+            client->m_writer.writeFloat(spawn.speed);
+            client->m_writer.writeU64(spawn.spawnTick);
+        }
+    }
+
+    m_projectileSpawnQueue.clear();
+}
+
+void GameServer::flushProjectileDestroyBatch() {
+    if (m_projectileDestroyQueue.empty()) {
+        return;
+    }
+
+    for (auto& [id, client] : m_clients) {
+        for (uint32_t projectileId : m_projectileDestroyQueue) {
+            client->m_writer.writeU8(ServerHeader::PROJECTILE_DESTROY);
+            client->m_writer.writeU32(projectileId);
+        }
+    }
+
+    m_projectileDestroyQueue.clear();
 }
 
 void GameServer::cameraSystem() {
