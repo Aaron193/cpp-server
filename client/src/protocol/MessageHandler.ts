@@ -174,21 +174,52 @@ export class MessageHandler {
                 const activeSlot = reader.readU8()
                 client.world.activeSlot = activeSlot
 
-                for (let i = 0; i < 5; i++) {
-                    const type = reader.readU8() as ItemType
-                    const fireMode = reader.readU8()
-                    const ammoType = reader.readU8()
-                    const magazineSize = reader.readU16()
-                    const ammoInMag = reader.readU16()
-                    const reloadRemaining = reader.readFloat()
+                const slotCount = reader.readU8()
 
+                for (let i = 0; i < client.world.inventorySlots.length; i++) {
                     client.world.inventorySlots[i] = {
-                        type,
-                        fireMode,
-                        ammoType,
-                        magazineSize,
-                        ammoInMag,
-                        reloadRemaining,
+                        type: ItemType.ITEM_NONE,
+                        fireMode: 0,
+                        ammoType: 0,
+                        magazineSize: 0,
+                        ammoInMag: 0,
+                        reloadRemaining: 0,
+                    }
+                }
+
+                const isGunType = (type: ItemType) =>
+                    type === ItemType.ITEM_GUN_PISTOL ||
+                    type === ItemType.ITEM_GUN_RIFLE ||
+                    type === ItemType.ITEM_GUN_SHOTGUN
+
+                for (let i = 0; i < slotCount; i++) {
+                    const slotIndex = reader.readU8()
+                    const type = reader.readU8() as ItemType
+
+                    if (isGunType(type)) {
+                        const fireMode = reader.readU8()
+                        const ammoType = reader.readU8()
+                        const magazineSize = reader.readU16()
+                        const ammoInMag = reader.readU16()
+                        const reloadRemaining = reader.readFloat()
+
+                        client.world.inventorySlots[slotIndex] = {
+                            type,
+                            fireMode,
+                            ammoType,
+                            magazineSize,
+                            ammoInMag,
+                            reloadRemaining,
+                        }
+                    } else {
+                        client.world.inventorySlots[slotIndex] = {
+                            type,
+                            fireMode: 0,
+                            ammoType: 0,
+                            magazineSize: 0,
+                            ammoInMag: 0,
+                            reloadRemaining: 0,
+                        }
                     }
                 }
                 break

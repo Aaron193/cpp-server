@@ -216,6 +216,16 @@ struct Inventory {
         return true;
     }
 
+    uint8_t countOccupiedSlots() const {
+        uint8_t count = 0;
+        for (const auto& slot : slots) {
+            if (slot.type != ItemType::ITEM_NONE) {
+                ++count;
+            }
+        }
+        return count;
+    }
+
     InventorySlot& getActive() { return slots[activeSlot]; }
     const InventorySlot& getActive() const { return slots[activeSlot]; }
     bool hasGunInHands() const { return getActive().isGun(); }

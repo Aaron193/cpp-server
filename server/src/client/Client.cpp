@@ -363,7 +363,17 @@ void Client::writeGameState() {
             m_writer.writeU8(ServerHeader::INVENTORY_UPDATE);
             m_writer.writeU8(inventory.activeSlot);
 
-            for (const auto& slot : inventory.slots) {
+            uint8_t slotCount = inventory.countOccupiedSlots();
+
+            m_writer.writeU8(slotCount);
+
+            for (size_t i = 0; i < inventory.slots.size(); ++i) {
+                const auto& slot = inventory.slots[i];
+                if (slot.type == ItemType::ITEM_NONE) {
+                    continue;
+                }
+
+                m_writer.writeU8(static_cast<uint8_t>(i));
                 m_writer.writeU8(static_cast<uint8_t>(slot.type));
 
                 if (slot.isGun()) {
@@ -374,14 +384,6 @@ void Client::writeGameState() {
                     m_writer.writeU16(
                         static_cast<uint16_t>(slot.gun.ammoInMag));
                     m_writer.writeFloat(slot.gun.reloadRemaining);
-                } else {
-                    // TODO: this is dumb. just remove this and put slot idx or
-                    // something in the other part
-                    m_writer.writeU8(0);
-                    m_writer.writeU8(0);
-                    m_writer.writeU16(0);
-                    m_writer.writeU16(0);
-                    m_writer.writeFloat(0.0f);
                 }
             }
 
