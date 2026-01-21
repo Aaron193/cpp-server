@@ -20,6 +20,7 @@
 #include "common/enums.hpp"
 #include "ecs/EntityManager.hpp"
 #include "ecs/components.hpp"
+#include "physics/CollisionHelpers.hpp"
 #include "physics/PhysicsWorld.hpp"
 #include "util/units.hpp"
 
@@ -545,12 +546,7 @@ void GameServer::flushProjectileSpawnBatch() {
             if (!b2Body_IsEnabled(base.bodyId)) continue;
 
             const b2Vec2& pos = b2Body_GetPosition(base.bodyId);
-            // TODO: this logic can be extracted into its own function... it is
-            // also repeated on Client writeGameState
-            if (pos.x < queryAABB.lowerBound.x ||
-                pos.x > queryAABB.upperBound.x ||
-                pos.y < queryAABB.lowerBound.y ||
-                pos.y > queryAABB.upperBound.y) {
+            if (!AABBCollision::pointInAABB(pos, queryAABB)) {
                 continue;
             }
 
@@ -693,10 +689,7 @@ void GameServer::Hit(entt::entity attacker, b2Vec2& pos, int radius) {
 
             // Get shape bounds
             b2AABB shapeAABB = b2Shape_GetAABB(shapeId);
-            if (shapeAABB.lowerBound.x <= x + mRadius &&
-                shapeAABB.upperBound.x >= x - mRadius &&
-                shapeAABB.lowerBound.y <= y + mRadius &&
-                shapeAABB.upperBound.y >= y - mRadius) {
+            if (AABBCollision::circleAABBOverlap({x, y}, mRadius, shapeAABB)) {
                 // damage entity
                 const int DAMAGE = 10;
                 health.decrement(DAMAGE, attacker);

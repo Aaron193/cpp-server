@@ -11,6 +11,7 @@
 #include "ecs/EntityManager.hpp"
 #include "ecs/components.hpp"
 #include "packet/buffer/PacketReader.hpp"
+#include "physics/CollisionHelpers.hpp"
 #include "physics/PhysicsWorld.hpp"
 #include "util/units.hpp"
 
@@ -240,10 +241,7 @@ void Client::writeGameState() {
                 continue;
             }
             b2Vec2 entityPos = b2Body_GetPosition(base.bodyId);
-            if (entityPos.x >= queryAABB.lowerBound.x &&
-                entityPos.x <= queryAABB.upperBound.x &&
-                entityPos.y >= queryAABB.lowerBound.y &&
-                entityPos.y <= queryAABB.upperBound.y) {
+            if (AABBCollision::pointInAABB(entityPos, queryAABB)) {
                 visibleNetworkedEntities.push_back(entity);
             }
         }
