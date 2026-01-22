@@ -108,9 +108,9 @@ struct GameConfig {
             case AmmoType::AMMO_ROCKET:
                 return "rocket";
             case AmmoType::AMMO_COUNT:
-                break;
+            default:
+                throw std::runtime_error("Invalid AmmoType enum value");
         }
-        return "light";
     }
 
     static WeaponConfig parseWeaponConfig(const nlohmann::json& weapons,
