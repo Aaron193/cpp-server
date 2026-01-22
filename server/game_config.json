@@ -8,7 +8,7 @@
       "fireRate": 8.0,
       "reloadTime": 1.2,
       "damage": 12.0,
-      "range": 1200.0,
+      "range": 12.0,
       "spread": 0.02,
       "pellets": 1,
       "barrelLength": 0.6,

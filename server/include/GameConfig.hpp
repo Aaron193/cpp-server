@@ -17,7 +17,7 @@ struct WeaponConfig {
     float fireRate;
     float reloadTime;
     float damage;
-    float range;  // in pixels
+    float range;  // in meters
     float spread;
     int pellets;
     float barrelLength;        // in meters
@@ -93,7 +93,8 @@ struct GameConfig {
             case GunFireMode::FIRE_PROJECTILE:
                 return "projectile";
             default:
-                throw std::runtime_error("Unknown GunFireMode value in fireModeToString");
+                throw std::runtime_error(
+                    "Unknown GunFireMode value in fireModeToString");
         }
     }
 

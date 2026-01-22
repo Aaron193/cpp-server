@@ -17,7 +17,7 @@ inline Components::Gun makeFromConfig(const WeaponConfig& config,
     gun.fireRate = config.fireRate;
     gun.reloadTime = config.reloadTime;
     gun.damage = config.damage;
-    gun.range = meters(config.range);
+    gun.range = config.range;
     gun.spread = config.spread;
     gun.pellets = config.pellets;
     gun.barrelLength = config.barrelLength;
