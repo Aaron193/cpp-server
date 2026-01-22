@@ -43,11 +43,11 @@ enum NewsType : uint8_t {
 };
 
 enum AmmoType : uint8_t {
-    AMMO_LIGHT,
-    AMMO_HEAVY,
-    AMMO_SHELL,
-    AMMO_ROCKET,
-    AMMO_COUNT,
+    LIGHT,
+    HEAVY,
+    SHELL,
+    ROCKET,
+    COUNT,
 };
 
 enum GunFireMode : uint8_t {
@@ -57,9 +57,9 @@ enum GunFireMode : uint8_t {
 
 enum ItemType : uint8_t {
     ITEM_NONE,
-    ITEM_GUN_PISTOL,
-    ITEM_GUN_RIFLE,
-    ITEM_GUN_SHOTGUN,
+    GUN_PISTOL,
+    GUN_RIFLE,
+    GUN_SHOTGUN,
 };
 
 // Collision system for Box2D filtering

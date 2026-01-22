@@ -102,7 +102,7 @@ struct Destructible {
 };
 
 struct Ammo {
-    std::array<int, static_cast<size_t>(AmmoType::AMMO_COUNT)> amounts{};
+    std::array<int, static_cast<size_t>(AmmoType::COUNT)> amounts{};
 
     int get(AmmoType type) const { return amounts[static_cast<size_t>(type)]; }
 
@@ -121,7 +121,7 @@ struct Ammo {
 
 struct Gun {
     GunFireMode fireMode = GunFireMode::FIRE_PROJECTILE;
-    AmmoType ammoType = AmmoType::AMMO_LIGHT;
+    AmmoType ammoType = AmmoType::LIGHT;
 
     int magazineSize = 12;
     int ammoInMag = 12;
@@ -177,9 +177,8 @@ struct InventorySlot {
     Gun gun{};
 
     bool isGun() const {
-        return type == ItemType::ITEM_GUN_PISTOL ||
-               type == ItemType::ITEM_GUN_RIFLE ||
-               type == ItemType::ITEM_GUN_SHOTGUN;
+        return type == ItemType::GUN_PISTOL || type == ItemType::GUN_RIFLE ||
+               type == ItemType::GUN_SHOTGUN;
     }
 };
 

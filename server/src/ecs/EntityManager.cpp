@@ -63,14 +63,14 @@ entt::entity EntityManager::createPlayer() {
     m_registry.emplace<AttackCooldown>(entity,
                                        1.0f / 3.0f);  // 333ms attack cooldown
     auto& ammo = m_registry.emplace<Ammo>(entity);
-    ammo.add(AmmoType::AMMO_LIGHT, 120);
+    ammo.add(AmmoType::LIGHT, 120);
 
     auto& inventory = m_registry.emplace<Inventory>(entity);
     inventory.setActiveSlot(0);
 
-    Components::Gun pistol =
-        GunFactory::makePistol(m_gameServer.m_gameConfig, false);
-    inventory.setGunSlot(0, ItemType::ITEM_GUN_PISTOL, pistol);
+    Components::Gun shotgun =
+        GunFactory::makeShotgun(m_gameServer.m_gameConfig, false);
+    inventory.setGunSlot(0, ItemType::GUN_SHOTGUN, shotgun);
 
     // Define the body
     b2BodyDef bodyDef = b2DefaultBodyDef();

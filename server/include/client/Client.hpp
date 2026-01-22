@@ -7,7 +7,6 @@
 #include <entt/entt.hpp>
 #include <unordered_set>
 
-#include "common/enums.hpp"
 #include "packet/buffer/PacketReader.hpp"
 #include "packet/buffer/PacketWriter.hpp"
 

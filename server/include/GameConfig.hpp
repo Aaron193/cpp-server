@@ -77,10 +77,10 @@ struct GameConfig {
     }
 
     static AmmoType parseAmmoType(const std::string& value) {
-        if (value == "light") return AmmoType::AMMO_LIGHT;
-        if (value == "heavy") return AmmoType::AMMO_HEAVY;
-        if (value == "shell") return AmmoType::AMMO_SHELL;
-        if (value == "rocket") return AmmoType::AMMO_ROCKET;
+        if (value == "light") return AmmoType::LIGHT;
+        if (value == "heavy") return AmmoType::HEAVY;
+        if (value == "shell") return AmmoType::SHELL;
+        if (value == "rocket") return AmmoType::ROCKET;
         throw std::runtime_error("Invalid ammoType: " + value);
     }
 
@@ -98,15 +98,15 @@ struct GameConfig {
 
     static std::string ammoTypeToString(AmmoType type) {
         switch (type) {
-            case AmmoType::AMMO_LIGHT:
+            case AmmoType::LIGHT:
                 return "light";
-            case AmmoType::AMMO_HEAVY:
+            case AmmoType::HEAVY:
                 return "heavy";
-            case AmmoType::AMMO_SHELL:
+            case AmmoType::SHELL:
                 return "shell";
-            case AmmoType::AMMO_ROCKET:
+            case AmmoType::ROCKET:
                 return "rocket";
-            case AmmoType::AMMO_COUNT:
+            case AmmoType::COUNT:
             default:
                 throw std::runtime_error("Invalid AmmoType enum value");
         }
