@@ -33,6 +33,9 @@ export class ConfigManager {
         ConfigManager.config = config
     }
 
+    static resetConfig(): void {
+        ConfigManager.config = null
+    }
     static getConfig(): GameConfig {
         if (!ConfigManager.config) {
             throw new Error('GameConfig not initialized')
