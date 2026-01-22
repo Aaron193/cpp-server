@@ -11,6 +11,7 @@ import { AssetLoader } from '../graphics/utils/AssetLoader'
 import { Bullet } from '../graphics/Bullet'
 import { HitscanTracer } from '../graphics/HitscanTracer'
 import { ItemType } from '../enums/ItemType'
+import { ConfigManager, GameConfig } from '../ConfigManager'
 
 export class MessageHandler {
     static handle(reader: PacketReader, client: GameClient): void {
@@ -20,6 +21,12 @@ export class MessageHandler {
             case ServerHeader.MAP_INIT: {
                 const size = reader.readU32()
                 console.log('Map initialized with size: ', size)
+                break
+            }
+            case ServerHeader.GAME_CONFIG: {
+                const jsonString = reader.readString()
+                const config = JSON.parse(jsonString) as GameConfig
+                ConfigManager.setConfig(config)
                 break
             }
             case ServerHeader.SPAWN_SUCCESS: {

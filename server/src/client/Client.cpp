@@ -28,6 +28,9 @@ Client::Client(GameServer& gameServer,
     m_writer.writeU32(
         static_cast<uint32_t>(m_gameServer.m_worldGenerator->GetWorldSize()));
 
+    m_writer.writeU8(ServerHeader::GAME_CONFIG);
+    m_writer.writeString(m_gameServer.m_gameConfig.toJsonString());
+
     // tell our player about others
     for (auto& [id, client] : m_gameServer.m_clients) {
         m_writer.writeU8(ServerHeader::PLAYER_JOIN);

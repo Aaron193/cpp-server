@@ -1,5 +1,5 @@
 {
     "name": "cpp-server",
     "version-string": "0.1.0",
-    "dependencies": ["box2d", "uwebsockets", "entt", "glm", "cpp-httplib"]
+    "dependencies": ["box2d", "uwebsockets", "entt", "glm", "cpp-httplib", "nlohmann-json"]
 }
