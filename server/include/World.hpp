@@ -1,10 +1,7 @@
 #pragma once
 #include <cstdint>
-#include <deque>
 #include <string>
 #include <vector>
-
-#include "external/FastNoiseLite.h"
 
 // Forward declarations for Box2D
 class b2WorldId;

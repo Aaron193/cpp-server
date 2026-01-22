@@ -2,7 +2,6 @@
 
 #include "GameConfig.hpp"
 #include "ecs/components.hpp"
-#include "util/units.hpp"
 
 namespace GunFactory {
 

@@ -8,8 +8,8 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <unordered_set>
 
+#include "external/FastNoiseLite.h"
 #include "external/earcut.hpp"
 #include "physics/PhysicsWorld.hpp"
 #include "util/units.hpp"
