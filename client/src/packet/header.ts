@@ -30,4 +30,5 @@ export const enum ServerHeader {
     BULLET_TRACE,
     PROJECTILE_SPAWN_BATCH,
     PROJECTILE_DESTROY,
+    GAME_CONFIG,
 }

@@ -1,0 +1,52 @@
+{
+  "weapons": {
+    "pistol": {
+      "fireMode": "projectile",
+      "ammoType": "light",
+      "magazineSize": 30,
+      "ammoPerShot": 1,
+      "fireRate": 8.0,
+      "reloadTime": 1.2,
+      "damage": 12.0,
+      "range": 12.0,
+      "spread": 0.02,
+      "pellets": 1,
+      "barrelLength": 0.6,
+      "projectileSpeed": 10.0,
+      "projectileLifetime": 1.2,
+      "automatic": true
+    },
+    "rifle": {
+      "fireMode": "projectile",
+      "ammoType": "light",
+      "magazineSize": 40,
+      "ammoPerShot": 1,
+      "fireRate": 10.0,
+      "reloadTime": 1.6,
+      "damage": 10.0,
+      "range": 1500.0,
+      "spread": 0.015,
+      "pellets": 1,
+      "barrelLength": 0.7,
+      "projectileSpeed": 10.0,
+      "projectileLifetime": 1.4,
+      "automatic": true
+    },
+    "shotgun": {
+      "fireMode": "projectile",
+      "ammoType": "shell",
+      "magazineSize": 6,
+      "ammoPerShot": 1,
+      "fireRate": 1.6,
+      "reloadTime": 2.0,
+      "damage": 7.0,
+      "range": 900.0,
+      "spread": 0.08,
+      "pellets": 6,
+      "barrelLength": 0.65,
+      "projectileSpeed": 10.0,
+      "projectileLifetime": 0.9,
+      "automatic": false
+    }
+  }
+}

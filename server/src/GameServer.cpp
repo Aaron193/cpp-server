@@ -27,6 +27,9 @@
 GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {
     std::cout << "Initializing GameServer..." << std::endl;
 
+    // Load gameplay configuration (guns, etc.)
+    m_gameConfig = GameConfig::loadFromFile("../game_config.json");
+
     // Initialize volcanic world generator
     m_worldGenerator = std::make_unique<World>();
 

@@ -7,6 +7,7 @@
 #include <memory>
 #include <mutex>
 
+#include "GameConfig.hpp"
 #include "RaycastSystem.hpp"
 #include "ServerRegistration.hpp"
 #include "World.hpp"
@@ -26,6 +27,8 @@ class GameServer {
 
     const uint8_t m_tps = 10;
     uint64_t m_currentTick = 0;
+
+    GameConfig m_gameConfig;
 
     EntityManager m_entityManager;
     PhysicsWorld m_physicsWorld;

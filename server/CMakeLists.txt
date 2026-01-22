@@ -19,6 +19,7 @@ find_package(unofficial-uwebsockets CONFIG REQUIRED)
 find_package(EnTT CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(httplib CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 
 file(GLOB_RECURSE SOURCES
     "src/*.cpp"
@@ -32,6 +33,7 @@ target_link_libraries(server PRIVATE
     EnTT::EnTT
     glm::glm
     httplib::httplib
+    nlohmann_json::nlohmann_json
 )
 
 target_include_directories(server PRIVATE

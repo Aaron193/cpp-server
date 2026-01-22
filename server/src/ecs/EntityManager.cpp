@@ -68,7 +68,8 @@ entt::entity EntityManager::createPlayer() {
     auto& inventory = m_registry.emplace<Inventory>(entity);
     inventory.setActiveSlot(0);
 
-    Components::Gun pistol = GunFactory::makePistol(false);
+    Components::Gun pistol =
+        GunFactory::makePistol(m_gameServer.m_gameConfig, false);
     inventory.setGunSlot(0, ItemType::ITEM_GUN_PISTOL, pistol);
 
     // Define the body

@@ -34,6 +34,7 @@ enum ServerHeader : uint8_t {
     BULLET_TRACE,
     PROJECTILE_SPAWN_BATCH,
     PROJECTILE_DESTROY,
+    GAME_CONFIG,
 };
 
 enum NewsType : uint8_t {
