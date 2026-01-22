@@ -26,12 +26,6 @@ class RaycastSystem {
     RayHit FireBullet(entt::entity shooter, glm::vec2 origin,
                       glm::vec2 direction, float maxDistance);
 
-    // Check if there is line of sight between two points
-    bool HasLineOfSight(glm::vec2 from, glm::vec2 to);
-
-    // Compute longest sightline from a point
-    float ComputeLongestSightline(glm::vec2 position, int numAngles = 8);
-
    private:
     entt::registry& m_registry;
     b2WorldId m_worldId;
