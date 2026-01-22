@@ -372,12 +372,12 @@ void Client::writeGameState() {
 
             for (size_t i = 0; i < inventory.slots.size(); ++i) {
                 const auto& slot = inventory.slots[i];
-                if (slot.type == ItemType::ITEM_NONE) {
+                if (slot.isEmpty()) {
                     continue;
                 }
 
                 m_writer.writeU8(static_cast<uint8_t>(i));
-                m_writer.writeU8(static_cast<uint8_t>(slot.type));
+                m_writer.writeU8(static_cast<uint8_t>(slot.getItemType()));
 
                 if (slot.isGun()) {
                     m_writer.writeU8(static_cast<uint8_t>(slot.gun.fireMode));

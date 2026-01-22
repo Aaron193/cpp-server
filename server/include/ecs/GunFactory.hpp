@@ -5,10 +5,9 @@
 
 namespace GunFactory {
 
-inline Components::Gun makeFromConfig(const WeaponConfig& config,
-                                      bool hitscan) {
+inline Components::Gun makeFromConfig(const WeaponConfig& config) {
     Components::Gun gun;
-    gun.fireMode = hitscan ? GunFireMode::FIRE_HITSCAN : config.fireMode;
+    gun.fireMode = config.fireMode;
     gun.ammoType = config.ammoType;
     gun.magazineSize = config.magazineSize;
     gun.ammoInMag = config.magazineSize;
@@ -26,19 +25,22 @@ inline Components::Gun makeFromConfig(const WeaponConfig& config,
     return gun;
 }
 
-inline Components::Gun makePistol(const GameConfig& config,
-                                  bool hitscan = false) {
-    return makeFromConfig(config.pistol, hitscan);
+inline Components::Gun makePistol(const GameConfig& config) {
+    Components::Gun gun = makeFromConfig(config.pistol);
+    gun.itemType = ItemType::GUN_PISTOL;
+    return gun;
 }
 
-inline Components::Gun makeRifle(const GameConfig& config,
-                                 bool hitscan = false) {
-    return makeFromConfig(config.rifle, hitscan);
+inline Components::Gun makeRifle(const GameConfig& config) {
+    Components::Gun gun = makeFromConfig(config.rifle);
+    gun.itemType = ItemType::GUN_RIFLE;
+    return gun;
 }
 
-inline Components::Gun makeShotgun(const GameConfig& config,
-                                   bool hitscan = false) {
-    return makeFromConfig(config.shotgun, hitscan);
+inline Components::Gun makeShotgun(const GameConfig& config) {
+    Components::Gun gun = makeFromConfig(config.shotgun);
+    gun.itemType = ItemType::GUN_SHOTGUN;
+    return gun;
 }
 
 }  // namespace GunFactory

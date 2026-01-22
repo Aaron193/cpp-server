@@ -67,10 +67,10 @@ entt::entity EntityManager::createPlayer() {
 
     auto& inventory = m_registry.emplace<Inventory>(entity);
     inventory.setActiveSlot(0);
-
+        
     Components::Gun shotgun =
-        GunFactory::makeShotgun(m_gameServer.m_gameConfig, false);
-    inventory.setGunSlot(0, ItemType::GUN_SHOTGUN, shotgun);
+        GunFactory::makeShotgun(m_gameServer.m_gameConfig);
+    inventory.addItem(shotgun);
 
     // Define the body
     b2BodyDef bodyDef = b2DefaultBodyDef();

@@ -120,6 +120,7 @@ struct Ammo {
 };
 
 struct Gun {
+    ItemType itemType = ItemType::ITEM_NONE;
     GunFireMode fireMode = GunFireMode::FIRE_PROJECTILE;
     AmmoType ammoType = AmmoType::LIGHT;
 
@@ -173,12 +174,16 @@ struct Gun {
 };
 
 struct InventorySlot {
-    ItemType type = ItemType::ITEM_NONE;
     Gun gun{};
 
+    ItemType getItemType() const { return gun.itemType; }
+
+    bool isEmpty() const { return gun.itemType == ItemType::ITEM_NONE; }
+
     bool isGun() const {
-        return type == ItemType::GUN_PISTOL || type == ItemType::GUN_RIFLE ||
-               type == ItemType::GUN_SHOTGUN;
+        return gun.itemType == ItemType::GUN_PISTOL ||
+               gun.itemType == ItemType::GUN_RIFLE ||
+               gun.itemType == ItemType::GUN_SHOTGUN;
     }
 };
 
@@ -196,14 +201,15 @@ struct Inventory {
         return true;
     }
 
-    bool setGunSlot(uint8_t slot, ItemType type, const Gun& gun) {
-        if (slot >= slots.size()) {
-            return false;
+    bool addItem(const Gun& gun) {
+        for (auto& slot : slots) {
+            if (slot.isEmpty()) {
+                slot.gun = gun;
+                dirty = true;
+                return true;
+            }
         }
-        slots[slot].type = type;
-        slots[slot].gun = gun;
-        dirty = true;
-        return true;
+        return false;
     }
 
     bool clearSlot(uint8_t slot) {
@@ -218,7 +224,7 @@ struct Inventory {
     uint8_t countOccupiedSlots() const {
         uint8_t count = 0;
         for (const auto& slot : slots) {
-            if (slot.type != ItemType::ITEM_NONE) {
+            if (!slot.isEmpty()) {
                 ++count;
             }
         }
