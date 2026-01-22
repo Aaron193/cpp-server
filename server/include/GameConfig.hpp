@@ -92,8 +92,9 @@ struct GameConfig {
                 return "hitscan";
             case GunFireMode::FIRE_PROJECTILE:
                 return "projectile";
+            default:
+                throw std::runtime_error("Unknown GunFireMode value in fireModeToString");
         }
-        return "projectile";
     }
 
     static std::string ammoTypeToString(AmmoType type) {
