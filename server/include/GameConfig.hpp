@@ -10,20 +10,20 @@
 #include "common/enums.hpp"
 
 struct WeaponConfig {
-    GunFireMode fireMode = GunFireMode::FIRE_PROJECTILE;
-    AmmoType ammoType = AmmoType::AMMO_LIGHT;
-    int magazineSize = 0;
-    int ammoPerShot = 1;
-    float fireRate = 1.0f;
-    float reloadTime = 1.0f;
-    float damage = 1.0f;
-    float range = 0.0f;  // in pixels
-    float spread = 0.0f;
-    int pellets = 1;
-    float barrelLength = 0.0f;        // in meters
-    float projectileSpeed = 0.0f;     // meters/sec
-    float projectileLifetime = 0.0f;  // seconds
-    bool automatic = true;
+    GunFireMode fireMode;
+    AmmoType ammoType;
+    int magazineSize;
+    int ammoPerShot;
+    float fireRate;
+    float reloadTime;
+    float damage;
+    float range;  // in pixels
+    float spread;
+    int pellets;
+    float barrelLength;        // in meters
+    float projectileSpeed;     // meters/sec
+    float projectileLifetime;  // seconds
+    bool automatic;
 };
 
 struct GameConfig {
