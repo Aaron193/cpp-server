@@ -3,7 +3,7 @@ import { BiomeType } from '../enums/BiomeType'
 import { Renderer } from '../Renderer'
 import { assert } from '../utils/assert'
 
-const debug = false
+const debug = true
 
 export class TerrainRenderer {
     private renderer: Renderer
@@ -33,7 +33,7 @@ export class TerrainRenderer {
         )
 
         const graphics = new PIXI.Graphics()
-        const color = this.getBiomeColor(biome)
+        const color = TerrainRenderer.getBiomeColor(biome)
 
         // Draw triangles
         for (let i = 0; i < indices.length; i += 3) {
@@ -62,7 +62,7 @@ export class TerrainRenderer {
         minimap.addTerrainMesh(biome, vertices, indices)
     }
 
-    private getBiomeColor(biome: BiomeType): number {
+    static getBiomeColor(biome: BiomeType): number {
         switch (biome) {
             case BiomeType.BIOME_DEEP_WATER:
                 return 0x142864 // Dark blue
@@ -79,7 +79,7 @@ export class TerrainRenderer {
             case BiomeType.BIOME_PEAK:
                 return 0xe8e8e8 // Light gray peak
             default:
-                return 0x000000 // Black for unknown
+                return TerrainRenderer.getBiomeColor(BiomeType.BIOME_DEEP_WATER) // Default to deep water
         }
     }
 

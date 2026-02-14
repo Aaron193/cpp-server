@@ -4,6 +4,7 @@ import { World } from './World'
 import { Grid } from './graphics/Grid'
 import { TerrainRenderer } from './graphics/TerrainRenderer'
 import type { Vec2 } from './utils/types'
+import { BiomeType } from './enums/BiomeType'
 
 export class Renderer {
     world!: World
@@ -64,7 +65,9 @@ export class Renderer {
             canvas: this.canvas,
             antialias: false,
             resolution: 1,
-            backgroundColor: 0x509446,
+            backgroundColor: TerrainRenderer.getBiomeColor(
+                BiomeType.BIOME_DEEP_WATER
+            ),
         })
 
         this.app = { renderer: this.renderer }

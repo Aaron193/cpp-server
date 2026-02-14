@@ -2,6 +2,7 @@ import * as PIXI from 'pixi.js'
 import { BiomeType } from '../../enums/BiomeType'
 import { Renderer } from '../../Renderer'
 import { COLORS, STROKE_WIDTH } from '../../utils/constants'
+import { TerrainRenderer } from '../TerrainRenderer'
 
 export class Minimap extends PIXI.Container {
     private renderer: Renderer
@@ -198,7 +199,7 @@ export class Minimap extends PIXI.Container {
         this.minimapGraphics.clear()
 
         for (const mesh of this.meshes) {
-            const color = this.getBiomeColor(mesh.biome)
+            const color = TerrainRenderer.getBiomeColor(mesh.biome)
             const { vertices, indices } = mesh
 
             for (let i = 0; i < indices.length; i += 3) {
@@ -286,27 +287,6 @@ export class Minimap extends PIXI.Container {
             height: this.expandedHeight,
             resolution: 1,
         })
-    }
-
-    private getBiomeColor(biome: BiomeType): number {
-        switch (biome) {
-            case BiomeType.BIOME_DEEP_WATER:
-                return 0x142864 // Dark blue
-            case BiomeType.BIOME_SHALLOW_WATER:
-                return 0x3c6eb4 // Light blue
-            case BiomeType.BIOME_BEACH:
-                return 0xdcc896 // Sandy beach
-            case BiomeType.BIOME_GRASSLAND:
-                return 0x78b450 // Green grass
-            case BiomeType.BIOME_FOREST:
-                return 0x3c7832 // Dark green
-            case BiomeType.BIOME_MOUNTAIN:
-                return 0x8c8278 // Brown mountain
-            case BiomeType.BIOME_PEAK:
-                return 0xe8e8e8 // Light gray peak
-            default:
-                return 0x000000 // Black for unknown
-        }
     }
 
     clear() {
