@@ -22,6 +22,7 @@ export class Bullet extends Entity {
     private lastY: number | null = null
     private velocityX: number = 0
     private velocityY: number = 0
+    private motionAngle: number = 0
 
     constructor(client: GameClient) {
         super()
@@ -76,8 +77,8 @@ export class Bullet extends Entity {
         let length = Math.hypot(dx, dy)
 
         if (length < 0.001) {
-            dx = Math.cos(this.rotation)
-            dy = Math.sin(this.rotation)
+            dx = Math.cos(this.motionAngle)
+            dy = Math.sin(this.motionAngle)
             length = Math.hypot(dx, dy)
         }
 
@@ -124,19 +125,19 @@ export class Bullet extends Entity {
     }
 
     setRot(angle: number) {
-        this.rotation = angle
+        this.motionAngle = angle
     }
 
     setMotion(dirX: number, dirY: number, speed: number) {
         this.velocityX = dirX * speed
         this.velocityY = dirY * speed
         if (Math.abs(dirX) > EPSILON || Math.abs(dirY) > EPSILON) {
-            this.rotation = Math.atan2(dirY, dirX)
+            this.motionAngle = Math.atan2(dirY, dirX)
         }
     }
 
     getRot(): number {
-        return this.rotation
+        return this.motionAngle
     }
 
     private static getCoreTexture(): PIXI.Texture {

@@ -382,6 +382,7 @@ void GameServer::gunSystem(double delta) {
                 float muzzleOffset = playerRadiusMeters + gun.barrelLength;
                 glm::vec2 muzzleOrigin = origin + direction * muzzleOffset;
 
+                // !!! Hitscan basically not gonna exist anymore !!!
                 if (gun.fireMode == GunFireMode::FIRE_HITSCAN) {
                     RayHit hit = m_raycastSystem->FireBullet(
                         entity, muzzleOrigin, direction, gun.range);
