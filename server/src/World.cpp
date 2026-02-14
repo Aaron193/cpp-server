@@ -5,9 +5,11 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <unordered_map>
 
 #include "external/FastNoiseLite.h"
 #include "external/earcut.hpp"
@@ -440,16 +442,6 @@ static void removeCollinear(std::vector<Vec2>& v) {
     v.swap(out);
 }
 
-// Replace the extractContour and marchingSquares functions with this improved
-// version
-
-// Helper to check if a pixel belongs to the target biome
-static bool isBiome(const std::vector<BiomeType>& biomeMap, int width,
-                    int height, int x, int y, BiomeType target) {
-    if (x < 0 || y < 0 || x >= width || y >= height) return false;
-    return biomeMap[y * width + x] == target;
-}
-
 // Flood fill to collect a single connected component of a biome
 static std::vector<int> floodFillComponent(const std::vector<BiomeType>& map,
                                            int width, int height, int startX,
@@ -489,44 +481,167 @@ static std::vector<int> floodFillComponent(const std::vector<BiomeType>& map,
 // Build boundary loops (outer + holes) for a component mask
 static std::vector<std::vector<Vec2>> buildLoopsFromComponent(
     const std::vector<uint8_t>& mask, int width, int height) {
-    struct Edge {
+    struct Segment {
         Vec2 a;
         Vec2 b;
     };
 
+    constexpr float iso = 0.5f;
+
     auto idx = [width](int x, int y) { return y * width + x; };
 
-    std::vector<Edge> edges;
-    edges.reserve(mask.size());
+    auto sampleCorner = [&](int cx, int cy) {
+        int sum = 0;
+        int count = 0;
 
-    auto addEdge = [&](float x1, float y1, float x2, float y2) {
-        edges.push_back({Vec2(x1, y1), Vec2(x2, y2)});
+        const int cells[4][2] = {{cx - 1, cy - 1}, {cx, cy - 1},
+                                 {cx, cy}, {cx - 1, cy}};
+
+        for (const auto& c : cells) {
+            int x = c[0];
+            int y = c[1];
+            if (x < 0 || y < 0 || x >= width || y >= height) continue;
+            sum += mask[idx(x, y)] ? 1 : 0;
+            count++;
+        }
+
+        if (count == 0) return 0.0f;
+        return static_cast<float>(sum) / static_cast<float>(count);
+    };
+
+    std::vector<float> cornerField((width + 1) * (height + 1), 0.0f);
+    auto cidx = [width](int x, int y) { return y * (width + 1) + x; };
+
+    for (int y = 0; y <= height; ++y) {
+        for (int x = 0; x <= width; ++x) {
+            cornerField[cidx(x, y)] = sampleCorner(x, y);
+        }
+    }
+
+    auto lerpPoint = [&](int x0, int y0, float v0, int x1, int y1, float v1) {
+        float t = 0.5f;
+        float denom = v1 - v0;
+        if (std::abs(denom) > 1e-6f) {
+            t = (iso - v0) / denom;
+            t = std::clamp(t, 0.0f, 1.0f);
+        }
+        return Vec2(static_cast<float>(x0) +
+                        t * static_cast<float>(x1 - x0),
+                    static_cast<float>(y0) +
+                        t * static_cast<float>(y1 - y0));
+    };
+
+    auto edgePoint = [&](int x, int y, int edge, float tl, float tr, float br,
+                         float bl) {
+        switch (edge) {
+            case 0:
+                return lerpPoint(x, y, tl, x + 1, y, tr);           // top
+            case 1:
+                return lerpPoint(x + 1, y, tr, x + 1, y + 1, br);   // right
+            case 2:
+                return lerpPoint(x + 1, y + 1, br, x, y + 1, bl);   // bottom
+            default:
+                return lerpPoint(x, y + 1, bl, x, y, tl);           // left
+        }
+    };
+
+    std::vector<Segment> segments;
+    segments.reserve(mask.size() * 2);
+
+    auto emitSegment = [&](int x, int y, float tl, float tr, float br, float bl,
+                           int e0, int e1) {
+        Vec2 a = edgePoint(x, y, e0, tl, tr, br, bl);
+        Vec2 b = edgePoint(x, y, e1, tl, tr, br, bl);
+        if (std::abs(a.x - b.x) < 1e-6f && std::abs(a.y - b.y) < 1e-6f) return;
+        segments.push_back({a, b});
     };
 
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
-            if (!mask[idx(x, y)]) continue;
+            float tl = cornerField[cidx(x, y)];
+            float tr = cornerField[cidx(x + 1, y)];
+            float br = cornerField[cidx(x + 1, y + 1)];
+            float bl = cornerField[cidx(x, y + 1)];
 
-            // For each of the four sides, if neighbor is empty, emit an edge.
-            // Edges are on the grid line (corner coordinates).
-            if (y == 0 || !mask[idx(x, y - 1)]) {  // top
-                addEdge(x, y, x + 1, y);
-            }
-            if (x == width - 1 || !mask[idx(x + 1, y)]) {  // right
-                addEdge(x + 1, y, x + 1, y + 1);
-            }
-            if (y == height - 1 || !mask[idx(x, y + 1)]) {  // bottom
-                addEdge(x + 1, y + 1, x, y + 1);
-            }
-            if (x == 0 || !mask[idx(x - 1, y)]) {  // left
-                addEdge(x, y + 1, x, y);
+            int config = 0;
+            if (tl >= iso) config |= 1;
+            if (tr >= iso) config |= 2;
+            if (br >= iso) config |= 4;
+            if (bl >= iso) config |= 8;
+
+            switch (config) {
+                case 0:
+                case 15:
+                    break;
+                case 1:
+                    emitSegment(x, y, tl, tr, br, bl, 3, 0);
+                    break;
+                case 2:
+                    emitSegment(x, y, tl, tr, br, bl, 0, 1);
+                    break;
+                case 3:
+                    emitSegment(x, y, tl, tr, br, bl, 3, 1);
+                    break;
+                case 4:
+                    emitSegment(x, y, tl, tr, br, bl, 1, 2);
+                    break;
+                case 5: {
+                    float center = (tl + tr + br + bl) * 0.25f;
+                    if (center >= iso) {
+                        emitSegment(x, y, tl, tr, br, bl, 0, 1);
+                        emitSegment(x, y, tl, tr, br, bl, 2, 3);
+                    } else {
+                        emitSegment(x, y, tl, tr, br, bl, 3, 0);
+                        emitSegment(x, y, tl, tr, br, bl, 1, 2);
+                    }
+                    break;
+                }
+                case 6:
+                    emitSegment(x, y, tl, tr, br, bl, 0, 2);
+                    break;
+                case 7:
+                    emitSegment(x, y, tl, tr, br, bl, 3, 2);
+                    break;
+                case 8:
+                    emitSegment(x, y, tl, tr, br, bl, 2, 3);
+                    break;
+                case 9:
+                    emitSegment(x, y, tl, tr, br, bl, 0, 2);
+                    break;
+                case 10: {
+                    float center = (tl + tr + br + bl) * 0.25f;
+                    if (center >= iso) {
+                        emitSegment(x, y, tl, tr, br, bl, 3, 0);
+                        emitSegment(x, y, tl, tr, br, bl, 1, 2);
+                    } else {
+                        emitSegment(x, y, tl, tr, br, bl, 0, 1);
+                        emitSegment(x, y, tl, tr, br, bl, 2, 3);
+                    }
+                    break;
+                }
+                case 11:
+                    emitSegment(x, y, tl, tr, br, bl, 1, 2);
+                    break;
+                case 12:
+                    emitSegment(x, y, tl, tr, br, bl, 1, 3);
+                    break;
+                case 13:
+                    emitSegment(x, y, tl, tr, br, bl, 0, 1);
+                    break;
+                case 14:
+                    emitSegment(x, y, tl, tr, br, bl, 3, 0);
+                    break;
+                default:
+                    break;
             }
         }
     }
 
-    // Stitch edges into closed loops
+    if (segments.empty()) return {};
+
+    // Stitch segments into closed loops.
     std::unordered_map<uint64_t, std::vector<size_t>> adjacency;
-    adjacency.reserve(edges.size() * 2);
+    adjacency.reserve(segments.size() * 2);
 
     auto key = [](const Vec2& v) -> uint64_t {
         int64_t ix = static_cast<int64_t>(std::lround(v.x * 1000.0f));
@@ -535,36 +650,36 @@ static std::vector<std::vector<Vec2>> buildLoopsFromComponent(
                static_cast<uint64_t>(iy & 0xffffffff);
     };
 
-    for (size_t i = 0; i < edges.size(); ++i) {
-        adjacency[key(edges[i].a)].push_back(i);
+    for (size_t i = 0; i < segments.size(); ++i) {
+        adjacency[key(segments[i].a)].push_back(i);
+        adjacency[key(segments[i].b)].push_back(i);
     }
 
-    std::vector<uint8_t> used(edges.size(), 0);
+    std::vector<uint8_t> used(segments.size(), 0);
     std::vector<std::vector<Vec2>> loops;
     loops.reserve(32);
 
-    for (size_t i = 0; i < edges.size(); ++i) {
+    for (size_t i = 0; i < segments.size(); ++i) {
         if (used[i]) continue;
 
         std::vector<Vec2> loop;
-        size_t currentIdx = i;
-        Vec2 start = edges[currentIdx].a;
-        Vec2 currentPoint = start;
+        const Segment& first = segments[i];
+        loop.push_back(first.a);
+        loop.push_back(first.b);
+        used[i] = 1;
 
-        while (true) {
-            used[currentIdx] = 1;
-            const Edge& e = edges[currentIdx];
-            loop.push_back(e.a);
-            Vec2 nextPoint = e.b;
+        const uint64_t startKey = key(first.a);
+        uint64_t currentKey = key(first.b);
 
-            if (key(nextPoint) == key(start)) {
-                loop.push_back(nextPoint);
-                break;
-            }
+        size_t guard = 0;
+        const size_t guardMax = segments.size() + 4;
 
-            auto& outgoing = adjacency[key(nextPoint)];
+        while (currentKey != startKey && guard++ < guardMax) {
+            auto it = adjacency.find(currentKey);
+            if (it == adjacency.end()) break;
+
             size_t nextIdx = SIZE_MAX;
-            for (size_t candidate : outgoing) {
+            for (size_t candidate : it->second) {
                 if (!used[candidate]) {
                     nextIdx = candidate;
                     break;
@@ -572,15 +687,29 @@ static std::vector<std::vector<Vec2>> buildLoopsFromComponent(
             }
 
             if (nextIdx == SIZE_MAX) {
-                // Open contour (should not happen); abort this loop
+                // Open contour; skip this chain.
+                loop.clear();
                 break;
             }
 
-            currentIdx = nextIdx;
-            currentPoint = nextPoint;
+            used[nextIdx] = 1;
+            const Segment& s = segments[nextIdx];
+            uint64_t ka = key(s.a);
+            uint64_t kb = key(s.b);
+
+            Vec2 nextPoint;
+            if (ka == currentKey) {
+                nextPoint = s.b;
+                currentKey = kb;
+            } else {
+                nextPoint = s.a;
+                currentKey = ka;
+            }
+
+            loop.push_back(nextPoint);
         }
 
-        if (loop.size() >= 4) {
+        if (loop.size() >= 4 && currentKey == startKey) {
             // Remove duplicate final point to keep polygons clean
             if (loop.size() > 1) {
                 const Vec2& first = loop.front();
