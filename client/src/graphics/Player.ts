@@ -7,6 +7,7 @@ import { assert } from '../utils/assert'
 import { COLORS, STROKE_WIDTH } from '../utils/constants'
 import { ChatContainer } from './ChatContainer'
 import { ItemType } from '../enums/ItemType'
+import { Vec2 } from '../utils/types'
 
 export const Nicknames = new Map<number, string>()
 
@@ -16,6 +17,8 @@ enum STATE {
     HURT = 1 << 1,
     SHOOTING = 1 << 2,
 }
+
+const TEMP_VEC: Vec2 = { x: 0, y: 0 }
 
 export class Player extends Entity {
     nameTag: NameTag
@@ -104,13 +107,14 @@ export class Player extends Entity {
     }
 
     getAngleToMouse(): number {
-        const pos = this.client.world.renderer.toWorldCoordinates(
+        this.client.world.renderer.toWorldCoordinates(
             this.client.mouseX,
-            this.client.mouseY
+            this.client.mouseY,
+            TEMP_VEC
         )
 
-        const dx = pos.x - this.position.x
-        const dy = pos.y - this.position.y
+        const dx = TEMP_VEC.x - this.position.x
+        const dy = TEMP_VEC.y - this.position.y
 
         return Math.atan2(dy, dx)
     }

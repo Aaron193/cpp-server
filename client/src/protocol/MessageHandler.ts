@@ -364,6 +364,8 @@ export class MessageHandler {
                             Nicknames.has(subject),
                             'Subject nickname not found'
                         )
+
+                        // TODO(BUG): It is possible for the killer to die and we remove the nickname before we process this message.
                         assert(
                             Nicknames.has(killer),
                             'Killer nickname not found'

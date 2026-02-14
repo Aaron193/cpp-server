@@ -3,8 +3,7 @@ import { Hud } from './graphics/hud/Hud'
 import { World } from './World'
 import { Grid } from './graphics/Grid'
 import { TerrainRenderer } from './graphics/TerrainRenderer'
-
-const TEMP_VEC = { x: 0, y: 0 }
+import type { Vec2 } from './utils/types'
 
 export class Renderer {
     world!: World
@@ -96,11 +95,11 @@ export class Renderer {
         this.camera.y = -y + 0.5 * this.renderer.screen.height
     }
 
-    toWorldCoordinates(mouseX: number, mouseY: number) {
-        TEMP_VEC.x = mouseX - this.camera.x
-        TEMP_VEC.y = mouseY - this.camera.y
+    toWorldCoordinates(mouseX: number, mouseY: number, out: Vec2) {
+        out.x = mouseX - this.camera.x
+        out.y = mouseY - this.camera.y
 
-        return TEMP_VEC
+        return out
     }
 
     update(delta: number, tick: number, now: number) {
