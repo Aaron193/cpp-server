@@ -5,6 +5,12 @@
 #include <unordered_map>
 #include <vector>
 
+#include "common/enums.hpp"
+
+namespace Components {
+struct Gun;
+}
+
 enum EntityTypes : uint8_t {
     SPECTATOR,
     PLAYER,
@@ -14,7 +20,9 @@ enum EntityTypes : uint8_t {
     WALL,
     FENCE,
     TREE,
-    BULLET
+    BULLET,
+    GUN_PICKUP,
+    AMMO_PICKUP,
 };
 enum Variant : uint8_t { NONE, VARIANT_1, VARIANT_2, VARIANT_3 };
 
@@ -55,6 +63,9 @@ class EntityManager {
     entt::entity createRock();
     entt::entity createWall(float x, float y);
     entt::entity createTree(float x, float y);
+    entt::entity createGunPickup(const Components::Gun& gun, float x, float y);
+    entt::entity createAmmoPickup(AmmoType ammoType, int amount, float x,
+                                  float y);
 
     void initProjectilePool(size_t count);
     entt::entity acquireProjectile();

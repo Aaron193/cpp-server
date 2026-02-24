@@ -25,6 +25,8 @@ EntityManager::EntityManager(GameServer& gameServer)
     m_variants[EntityTypes::FENCE] = 0;
     m_variants[EntityTypes::TREE] = 2;
     m_variants[EntityTypes::BULLET] = 0;
+    m_variants[EntityTypes::GUN_PICKUP] = 0;
+    m_variants[EntityTypes::AMMO_PICKUP] = 0;
 }
 
 uint8_t EntityManager::getVariantCount(EntityTypes type) {
@@ -105,8 +107,10 @@ entt::entity EntityManager::createPlayer() {
     b2ShapeDef shapeDef = b2DefaultShapeDef();
     shapeDef.density = 1.0f;
     shapeDef.isSensor = false;
+    shapeDef.enableContactEvents = true;
     shapeDef.filter.categoryBits = CAT_PLAYER;
-    shapeDef.filter.maskBits = MASK_PLAYER_MOVE | CAT_PLAYER | CAT_BULLET;
+    shapeDef.filter.maskBits =
+        MASK_PLAYER_MOVE | CAT_PLAYER | CAT_BULLET | CAT_PICKUP;
 
     b2Circle circle = {{0.0f, 0.0f}, meters(25.0f)};
     b2CreateCircleShape(base.bodyId, &shapeDef, &circle);
@@ -356,6 +360,77 @@ entt::entity EntityManager::createTree(float x, float y) {
     shapeDef.isSensor = false;
     shapeDef.filter.categoryBits = CAT_WALL;
     shapeDef.filter.maskBits = MASK_PLAYER_MOVE | MASK_BULLET;
+
+    b2Circle circleShape = {{0.0f, 0.0f}, meters(30.0f)};
+    b2CreateCircleShape(base.bodyId, &shapeDef, &circleShape);
+
+    return entity;
+}
+
+entt::entity EntityManager::createGunPickup(const Components::Gun& gun, float x,
+                                            float y) {
+    entt::entity entity = m_registry.create();
+
+    auto& base =
+        m_registry.emplace<EntityBase>(entity, EntityTypes::GUN_PICKUP);
+    m_registry.emplace<Networked>(entity);
+
+    auto& groundItem = m_registry.emplace<GroundItem>(entity);
+    groundItem.itemType = gun.itemType;
+    groundItem.ammoType = gun.ammoType;
+    groundItem.ammoAmount = gun.ammoInMag;
+    groundItem.gun = gun;
+
+    b2BodyDef bodyDef = b2DefaultBodyDef();
+    bodyDef.type = b2_staticBody;
+    bodyDef.position = {meters(x), meters(y)};
+
+    base.bodyId = b2CreateBody(m_gameServer.m_physicsWorld.m_worldId, &bodyDef);
+
+    EntityBodyUserData* userData = new EntityBodyUserData();
+    userData->entity = entity;
+    b2Body_SetUserData(base.bodyId, reinterpret_cast<void*>(userData));
+
+    b2ShapeDef shapeDef = b2DefaultShapeDef();
+    shapeDef.isSensor = true;
+    shapeDef.enableContactEvents = true;
+    shapeDef.filter.categoryBits = CAT_PICKUP;
+    shapeDef.filter.maskBits = CAT_PLAYER;
+
+    b2Circle circleShape = {{0.0f, 0.0f}, meters(30.0f)};
+    b2CreateCircleShape(base.bodyId, &shapeDef, &circleShape);
+
+    return entity;
+}
+
+entt::entity EntityManager::createAmmoPickup(AmmoType ammoType, int amount,
+                                             float x, float y) {
+    entt::entity entity = m_registry.create();
+
+    auto& base =
+        m_registry.emplace<EntityBase>(entity, EntityTypes::AMMO_PICKUP);
+    m_registry.emplace<Networked>(entity);
+
+    auto& groundItem = m_registry.emplace<GroundItem>(entity);
+    groundItem.itemType = ItemType::ITEM_NONE;
+    groundItem.ammoType = ammoType;
+    groundItem.ammoAmount = amount;
+
+    b2BodyDef bodyDef = b2DefaultBodyDef();
+    bodyDef.type = b2_staticBody;
+    bodyDef.position = {meters(x), meters(y)};
+
+    base.bodyId = b2CreateBody(m_gameServer.m_physicsWorld.m_worldId, &bodyDef);
+
+    EntityBodyUserData* userData = new EntityBodyUserData();
+    userData->entity = entity;
+    b2Body_SetUserData(base.bodyId, reinterpret_cast<void*>(userData));
+
+    b2ShapeDef shapeDef = b2DefaultShapeDef();
+    shapeDef.isSensor = true;
+    shapeDef.enableContactEvents = true;
+    shapeDef.filter.categoryBits = CAT_PICKUP;
+    shapeDef.filter.maskBits = CAT_PLAYER;
 
     b2Circle circleShape = {{0.0f, 0.0f}, meters(30.0f)};
     b2CreateCircleShape(base.bodyId, &shapeDef, &circleShape);

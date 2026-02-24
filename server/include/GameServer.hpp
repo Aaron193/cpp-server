@@ -62,8 +62,14 @@ class GameServer {
     void gunSystem(double delta);
     void projectileSystem(double delta);
     void projectileImpactSystem();
+    void pickupSystem();
+    void processPickupContactBegin(const b2ContactEvents& events);
+    void processPickupContactEnd(const b2ContactEvents& events);
+    void refreshPickupOverlaps();
+    void processPickupActions();
     void cameraSystem();
     void healthSystem(double delta);
+    void spawnInitialPickups();
 
     void Hit(entt::entity entity, b2Vec2& meleePos, int radius);
     void applyDamage(entt::entity attacker, entt::entity target, float damage);

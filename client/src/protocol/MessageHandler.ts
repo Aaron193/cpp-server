@@ -6,6 +6,8 @@ import { Entity } from '../graphics/Entity'
 import { EntityTypes } from '../enums/EntityTypes'
 import { Crate } from '../graphics/Crate'
 import { BasicSprite } from '../graphics/BasicSprite'
+import { GunPickup } from '../graphics/GunPickup'
+import { AmmoPickup } from '../graphics/AmmoPickup'
 import { NewsType } from '../enums/NewsType'
 import { AssetLoader } from '../graphics/utils/AssetLoader'
 import { Bullet } from '../graphics/Bullet'
@@ -54,9 +56,22 @@ export class MessageHandler {
                     const y = reader.readFloat()
                     const angle = reader.readFloat()
 
+                    let pickupItemType = ItemType.ITEM_NONE
+                    let pickupAmmoType = 0
+                    let pickupAmount = 0
+
+                    if (
+                        type === EntityTypes.GUN_PICKUP ||
+                        type === EntityTypes.AMMO_PICKUP
+                    ) {
+                        pickupItemType = reader.readU8() as ItemType
+                        pickupAmmoType = reader.readU8()
+                        pickupAmount = reader.readU16()
+                    }
+
                     let entity: Entity
 
-                    // Get entity type name for debug labels
+                    // Get entity type name for debug labels (TODO: don't define this here...)
                     const typeNames = [
                         'SPECTATOR',
                         'PLAYER',
@@ -67,6 +82,8 @@ export class MessageHandler {
                         'FENCE',
                         'TREE',
                         'BULLET',
+                        'GUN_PICKUP',
+                        'AMMO_PICKUP',
                     ]
                     const typeName = typeNames[type] || `TYPE_${type}`
 
@@ -95,6 +112,22 @@ export class MessageHandler {
                         }
                         case EntityTypes.BULLET: {
                             entity = new Bullet(client)
+                            break
+                        }
+                        case EntityTypes.GUN_PICKUP: {
+                            entity = new GunPickup(
+                                client,
+                                pickupItemType,
+                                pickupAmount
+                            )
+                            break
+                        }
+                        case EntityTypes.AMMO_PICKUP: {
+                            entity = new AmmoPickup(
+                                client,
+                                pickupAmmoType,
+                                pickupAmount
+                            )
                             break
                         }
                         default: {

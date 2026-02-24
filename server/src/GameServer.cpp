@@ -11,14 +11,17 @@
 #include <entt/entity/fwd.hpp>
 #include <glm/glm.hpp>
 #include <iostream>
+#include <random>
 #include <stdexcept>
 #include <thread>
+#include <utility>
 
 #include "RaycastSystem.hpp"
 #include "World.hpp"
 #include "client/Client.hpp"
 #include "common/enums.hpp"
 #include "ecs/EntityManager.hpp"
+#include "ecs/GunFactory.hpp"
 #include "ecs/components.hpp"
 #include "physics/CollisionHelpers.hpp"
 #include "physics/PhysicsWorld.hpp"
@@ -68,6 +71,7 @@ GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {
         m_entityManager.getRegistry(), m_physicsWorld.m_worldId);
 
     m_entityManager.initProjectilePool(256);
+    spawnInitialPickups();
 
     std::cout << "GameServer initialization complete!" << std::endl;
 }
@@ -178,6 +182,88 @@ void GameServer::prePhysicsSystemUpdate(double delta) {
 
 void GameServer::postPhysicsSystemUpdate(double /*delta*/) {
     projectileImpactSystem();
+    pickupSystem();
+}
+
+void GameServer::spawnInitialPickups() {
+    if (!m_worldGenerator) {
+        return;
+    }
+
+    constexpr int GUN_PICKUP_COUNT = 100;
+    constexpr int AMMO_PICKUP_COUNT = 200;
+
+    const float worldSizePixels =
+        static_cast<float>(m_worldGenerator->GetWorldSize()) * 64.0f;
+    if (worldSizePixels <= 0.0f) {
+        return;
+    }
+
+    std::random_device rd;
+    std::mt19937 rng(rd());
+    std::uniform_real_distribution<float> posDist(64.0f,
+                                                  worldSizePixels - 64.0f);
+    std::uniform_int_distribution<int> gunDist(0, 2);
+    std::uniform_int_distribution<int> ammoTypeDist(
+        0, static_cast<int>(AmmoType::COUNT) - 1);
+
+    auto pickLandPosition = [&]() {
+        constexpr int MAX_ATTEMPTS = 3000;
+        for (int attempt = 0; attempt < MAX_ATTEMPTS; ++attempt) {
+            float x = posDist(rng);
+            float y = posDist(rng);
+
+            BiomeType biome = m_worldGenerator->GetBiomeAtPosition(x, y);
+            if (biome != BiomeType::BIOME_DEEP_WATER &&
+                biome != BiomeType::BIOME_SHALLOW_WATER) {
+                return std::make_pair(x, y);
+            }
+        }
+
+        return std::make_pair(worldSizePixels * 0.5f, worldSizePixels * 0.5f);
+    };
+
+    for (int i = 0; i < GUN_PICKUP_COUNT; ++i) {
+        auto [x, y] = pickLandPosition();
+
+        Components::Gun gun;
+        int gunIndex = gunDist(rng);
+        if (gunIndex == 0) {
+            gun = GunFactory::makePistol(m_gameConfig);
+        } else if (gunIndex == 1) {
+            gun = GunFactory::makeRifle(m_gameConfig);
+        } else {
+            gun = GunFactory::makeShotgun(m_gameConfig);
+        }
+
+        m_entityManager.createGunPickup(gun, x, y);
+    }
+
+    for (int i = 0; i < AMMO_PICKUP_COUNT; ++i) {
+        auto [x, y] = pickLandPosition();
+
+        AmmoType ammoType = static_cast<AmmoType>(ammoTypeDist(rng));
+        int amount = 20;
+        switch (ammoType) {
+            case AmmoType::LIGHT:
+                amount = 45;
+                break;
+            case AmmoType::HEAVY:
+                amount = 30;
+                break;
+            case AmmoType::SHELL:
+                amount = 12;
+                break;
+            case AmmoType::ROCKET:
+                amount = 4;
+                break;
+            case AmmoType::COUNT:
+                amount = 0;
+                break;
+        }
+
+        m_entityManager.createAmmoPickup(ammoType, amount, x, y);
+    }
 }
 
 void GameServer::biomeSystem() {
@@ -496,6 +582,189 @@ void GameServer::projectileImpactSystem() {
         m_projectileDestroyQueue.push_back(
             static_cast<uint32_t>(projectileEntity));
         m_entityManager.releaseProjectile(projectileEntity);
+    }
+}
+
+namespace {
+
+entt::entity extractPickupEntity(b2ShapeId shapeId) {
+    b2BodyId bodyId = b2Shape_GetBody(shapeId);
+    void* userData = b2Body_GetUserData(bodyId);
+    if (!userData) return entt::null;
+    return reinterpret_cast<EntityBodyUserData*>(userData)->entity;
+}
+
+std::pair<entt::entity, entt::entity> resolvePickupAndPlayer(
+    entt::registry& reg, entt::entity a, entt::entity b) {
+    if (!reg.valid(a) || !reg.valid(b)) return {entt::null, entt::null};
+
+    bool aPickup = reg.all_of<Components::GroundItem>(a);
+    bool bPickup = reg.all_of<Components::GroundItem>(b);
+    bool aPlayer =
+        reg.all_of<Components::Input, Components::Inventory, Components::Ammo>(
+            a);
+    bool bPlayer =
+        reg.all_of<Components::Input, Components::Inventory, Components::Ammo>(
+            b);
+
+    if (aPickup && bPlayer) return {a, b};
+    if (bPickup && aPlayer) return {b, a};
+    return {entt::null, entt::null};
+}
+
+}  // namespace
+
+// Orchestrator: run each pickup sub-system in order.
+void GameServer::pickupSystem() {
+    const b2ContactEvents events =
+        b2World_GetContactEvents(m_physicsWorld.m_worldId);
+    processPickupContactBegin(events);
+    processPickupContactEnd(events);
+    refreshPickupOverlaps();
+    processPickupActions();
+}
+
+// Insert players into pickup overlap sets on first physical contact, and
+// auto-collect ammo pickups immediately.
+void GameServer::processPickupContactBegin(const b2ContactEvents& events) {
+    entt::registry& reg = m_entityManager.getRegistry();
+
+    for (int i = 0; i < events.beginCount; ++i) {
+        const b2ContactBeginTouchEvent& evt = events.beginEvents[i];
+
+        entt::entity entityA = extractPickupEntity(evt.shapeIdA);
+        entt::entity entityB = extractPickupEntity(evt.shapeIdB);
+
+        auto [pickupEntity, playerEntity] =
+            resolvePickupAndPlayer(reg, entityA, entityB);
+        if (pickupEntity == entt::null || playerEntity == entt::null) continue;
+
+        if (!reg.valid(pickupEntity) ||
+            reg.all_of<Components::Removal>(pickupEntity))
+            continue;
+
+        auto& pickup = reg.get<Components::GroundItem>(pickupEntity);
+        pickup.overlaps.insert(playerEntity);
+
+        if (!pickup.isGun() && pickup.ammoAmount > 0) {
+            reg.get<Components::Ammo>(playerEntity)
+                .add(pickup.ammoType, pickup.ammoAmount);
+            reg.get<Components::Inventory>(playerEntity).dirty = true;
+            m_entityManager.scheduleForRemoval(pickupEntity);
+        }
+    }
+}
+
+// Remove players from pickup overlap sets when physical contact ends.
+void GameServer::processPickupContactEnd(const b2ContactEvents& events) {
+    entt::registry& reg = m_entityManager.getRegistry();
+
+    for (int i = 0; i < events.endCount; ++i) {
+        const b2ContactEndTouchEvent& evt = events.endEvents[i];
+
+        entt::entity entityA = extractPickupEntity(evt.shapeIdA);
+        entt::entity entityB = extractPickupEntity(evt.shapeIdB);
+
+        auto [pickupEntity, playerEntity] =
+            resolvePickupAndPlayer(reg, entityA, entityB);
+        if (pickupEntity == entt::null || playerEntity == entt::null) continue;
+
+        if (!reg.valid(pickupEntity) ||
+            !reg.all_of<Components::GroundItem>(pickupEntity))
+            continue;
+
+        reg.get<Components::GroundItem>(pickupEntity)
+            .overlaps.erase(playerEntity);
+    }
+}
+
+// Fallback proximity sweep: keeps overlap sets accurate when Box2D contact
+// events are not emitted (e.g. for certain shape/filter combinations).
+// Also auto-collects ammo pickups found in range. (TODO: refactor, this is MVP)
+void GameServer::refreshPickupOverlaps() {
+    entt::registry& reg = m_entityManager.getRegistry();
+
+    constexpr float PICKUP_INTERACT_RADIUS_PIXELS = 55.0f;
+    const float pickupRangeMeters = meters(PICKUP_INTERACT_RADIUS_PIXELS);
+    const float pickupRangeSq = pickupRangeMeters * pickupRangeMeters;
+
+    auto pickupBodyView =
+        reg.view<Components::GroundItem, Components::EntityBase>();
+    auto playerBodyView = reg.view<Components::Input, Components::Inventory,
+                                   Components::Ammo, Components::EntityBase>();
+
+    for (auto pickupEntity : pickupBodyView) {
+        if (!reg.valid(pickupEntity) ||
+            reg.all_of<Components::Removal>(pickupEntity))
+            continue;
+
+        auto& pickup = pickupBodyView.get<Components::GroundItem>(pickupEntity);
+        auto& pickupBase =
+            pickupBodyView.get<Components::EntityBase>(pickupEntity);
+
+        if (B2_IS_NULL(pickupBase.bodyId)) continue;
+
+        b2Vec2 pickupPos = b2Body_GetPosition(pickupBase.bodyId);
+
+        for (auto playerEntity : playerBodyView) {
+            if (!reg.valid(playerEntity)) continue;
+
+            auto& playerBase =
+                playerBodyView.get<Components::EntityBase>(playerEntity);
+            if (B2_IS_NULL(playerBase.bodyId)) continue;
+
+            b2Vec2 playerPos = b2Body_GetPosition(playerBase.bodyId);
+            float dx = playerPos.x - pickupPos.x;
+            float dy = playerPos.y - pickupPos.y;
+
+            if (dx * dx + dy * dy <= pickupRangeSq) {
+                pickup.overlaps.insert(playerEntity);
+
+                if (!pickup.isGun() && pickup.ammoAmount > 0) {
+                    playerBodyView.get<Components::Ammo>(playerEntity)
+                        .add(pickup.ammoType, pickup.ammoAmount);
+                    playerBodyView.get<Components::Inventory>(playerEntity)
+                        .dirty = true;
+                    m_entityManager.scheduleForRemoval(pickupEntity);
+                    break;
+                }
+            } else {
+                pickup.overlaps.erase(playerEntity);
+            }
+        }
+    }
+}
+
+// Process explicit pickup key presses: add the nearest overlapping gun to the
+// player's inventory.
+void GameServer::processPickupActions() {
+    entt::registry& reg = m_entityManager.getRegistry();
+
+    auto playerView =
+        reg.view<Components::Input, Components::Inventory, Components::Ammo>();
+    auto pickupView = reg.view<Components::GroundItem>();
+
+    for (auto playerEntity : playerView) {
+        auto& input = playerView.get<Components::Input>(playerEntity);
+        if (!input.pickupRequested) continue;
+
+        auto& inventory = playerView.get<Components::Inventory>(playerEntity);
+
+        for (auto pickupEntity : pickupView) {
+            if (!reg.valid(pickupEntity) ||
+                reg.all_of<Components::Removal>(pickupEntity))
+                continue;
+
+            auto& pickup = pickupView.get<Components::GroundItem>(pickupEntity);
+            if (!pickup.isGun()) continue;
+            if (!pickup.overlaps.count(playerEntity)) continue;
+            if (!inventory.addItem(pickup.gun)) continue;
+
+            m_entityManager.scheduleForRemoval(pickupEntity);
+            break;
+        }
+
+        input.pickupRequested = false;
     }
 }
 

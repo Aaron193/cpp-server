@@ -142,6 +142,16 @@ export class GameClient {
                     }
                     break
                 }
+                case 'e':
+                case 'E': {
+                    if (this.world.isControllingPlayer()) {
+                        this.socket.streamWriter.writeU8(
+                            ClientHeader.PICKUP_REQUEST
+                        )
+                        this.socket.flush()
+                    }
+                    break
+                }
                 case '1':
                 case '2':
                 case '3':

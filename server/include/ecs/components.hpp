@@ -6,6 +6,7 @@
 #include <array>
 #include <cstdint>
 #include <entt/entt.hpp>
+#include <unordered_set>
 
 #include "common/enums.hpp"
 #include "ecs/EntityManager.hpp"
@@ -39,6 +40,7 @@ struct Input {
     // true if the mouse was ever down during the current tick
     bool dirtyClick = false;
     bool reloadRequested = false;
+    bool pickupRequested = false;
     int8_t switchSlot = -1;
 };
 
@@ -234,6 +236,20 @@ struct Inventory {
     InventorySlot& getActive() { return slots[activeSlot]; }
     const InventorySlot& getActive() const { return slots[activeSlot]; }
     bool hasGunInHands() const { return getActive().isGun(); }
+};
+
+struct GroundItem {
+    ItemType itemType = ItemType::ITEM_NONE;
+    AmmoType ammoType = AmmoType::LIGHT;
+    int ammoAmount = 0;
+    Gun gun{};
+    std::unordered_set<entt::entity> overlaps;
+
+    bool isGun() const {
+        return itemType == ItemType::GUN_PISTOL ||
+               itemType == ItemType::GUN_RIFLE ||
+               itemType == ItemType::GUN_SHOTGUN;
+    }
 };
 
 struct Projectile {

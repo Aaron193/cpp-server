@@ -52,6 +52,7 @@ class Client {
     void onChat();
     void onReload();
     void onSwitchItem();
+    void onPickupRequest();
 
     void updateCamera();
 

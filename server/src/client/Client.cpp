@@ -72,6 +72,9 @@ void Client::onMessage(const std::string_view& message) {
             case ClientHeader::SWITCH_ITEM:
                 onSwitchItem();
                 break;
+            case ClientHeader::PICKUP_REQUEST:
+                onPickupRequest();
+                break;
         }
     }
 }
@@ -200,6 +203,17 @@ void Client::onSwitchItem() {
     input.switchSlot = static_cast<int8_t>(slot);
 }
 
+void Client::onPickupRequest() {
+    if (!m_active) {
+        return;
+    }
+
+    entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
+    if (!reg.all_of<Components::Input>(m_entity)) return;
+    Components::Input& input = reg.get<Components::Input>(m_entity);
+    input.pickupRequested = true;
+}
+
 void Client::writeGameState() {
     entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
 
@@ -301,6 +315,23 @@ void Client::writeGameState() {
             m_writer.writeFloat(pixels(position.x));
             m_writer.writeFloat(pixels(position.y));
             m_writer.writeFloat(b2Rot_GetAngle(b2Body_GetRotation(bodyId)));
+
+            // TODO: we can prob improve this part
+            if (base.type == EntityTypes::GUN_PICKUP ||
+                base.type == EntityTypes::AMMO_PICKUP) {
+                if (reg.all_of<Components::GroundItem>(entity)) {
+                    const auto& groundItem =
+                        reg.get<Components::GroundItem>(entity);
+                    m_writer.writeU8(static_cast<uint8_t>(groundItem.itemType));
+                    m_writer.writeU8(static_cast<uint8_t>(groundItem.ammoType));
+                    m_writer.writeU16(
+                        static_cast<uint16_t>(groundItem.ammoAmount));
+                } else {
+                    m_writer.writeU8(static_cast<uint8_t>(ItemType::ITEM_NONE));
+                    m_writer.writeU8(static_cast<uint8_t>(AmmoType::LIGHT));
+                    m_writer.writeU16(0);
+                }
+            }
         }
     }
 

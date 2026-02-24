@@ -7,6 +7,7 @@ export const enum ClientHeader {
     CLIENT_CHAT,
     RELOAD,
     SWITCH_ITEM,
+    PICKUP_REQUEST,
 }
 
 export const enum ServerHeader {

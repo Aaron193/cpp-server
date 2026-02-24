@@ -11,6 +11,7 @@ enum ClientHeader : uint8_t {
     CLIENT_CHAT,
     RELOAD,
     SWITCH_ITEM,
+    PICKUP_REQUEST,
 };
 
 enum ServerHeader : uint8_t {
@@ -69,6 +70,7 @@ enum CollisionCategory : uint16_t {
     CAT_COVER = 1 << 2,
     CAT_WATER = 1 << 3,
     CAT_BULLET = 1 << 4,
+    CAT_PICKUP = 1 << 5,
 };
 
 enum CollisionMask : uint16_t {

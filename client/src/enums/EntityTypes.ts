@@ -8,4 +8,6 @@ export enum EntityTypes {
     FENCE,
     TREE,
     BULLET,
+    GUN_PICKUP,
+    AMMO_PICKUP,
 }
