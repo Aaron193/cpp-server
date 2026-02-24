@@ -3,7 +3,7 @@ import { BiomeType } from '../enums/BiomeType'
 import { Renderer } from '../Renderer'
 import { assert } from '../utils/assert'
 
-const debug = true
+const debug = false
 
 export class TerrainRenderer {
     private renderer: Renderer
