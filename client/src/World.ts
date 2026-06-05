@@ -90,7 +90,7 @@ export class World {
         })
 
         this.effects.forEach((effect) => effect.update(delta, tick, now))
-        this.effects = this.effects.filter((effect) => !effect.destroyed)
+        this.effects = this.effects.filter((effect) => !effect.destroyed) // TODO: bad for gc
 
         const cameraEntity = this.entities.get(this.cameraEntityId)
 
