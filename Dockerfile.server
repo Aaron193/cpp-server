@@ -2,6 +2,11 @@
 
 FROM ubuntu:22.04 AS builder
 
+# Pin the registry commit so the native Jolt port and every transitive native
+# dependency resolve reproducibly. This release contains joltphysics 5.6.0,
+# matching the JoltPhysics.js 1.1.0 runtime used by the browser client.
+ARG VCPKG_COMMIT=9e593bb18ea69cc5095e012465dcd675a822ed0d
+
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -18,9 +23,14 @@ RUN apt-get update && apt-get install -y \
     ninja-build \
     && rm -rf /var/lib/apt/lists/*
 
-# Install vcpkg
-RUN git clone https://github.com/Microsoft/vcpkg.git /opt/vcpkg && \
-    /opt/vcpkg/bootstrap-vcpkg.sh
+# Install the exact vcpkg registry revision rather than following a branch or
+# mutable image-time default.
+RUN git init /opt/vcpkg && \
+    git -C /opt/vcpkg remote add origin https://github.com/microsoft/vcpkg.git && \
+    git -C /opt/vcpkg fetch --depth 1 origin "${VCPKG_COMMIT}" && \
+    git -C /opt/vcpkg checkout --detach FETCH_HEAD && \
+    test "$(git -C /opt/vcpkg rev-parse HEAD)" = "${VCPKG_COMMIT}" && \
+    /opt/vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
 ENV VCPKG_ROOT=/opt/vcpkg
 ENV PATH="${VCPKG_ROOT}:${PATH}"
@@ -43,8 +53,10 @@ RUN rm -rf build && \
     cmake \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_TOOLCHAIN_FILE="${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" \
+    -DSERVER_ENABLE_JOLT=ON \
+    -DBUILD_TESTING=OFF \
     .. && \
-    cmake --build . --parallel $(nproc)
+    cmake --build . --parallel "$(nproc)"
 
 # =============================================================================
 # Production stage
@@ -55,12 +67,23 @@ FROM ubuntu:22.04 AS production
 RUN apt-get update && apt-get install -y \
     libstdc++6 \
     ca-certificates \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Copy the built server binary
 COPY --from=builder /build/build/server ./server
+
+# The server verifies and consumes the same committed package as the browser.
+COPY --from=builder /build/game_config.json ./game_config.json
+COPY client/public/maps/graybox-arena ./maps/graybox-arena
+
+# Explicit runtime inputs. The server rejects an invalid config or map package
+# before opening its WebSocket listener.
+ENV GAME_CONFIG_PATH=/app/game_config.json \
+    MAP_PACKAGE_DIR=/app/maps/graybox-arena \
+    SERVER_PORT=9001
 
 # Copy any required runtime assets (if any)
 # COPY server/assets ./assets
@@ -74,9 +97,8 @@ USER gameserver
 # Expose game server port
 EXPOSE 9001
 
-# Health check (customize based on your server's health endpoint if available)
+# uWebSockets returns HTTP 200 on the game endpoint for a non-Upgrade request.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD timeout 2 bash -c "</dev/tcp/localhost/9001" || exit 1
+    CMD ["curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:9001/"]
 
-# Start the server
-CMD ["./server"]
+CMD ["/app/server"]

@@ -22,6 +22,11 @@ export interface GameServerInfo {
     host: string
     port: number
     region: string
+    buildId: string
+    protocolVersion: number
+    mapId: string
+    mode: string
+    websocketUrl: string
     currentPlayers: number
     maxPlayers: number
     isOnline: boolean

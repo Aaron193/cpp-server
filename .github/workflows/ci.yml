@@ -1,0 +1,86 @@
+name: 3D FPS CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  client:
+    name: Client, map compiler, and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - name: Verify committed protocol code and vectors have no generator drift
+        run: npm run protocol:check
+      - run: npm run typecheck
+      - run: npm test
+      - name: Verify committed map package has no compiler drift
+        run: npm run map:check
+      - run: npm run build
+
+  web:
+    name: Web typecheck, tests, and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  server:
+    name: C++ configure, build, and tests
+    runs-on: ubuntu-latest
+    env:
+      VCPKG_ROOT: ${{ runner.temp }}/vcpkg
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore and install vcpkg dependencies
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: ${{ env.VCPKG_ROOT }}
+          vcpkgGitCommitId: 9e593bb18ea69cc5095e012465dcd675a822ed0d
+          vcpkgJsonGlob: server/vcpkg.json
+      - name: Configure fresh 3D build tree
+        run: >-
+          cmake -S server -B server/.build/3d/ci
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake
+          -DSERVER_ENABLE_JOLT=ON
+          -DBUILD_TESTING=ON
+      - name: Build server and test target
+        run: cmake --build server/.build/3d/ci --parallel 2
+      - name: Run C++ tests
+        run: ctest --test-dir server/.build/3d/ci --output-on-failure
+
+  deployment:
+    name: Deployment and container configuration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate protocol, map, nginx, image inputs, and Compose invariants
+        run: ./scripts/validate-deployment.sh
+      - name: Resolve production Compose configuration
+        run: docker compose --env-file .env.example config --quiet
+      - name: Lint production Dockerfiles without building images
+        run: |
+          docker build --check -f Dockerfile.client .
+          docker build --check -f Dockerfile.server .
+          docker build --check -f Dockerfile.web .

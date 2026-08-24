@@ -1,0 +1,112 @@
+{
+  "name": "ArenaProtocol",
+  "version": 3,
+  "limits": {
+    "maxEnvelopeBytes": 61443,
+    "maxPayloadBytes": 61440,
+    "maxStringBytes": 16384,
+    "maxBuildIdBytes": 64,
+    "maxMapIdBytes": 64,
+    "maxHashBytes": 128,
+    "maxAccessTokenBytes": 512,
+    "maxRejectDetailBytes": 256,
+    "maxChatBytes": 512,
+    "maxConfigurationBytes": 16384,
+    "maxInputCommands": 64,
+    "maxSnapshotEntities": 512
+  },
+  "enums": {
+    "RejectReason": { "underlying": "u8", "values": { "VersionMismatch": 1, "BuildMismatch": 2, "MapMismatch": 3, "ServerFull": 4, "Unauthorized": 5, "InvalidHello": 6, "InternalError": 7 } },
+    "EntityKind": { "underlying": "u8", "values": { "Player": 1, "Spectator": 2, "Prop": 3 } },
+    "MatchPhase": { "underlying": "u8", "values": { "Waiting": 1, "Active": 2, "Intermission": 3, "Ended": 4 } },
+    "Weapon": { "underlying": "u8", "values": { "None": 0, "Rifle": 1, "Shotgun": 2 } },
+    "RemoveReason": { "underlying": "u8", "values": { "Disconnected": 1, "Destroyed": 2, "OutOfScope": 3 } },
+    "ImpactMaterial": { "underlying": "u8", "values": { "World": 1, "Player": 2 } },
+    "RoundTransitionKind": { "underlying": "u8", "values": { "Started": 1, "Ended": 2, "Intermission": 3, "Reset": 4 } },
+    "ChatChannel": { "underlying": "u8", "values": { "Global": 1, "System": 2 } }
+  },
+  "types": {
+    "Vec3": [
+      { "name": "x", "type": "f32" }, { "name": "y", "type": "f32" }, { "name": "z", "type": "f32" }
+    ],
+    "MapDescriptor": [
+      { "name": "mapId", "type": "string", "max": "maxMapIdBytes" },
+      { "name": "formatVersion", "type": "u16" },
+      { "name": "contentHash", "type": "string", "max": "maxHashBytes" }
+    ],
+    "MatchState": [
+      { "name": "phase", "type": { "enum": "MatchPhase" } },
+      { "name": "roundNumber", "type": "u16" },
+      { "name": "phaseEndsAtTick", "type": "u32" }
+    ],
+    "WeaponState": [
+      { "name": "selected", "type": { "enum": "Weapon" } },
+      { "name": "magazineAmmo", "type": "u16" },
+      { "name": "reserveAmmo", "type": "u16" },
+      { "name": "stateFlags", "type": "u8" }
+    ],
+    "InputCommand": [
+      { "name": "sequence", "type": "u32" },
+      { "name": "clientTick", "type": "u32", "description": "Server tick domain learned from Snapshot.serverTick; early or out-of-domain values are clamped by the server." },
+      { "name": "moveX", "type": "f32" }, { "name": "moveY", "type": "f32" },
+      { "name": "buttonFlags", "type": "u16" },
+      { "name": "yaw", "type": "f32" }, { "name": "pitch", "type": "f32" },
+      { "name": "selectedWeapon", "type": { "enum": "Weapon" } }
+    ],
+    "EntityRecord": [
+      { "name": "entityId", "type": "u32" },
+      { "name": "kind", "type": { "enum": "EntityKind" } },
+      { "name": "position", "type": { "ref": "Vec3" } },
+      { "name": "velocity", "type": { "ref": "Vec3" } },
+      { "name": "bodyYaw", "type": "f32" }, { "name": "aimPitch", "type": "f32" },
+      { "name": "grounded", "type": "bool" }, { "name": "stateFlags", "type": "u16" },
+      { "name": "equippedWeapon", "type": { "enum": "Weapon" } },
+      { "name": "health", "type": { "optional": "u16" } },
+      { "name": "weaponState", "type": { "optional": { "ref": "WeaponState" } } }
+    ]
+  },
+  "messages": {
+    "Hello": { "id": 1, "fields": [
+      { "name": "protocolVersion", "type": "u16" },
+      { "name": "clientBuildId", "type": "string", "max": "maxBuildIdBytes" },
+      { "name": "supportedMapFormat", "type": "u16" },
+      { "name": "accessToken", "type": { "optional": "string" }, "max": "maxAccessTokenBytes" }
+    ] },
+    "Welcome": { "id": 2, "fields": [
+      { "name": "protocolVersion", "type": "u16" },
+      { "name": "serverBuildId", "type": "string", "max": "maxBuildIdBytes" },
+      { "name": "playerId", "type": "u32" }, { "name": "tickRate", "type": "u16" }, { "name": "snapshotRate", "type": "u16" },
+      { "name": "map", "type": { "ref": "MapDescriptor" } },
+      { "name": "configurationHash", "type": "string", "max": "maxHashBytes" }
+    ] },
+    "Reject": { "id": 3, "fields": [
+      { "name": "serverBuildId", "type": "string", "max": "maxBuildIdBytes" },
+      { "name": "reason", "type": { "enum": "RejectReason" } },
+      { "name": "detail", "type": "string", "max": "maxRejectDetailBytes" },
+      { "name": "expectedProtocolVersion", "type": "u16" }, { "name": "expectedMapFormat", "type": "u16" }
+    ] },
+    "InputBatch": { "id": 4, "fields": [
+      { "name": "commands", "type": { "array": { "ref": "InputCommand" } }, "max": "maxInputCommands", "min": 1 }
+    ] },
+    "Snapshot": { "id": 5, "fields": [
+      { "name": "serverTick", "type": "u32" }, { "name": "lastProcessedInputSequence", "type": "u32" },
+      { "name": "match", "type": { "ref": "MatchState" } },
+      { "name": "entities", "type": { "array": { "ref": "EntityRecord" } }, "max": "maxSnapshotEntities" }
+    ] },
+    "Spawn": { "id": 6, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "entity", "type": { "ref": "EntityRecord" } }] },
+    "Remove": { "id": 7, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "entityId", "type": "u32" }, { "name": "reason", "type": { "enum": "RemoveReason" } }] },
+    "ShotConfirmed": { "id": 8, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "shooterId", "type": "u32" }, { "name": "inputSequence", "type": "u32" }, { "name": "shotId", "type": "u32" }, { "name": "weapon", "type": { "enum": "Weapon" } }] },
+    "Impact": { "id": 9, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "shotId", "type": "u32" }, { "name": "position", "type": { "ref": "Vec3" } }, { "name": "normal", "type": { "ref": "Vec3" } }, { "name": "material", "type": { "enum": "ImpactMaterial" } }] },
+    "Damage": { "id": 10, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "sourceId", "type": { "optional": "u32" } }, { "name": "targetId", "type": "u32" }, { "name": "amount", "type": "u16" }, { "name": "remainingHealth", "type": "u16" }] },
+    "Death": { "id": 11, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "victimId", "type": "u32" }, { "name": "killerId", "type": { "optional": "u32" } }, { "name": "weapon", "type": { "enum": "Weapon" } }] },
+    "Respawn": { "id": 12, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "playerId", "type": "u32" }, { "name": "position", "type": { "ref": "Vec3" } }, { "name": "bodyYaw", "type": "f32" }] },
+    "ScoreChange": { "id": 13, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "playerId", "type": "u32" }, { "name": "score", "type": "i32" }, { "name": "delta", "type": "i16" }, { "name": "kills", "type": "u32" }, { "name": "deaths", "type": "u32" }] },
+    "RoundTransition": { "id": 14, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "transition", "type": { "enum": "RoundTransitionKind" } }, { "name": "match", "type": { "ref": "MatchState" } }] },
+    "Chat": { "id": 15, "fields": [{ "name": "senderId", "type": { "optional": "u32" } }, { "name": "channel", "type": { "enum": "ChatChannel" } }, { "name": "text", "type": "string", "max": "maxChatBytes" }] },
+    "Configuration": { "id": 16, "fields": [
+      { "name": "protocolVersion", "type": "u16" }, { "name": "serverBuildId", "type": "string", "max": "maxBuildIdBytes" },
+      { "name": "map", "type": { "ref": "MapDescriptor" } }, { "name": "configurationHash", "type": "string", "max": "maxHashBytes" },
+      { "name": "configurationJson", "type": "string", "max": "maxConfigurationBytes" }
+    ] }
+  }
+}

@@ -1,4 +1,3 @@
-#include <box2d/box2d.h>
 #include <uwebsockets/App.h>
 
 #include <cstdlib>
@@ -22,9 +21,14 @@ int main() {
     std::string serverHost = getEnvVar("SERVER_HOST", "localhost");
     int serverPort = std::stoi(getEnvVar("SERVER_PORT", "9001"));
     std::string serverRegion = getEnvVar("SERVER_REGION", "local");
-    int maxPlayers = std::stoi(getEnvVar("MAX_PLAYERS", "100"));
+    int maxPlayers = std::stoi(getEnvVar("MAX_PLAYERS", "12"));
     std::string webApiUrl = getEnvVar("WEB_API_URL", "localhost:3000");
     std::string sharedSecret = getEnvVar("SERVER_SHARED_SECRET", "");
+    std::string buildId = getEnvVar("SERVER_BUILD_ID", "dev");
+    std::string mode = getEnvVar("SERVER_MODE", "ffa");
+    std::string websocketUrl = getEnvVar(
+        "SERVER_WEBSOCKET_URL",
+        "ws://" + serverHost + ":" + std::to_string(serverPort));
 
     std::cout << "[Config] Server ID: " << serverId << std::endl;
     std::cout << "[Config] Host: " << serverHost << ":" << serverPort
@@ -36,6 +40,10 @@ int main() {
               << (sharedSecret.empty() ? "<not set>" : "<set>") << std::endl;
 
     GameServer gameServer;
+    gameServer.m_sessionConfiguration.buildId = buildId;
+    gameServer.m_sessionConfiguration.mode = mode;
+    gameServer.m_sessionConfiguration.maxPlayers =
+        static_cast<std::size_t>(maxPlayers);
     SocketServer socketServer(gameServer, serverPort);
 
     // Initialize server registration if web API URL and secret are configured
@@ -43,7 +51,9 @@ int main() {
     if (!webApiUrl.empty() && !sharedSecret.empty()) {
         registration = std::make_unique<ServerRegistration>(
             webApiUrl, serverId, serverHost, serverPort, serverRegion,
-            maxPlayers, sharedSecret);
+            maxPlayers, buildId, SessionConfiguration::ProtocolVersion,
+            gameServer.m_mapPackage.manifest.mapId, mode, websocketUrl,
+            sharedSecret);
 
         // Register server with web API (async, non-blocking)
         registration->registerServerAsync();

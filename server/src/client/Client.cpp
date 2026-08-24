@@ -1,516 +1,373 @@
 #include "client/Client.hpp"
 
-#include <box2d/box2d.h>
-
-#include <iostream>
-#include <unordered_set>
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <stdexcept>
 
 #include "GameServer.hpp"
-#include "World.hpp"
-#include "common/enums.hpp"
-#include "ecs/EntityManager.hpp"
 #include "ecs/components.hpp"
-#include "packet/buffer/PacketReader.hpp"
-#include "physics/CollisionHelpers.hpp"
-#include "physics/PhysicsWorld.hpp"
-#include "util/units.hpp"
+#include "util/Sha256.hpp"
 
-Client::Client(GameServer& gameServer,
-               uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id)
-    : m_gameServer(gameServer), m_ws(ws), m_id(id) {
-    changeBody(m_gameServer.m_entityManager.createSpectator(entt::null));
+namespace {
+constexpr float kPi = 3.14159265358979323846F;
+constexpr std::uint16_t kJump = 1U << 0U;
+constexpr std::uint16_t kFire = 1U << 1U;
+constexpr std::uint16_t kReload = 1U << 2U;
+constexpr std::uint16_t kKnownButtons = kJump | kFire | kReload;
+constexpr std::size_t kMaxPendingInputs = 128U;
+// 20% burst headroom prevents legitimate 60 Hz timer jitter from grazing a
+// rolling one-second boundary. Command rate and pending backlog stay bounded.
+constexpr std::size_t kInputBatchesPerSecond = 72U;
+constexpr std::size_t kInputCommandsPerSecond = 240U;
+constexpr std::size_t kChatsPerWindow = 5U;
+constexpr double kChatWindowSeconds = 10.0;
+constexpr std::size_t kMaxOutgoingMessages = 1024U;
+constexpr std::size_t kMaxOutgoingBytes = 256U * 1024U;
 
-    // send server tps
-    m_writer.writeU8(ServerHeader::TPS);
-    m_writer.writeU8(m_gameServer.m_tps);
-
-    m_writer.writeU8(ServerHeader::MAP_INIT);
-    m_writer.writeU32(
-        static_cast<uint32_t>(m_gameServer.m_worldGenerator->GetWorldSize()));
-
-    m_writer.writeU8(ServerHeader::GAME_CONFIG);
-    m_writer.writeString(m_gameServer.m_gameConfig.toJsonString());
-
-    // tell our player about others
-    for (auto& [id, client] : m_gameServer.m_clients) {
-        m_writer.writeU8(ServerHeader::PLAYER_JOIN);
-        m_writer.writeU32(static_cast<uint32_t>(client->m_entity));
-        m_writer.writeString(client->m_name);
-    }
+template <typename Queue>
+void prune(Queue& queue, double now, double window) {
+    while (!queue.empty() && now - queue.front() >= window) queue.pop_front();
 }
 
-Client::~Client() {}
+}  // namespace
 
-void Client::onMessage(const std::string_view& message) {
-    m_reader.loadMessage(message);
-
-    while (m_reader.getOffset() < m_reader.byteLength()) {
-        const uint8_t header = m_reader.readU8();
-
-        switch (header) {
-            case ClientHeader::SPAWN:
-                onSpawn();
-                break;
-            case ClientHeader::MOUSE:
-                onMouse();
-                break;
-            case ClientHeader::MOVEMENT:
-                onMovement();
-                break;
-            case ClientHeader::MOUSE_DOWN:
-                onMouseClick(true);
-                break;
-            case ClientHeader::MOUSE_UP:
-                onMouseClick(false);
-                break;
-            case ClientHeader::CLIENT_CHAT:
-                onChat();
-                break;
-            case ClientHeader::RELOAD:
-                onReload();
-                break;
-            case ClientHeader::SWITCH_ITEM:
-                onSwitchItem();
-                break;
-            case ClientHeader::PICKUP_REQUEST:
-                onPickupRequest();
-                break;
-        }
-    }
+Client::Client(GameServer& server, std::unique_ptr<PeerTransport> transport,
+               std::uint32_t id)
+    : m_id(id), m_entity(entt::null), m_gameServer(server),
+      transport_(std::move(transport)) {
+    if (!transport_) throw std::invalid_argument("client transport is required");
 }
 
-void Client::onSpawn() {
-    if (m_active) return;
+Client::~Client() = default;
 
-    std::string name = m_reader.readString();
-
-    m_name = name;
-    m_active = true;
-
-    // TODO: maybe add this scheduleForRemoval to the changeBody method...
-    m_gameServer.m_entityManager.scheduleForRemoval(m_entity);
-    changeBody(m_gameServer.m_entityManager.createPlayer());
-
-    m_writer.writeU8(ServerHeader::SPAWN_SUCCESS);
-    m_writer.writeU32(static_cast<uint32_t>(m_entity));
-    std::cout << "User " << m_name << " has connected" << std::endl;
-
-    // serialize the client with the map data
-    sendTerrainMeshes();
-
-    // notify clients about our new player
-    for (auto& [id, client] : m_gameServer.m_clients) {
-        client->m_writer.writeU8(ServerHeader::PLAYER_JOIN);
-        client->m_writer.writeU32(static_cast<uint32_t>(m_entity));
-        client->m_writer.writeString(m_name);
-
-        client->m_writer.writeU8(ServerHeader::NEWS);
-        client->m_writer.writeU8(NewsType::TEXT);
-        client->m_writer.writeString(m_name + " has joined the game!!");
-    }
+bool Client::isNewer(std::uint32_t value, std::uint32_t previous) {
+    return value != previous && static_cast<std::int32_t>(value - previous) > 0;
 }
 
-void Client::onClose() {
-    for (auto& [id, client] : m_gameServer.m_clients) {
-        if (client != this) {
-            client->m_writer.writeU8(ServerHeader::PLAYER_LEAVE);
-            client->m_writer.writeU32(static_cast<uint32_t>(m_entity));
-        }
-    }
-}
-
-void Client::onMouse() {
-    const float angle = m_reader.readFloat();
-
-    if (!m_active) {
+void Client::queue(std::vector<std::uint8_t> bytes) {
+    if (closing_) return;
+    if (outgoing_.size() >= kMaxOutgoingMessages ||
+        bytes.size() > kMaxOutgoingBytes -
+                           std::min(outgoingBytes_, kMaxOutgoingBytes)) {
+        closing_ = true;
+        outgoing_.clear();
+        outgoingBytes_ = 0U;
+        m_gameServer.recordClientMessageMetric(
+            ClientMessageMetric::Backpressure);
+        transport_->close(1008U, "outbound queue limit exceeded");
         return;
     }
-
-    entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
-    assert(reg.all_of<Components::Input>(m_entity));
-    Components::Input& input = reg.get<Components::Input>(m_entity);
-    input.angle = angle;
-}
-
-void Client::onMovement() {
-    const uint8_t direction = m_reader.readU8();
-
-    if (!m_active) {
-        return;
-    }
-
-    entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
-    assert(reg.all_of<Components::Input>(m_entity));
-    Components::Input& input = reg.get<Components::Input>(m_entity);
-    input.direction = direction;
-}
-
-void Client::onMouseClick(bool isDown) {
-    if (!m_active) {
-        return;
-    }
-
-    entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
-    assert(reg.all_of<Components::Input>(m_entity));
-    Components::Input& input = reg.get<Components::Input>(m_entity);
-
-    input.mouseIsDown = isDown;
-    if (isDown) input.dirtyClick = true;
-}
-
-void Client::onChat() {
-    std::string message = m_reader.readString();
-
-    if (!m_active) {
-        return;
-    }
-
-    if (message.length() > 50) {
-        return;
-    }
-
-    for (auto& [id, client] : m_gameServer.m_clients) {
-        if (client->m_previousVisibleEntities.find(m_entity) !=
-            client->m_previousVisibleEntities.end()) {
-            client->m_writer.writeU8(ServerHeader::SERVER_CHAT);
-            client->m_writer.writeU32(static_cast<uint32_t>(m_entity));
-            client->m_writer.writeString(message);
-        }
-    }
-}
-
-void Client::onReload() {
-    if (!m_active) {
-        return;
-    }
-
-    entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
-    if (!reg.all_of<Components::Input>(m_entity)) return;
-    Components::Input& input = reg.get<Components::Input>(m_entity);
-    input.reloadRequested = true;
-}
-
-void Client::onSwitchItem() {
-    if (!m_active) {
-        return;
-    }
-
-    const uint8_t slot = m_reader.readU8();
-
-    entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
-    if (!reg.all_of<Components::Input>(m_entity)) return;
-    Components::Input& input = reg.get<Components::Input>(m_entity);
-    input.switchSlot = static_cast<int8_t>(slot);
-}
-
-void Client::onPickupRequest() {
-    if (!m_active) {
-        return;
-    }
-
-    entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
-    if (!reg.all_of<Components::Input>(m_entity)) return;
-    Components::Input& input = reg.get<Components::Input>(m_entity);
-    input.pickupRequested = true;
-}
-
-void Client::writeGameState() {
-    entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
-
-    assert(reg.all_of<Components::Camera>(m_entity));
-
-    // Static variables to avoid repeated allocations
-    static std::vector<entt::entity> createEntities;
-    static std::vector<entt::entity> updateEntities;
-    static std::vector<entt::entity> removeEntities;
-    static std::unordered_set<entt::entity> currentlyVisibleEntities;
-
-    createEntities.clear();
-    updateEntities.clear();
-    removeEntities.clear();
-    currentlyVisibleEntities.clear();
-
-    Components::Camera& cam = reg.get<Components::Camera>(m_entity);
-    bool targetValid = (cam.target != entt::null && reg.valid(cam.target));
-    const b2Vec2& pos =
-        targetValid ? b2Body_GetPosition(
-                          reg.get<Components::EntityBase>(cam.target).bodyId)
-                    : cam.position;
-    float halfViewX = meters(cam.width) * 0.5f;
-    float halfViewY = meters(cam.height) * 0.5f;
-
-    b2AABB queryAABB;
-    queryAABB.lowerBound = {pos.x - halfViewX, pos.y - halfViewY};
-    queryAABB.upperBound = {pos.x + halfViewX, pos.y + halfViewY};
-
-    PhysicsWorld& physicsWorld = m_gameServer.m_physicsWorld;
-
-    // In Box2D v3, we query all networked entities manually instead of using
-    // QueryAABB callback
-    auto networkedView =
-        reg.view<Components::EntityBase, Components::Networked>();
-    std::vector<entt::entity> visibleNetworkedEntities;
-
-    for (auto entity : networkedView) {
-        auto& base = networkedView.get<Components::EntityBase>(entity);
-        if (B2_IS_NON_NULL(base.bodyId)) {
-            if (!b2Body_IsEnabled(base.bodyId)) {
-                continue;
-            }
-            b2Vec2 entityPos = b2Body_GetPosition(base.bodyId);
-            if (AABBCollision::pointInAABB(entityPos, queryAABB)) {
-                visibleNetworkedEntities.push_back(entity);
-            }
-        }
-    }
-
-    for (const entt::entity& entity : visibleNetworkedEntities) {
-        currentlyVisibleEntities.insert(entity);
-    }
-
-    auto baseView = reg.view<Components::EntityBase>();
-    auto stateView = reg.view<Components::State>();
-
-    // most of these entities are going to go into the update list
-    createEntities.reserve(currentlyVisibleEntities.size());
-    updateEntities.reserve(currentlyVisibleEntities.size());
-
-    for (const entt::entity& entity : currentlyVisibleEntities) {
-        if (m_previousVisibleEntities.find(entity) ==
-            m_previousVisibleEntities.end()) {
-            createEntities.push_back(entity);
-        } else {
-            // Only send updates for dynamic bodies (skip static structures)
-            auto& base = baseView.get<Components::EntityBase>(entity);
-            if (B2_IS_NON_NULL(base.bodyId) &&
-                b2Body_GetType(base.bodyId) != b2_staticBody) {
-                updateEntities.push_back(entity);
-            }
-        }
-    }
-
-    for (const entt::entity& entity : m_previousVisibleEntities) {
-        if (currentlyVisibleEntities.find(entity) ==
-            currentlyVisibleEntities.end()) {
-            removeEntities.push_back(entity);
-        }
-    }
-
-    if (!createEntities.empty()) {
-        m_writer.writeU8(ServerHeader::ENTITY_CREATE);
-        m_writer.writeU32(static_cast<uint32_t>(createEntities.size()));
-
-        for (entt::entity entity : createEntities) {
-            assert(reg.all_of<Components::EntityBase>(entity));
-
-            auto& base = baseView.get<Components::EntityBase>(entity);
-            b2BodyId bodyId = base.bodyId;
-            assert(B2_IS_NON_NULL(bodyId));
-            const b2Vec2& position = b2Body_GetPosition(bodyId);
-            uint8_t type = base.type;
-
-            m_writer.writeU32(static_cast<uint32_t>(entity));
-            m_writer.writeU8(type);
-            m_writer.writeU8(base.variant);
-            m_writer.writeFloat(pixels(position.x));
-            m_writer.writeFloat(pixels(position.y));
-            m_writer.writeFloat(b2Rot_GetAngle(b2Body_GetRotation(bodyId)));
-
-            // TODO: we can prob improve this part
-            if (base.type == EntityTypes::GUN_PICKUP ||
-                base.type == EntityTypes::AMMO_PICKUP) {
-                if (reg.all_of<Components::GroundItem>(entity)) {
-                    const auto& groundItem =
-                        reg.get<Components::GroundItem>(entity);
-                    m_writer.writeU8(static_cast<uint8_t>(groundItem.itemType));
-                    m_writer.writeU8(static_cast<uint8_t>(groundItem.ammoType));
-                    m_writer.writeU16(
-                        static_cast<uint16_t>(groundItem.ammoAmount));
-                } else {
-                    m_writer.writeU8(static_cast<uint8_t>(ItemType::ITEM_NONE));
-                    m_writer.writeU8(static_cast<uint8_t>(AmmoType::LIGHT));
-                    m_writer.writeU16(0);
-                }
-            }
-        }
-    }
-
-    if (!updateEntities.empty()) {
-        m_writer.writeU8(ServerHeader::ENTITY_UPDATE);
-        m_writer.writeU32(static_cast<uint32_t>(updateEntities.size()));
-
-        for (const entt::entity& entity : updateEntities) {
-            assert(reg.all_of<Components::EntityBase>(entity));
-
-            auto& base = baseView.get<Components::EntityBase>(entity);
-            b2BodyId bodyId = base.bodyId;
-            assert(B2_IS_NON_NULL(bodyId));
-            const b2Vec2& position = b2Body_GetPosition(bodyId);
-
-            m_writer.writeU32(static_cast<uint32_t>(entity));
-            m_writer.writeFloat(pixels(position.x));
-            m_writer.writeFloat(pixels(position.y));
-            m_writer.writeFloat(b2Rot_GetAngle(b2Body_GetRotation(bodyId)));
-        }
-    }
-
-    if (!removeEntities.empty()) {
-        m_writer.writeU8(ServerHeader::ENTITY_REMOVE);
-        m_writer.writeU32(static_cast<uint32_t>(removeEntities.size()));
-
-        for (entt::entity entity : removeEntities) {
-            m_writer.writeU32(static_cast<uint32_t>(entity));
-        }
-    }
-
-    // Write entity states - iterate through currentlyVisibleEntities instead of
-    // query result
-    for (entt::entity entity : currentlyVisibleEntities) {
-        // if entity has state component, notify client of the state
-        if (reg.all_of<Components::State>(entity)) {
-            Components::State& state = reg.get<Components::State>(entity);
-            if (!state.isIdle()) {
-                m_writer.writeU8(ServerHeader::ENTITY_STATE);
-                m_writer.writeU32(static_cast<uint32_t>(entity));
-                m_writer.writeU8(state.state);
-            }
-        }
-    }
-
-    // Spectator clients don't have a health component, we must runtime check
-    if (reg.all_of<Components::Health>(m_entity)) {
-        Components::Health& health = reg.get<Components::Health>(m_entity);
-        if (health.dirty) {
-            m_writer.writeU8(ServerHeader::HEALTH);
-            m_writer.writeFloat(health.current / health.max);
-            health.dirty = false;
-        }
-    }
-
-    if (reg.all_of<Components::Inventory>(m_entity)) {
-        Components::Inventory& inventory =
-            reg.get<Components::Inventory>(m_entity);
-
-        bool inventoryDirty = inventory.dirty;
-
-        if (inventoryDirty) {
-            m_writer.writeU8(ServerHeader::INVENTORY_UPDATE);
-            m_writer.writeU8(inventory.activeSlot);
-
-            uint8_t slotCount = inventory.countOccupiedSlots();
-
-            m_writer.writeU8(slotCount);
-
-            for (size_t i = 0; i < inventory.slots.size(); ++i) {
-                const auto& slot = inventory.slots[i];
-                if (slot.isEmpty()) {
-                    continue;
-                }
-
-                m_writer.writeU8(static_cast<uint8_t>(i));
-                m_writer.writeU8(static_cast<uint8_t>(slot.getItemType()));
-
-                if (slot.isGun()) {
-                    m_writer.writeU8(static_cast<uint8_t>(slot.gun.fireMode));
-                    m_writer.writeU8(static_cast<uint8_t>(slot.gun.ammoType));
-                    m_writer.writeU16(
-                        static_cast<uint16_t>(slot.gun.magazineSize));
-                    m_writer.writeU16(
-                        static_cast<uint16_t>(slot.gun.ammoInMag));
-                    m_writer.writeFloat(slot.gun.reloadRemaining);
-                }
-            }
-
-            inventory.dirty = false;
-        }
-
-        const auto& activeSlot = inventory.getActive();
-        bool needsAmmoUpdate = inventoryDirty;
-        if (activeSlot.isGun() && activeSlot.gun.reloadRemaining > 0.0f) {
-            needsAmmoUpdate = true;
-        }
-
-        if (needsAmmoUpdate && activeSlot.isGun() &&
-            reg.all_of<Components::Ammo>(m_entity)) {
-            Components::Ammo& ammo = reg.get<Components::Ammo>(m_entity);
-            m_writer.writeU8(ServerHeader::AMMO_UPDATE);
-            m_writer.writeU16(static_cast<uint16_t>(activeSlot.gun.ammoInMag));
-            m_writer.writeU16(
-                static_cast<uint16_t>(ammo.get(activeSlot.gun.ammoType)));
-            m_writer.writeFloat(activeSlot.gun.reloadRemaining);
-        }
-    }
-
-    m_previousVisibleEntities.swap(currentlyVisibleEntities);
+    outgoingBytes_ += bytes.size();
+    outgoing_.push_back(std::move(bytes));
+    m_gameServer.observeOutboundQueue(outgoing_.size(), outgoingBytes_);
 }
 
 void Client::sendBytes() {
-    if (!m_writer.hasData()) return;
-
-    m_ws->send(m_writer.getMessage(), uWS::OpCode::BINARY);
-    m_writer.clear();
+    for (const auto& bytes : outgoing_) {
+        transport_->sendBinary(bytes);
+        m_gameServer.recordOutboundMessage(bytes.size());
+    }
+    outgoing_.clear();
+    outgoingBytes_ = 0U;
 }
 
-void Client::changeBody(entt::entity entity) {
-    m_entity = entity;
-
-    // link client to entity
-    entt::registry& reg = m_gameServer.m_entityManager.getRegistry();
-    reg.emplace<Components::Client>(entity, m_id);
-
-    assert(reg.all_of<Components::Camera>(entity));
-
-    // write set-camera packet with cam target entity
-    m_writer.writeU8(ServerHeader::SET_CAMERA);
-    Components::Camera& cam = reg.get<Components::Camera>(entity);
-    m_writer.writeU32(static_cast<uint32_t>(cam.target));
+void Client::reject(protocol::RejectReason reason, std::string detail) {
+    if (closing_) return;
+    m_gameServer.recordClientMessageMetric(ClientMessageMetric::Rejected);
+    protocol::Reject rejection{};
+    rejection.serverBuildId = m_gameServer.m_sessionConfiguration.buildId;
+    rejection.reason = reason;
+    rejection.detail = std::move(detail);
+    rejection.expectedProtocolVersion = SessionConfiguration::ProtocolVersion;
+    rejection.expectedMapFormat = static_cast<std::uint16_t>(
+        m_gameServer.m_mapPackage.manifest.formatVersion);
+    queue(protocol::encode(rejection));
+    sendBytes();
+    closing_ = true;
+    transport_->close(1008U, "handshake rejected");
 }
 
-// Send all terrain meshes once to this client. Uses a compact vertex encoding
-// when the world fits in 16-bit grid coordinates; otherwise falls back to
-// floats.
-void Client::sendTerrainMeshes() {
-    if (m_sentTerrainMeshes) return;
+void Client::failProtocol(std::string_view reason, std::uint16_t code,
+                          ClientMessageMetric metric) {
+    if (closing_) return;
+    m_gameServer.recordClientMessageMetric(metric);
+    closing_ = true;
+    outgoing_.clear();
+    outgoingBytes_ = 0U;
+    transport_->close(code, reason);
+}
 
-    const auto& meshes = m_gameServer.m_terrainMeshes;
-    const uint32_t worldSize = m_gameServer.m_worldGenerator->GetWorldSize();
-    const bool useU16 = worldSize <= std::numeric_limits<uint16_t>::max();
+void Client::onMessage(std::string_view message) {
+    const auto now = std::chrono::duration<double>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    onMessageAt(message, now);
+}
 
-    for (size_t biomeIdx = 0; biomeIdx < meshes.size(); ++biomeIdx) {
-        const TerrainMesh& mesh = meshes[biomeIdx];
-
-        m_writer.writeU8(ServerHeader::BIOME_CREATE);
-        m_writer.writeU32(static_cast<uint32_t>(biomeIdx));
-        m_writer.writeU8(static_cast<uint8_t>(mesh.biome));
-
-        // Encoding flag: 0 = float world pixels, 1 = uint16 heightmap units
-        m_writer.writeU8(useU16 ? 1 : 0);
-
-        // Write vertices
-        m_writer.writeU32(static_cast<uint32_t>(mesh.vertices.size()));
-        if (useU16) {
-            for (const Vec2& v : mesh.vertices) {
-                // Clamp to u16 bounds just in case
-                uint16_t vx = static_cast<uint16_t>(
-                    std::clamp(v.x, 0.0f, static_cast<float>(worldSize)));
-                uint16_t vy = static_cast<uint16_t>(
-                    std::clamp(v.y, 0.0f, static_cast<float>(worldSize)));
-                m_writer.writeU16(vx);
-                m_writer.writeU16(vy);
+void Client::onMessageAt(std::string_view message, double monotonicSeconds) {
+    m_gameServer.recordInboundMessage(message.size());
+    if (closing_) return;
+    if (message.empty() || message.size() > protocol::Limits::MaxEnvelopeBytes) {
+        failProtocol("invalid message size", 1009U,
+                     ClientMessageMetric::Malformed);
+        return;
+    }
+    try {
+        const auto* bytes = reinterpret_cast<const std::uint8_t*>(message.data());
+        const auto decoded = protocol::decodeEnvelope(bytes, message.size());
+        if (decoded.nextOffset != message.size()) {
+            failProtocol("one protocol envelope is required per message", 1002U,
+                         ClientMessageMetric::Malformed);
+            return;
+        }
+        // Unknown message types are forward-compatible. decodeEnvelope has
+        // already validated and skipped their declared payload length.
+        if (!decoded.known) {
+            m_gameServer.recordClientMessageMetric(ClientMessageMetric::Unknown);
+            return;
+        }
+        if (!m_active) {
+            if (!std::holds_alternative<protocol::Hello>(decoded.message)) {
+                reject(protocol::RejectReason::InvalidHello,
+                       "Hello must be the first message");
+                return;
             }
+            handleHello(std::get<protocol::Hello>(decoded.message));
+            return;
+        }
+        if (const auto* batch = std::get_if<protocol::InputBatch>(&decoded.message)) {
+            handleInputBatch(*batch, monotonicSeconds);
+        } else if (const auto* chat = std::get_if<protocol::Chat>(&decoded.message)) {
+            handleChat(*chat, monotonicSeconds);
         } else {
-            for (const Vec2& v : mesh.vertices) {
-                m_writer.writeFloat(v.x * 64.0f);
-                m_writer.writeFloat(v.y * 64.0f);
-            }
+            failProtocol("message is not valid from a welcomed client", 1002U,
+                         ClientMessageMetric::Rejected);
         }
+    } catch (const protocol::ProtocolError&) {
+        failProtocol("malformed protocol message", 1002U,
+                     ClientMessageMetric::Malformed);
+    } catch (const std::exception&) {
+        failProtocol("invalid protocol message", 1002U,
+                     ClientMessageMetric::Malformed);
+    }
+}
 
-        // Write indices
-        m_writer.writeU32(static_cast<uint32_t>(mesh.indices.size()));
-        for (uint32_t idx : mesh.indices) {
-            m_writer.writeU32(idx);
-        }
+void Client::handleHello(const protocol::Hello& hello) {
+    const auto& config = m_gameServer.m_sessionConfiguration;
+    if (hello.protocolVersion != SessionConfiguration::ProtocolVersion) {
+        reject(protocol::RejectReason::VersionMismatch, "unsupported protocol version");
+        return;
+    }
+    if (hello.supportedMapFormat != m_gameServer.m_mapPackage.manifest.formatVersion) {
+        reject(protocol::RejectReason::MapMismatch, "unsupported map package format");
+        return;
+    }
+    if (hello.clientBuildId.empty()) {
+        reject(protocol::RejectReason::InvalidHello, "client build id is required");
+        return;
+    }
+    if (config.requireExactBuild && hello.clientBuildId != config.buildId) {
+        reject(protocol::RejectReason::BuildMismatch,
+               "client and server builds are incompatible");
+        return;
+    }
+    if (m_gameServer.welcomedClientCount() >= config.maxPlayers) {
+        reject(protocol::RejectReason::ServerFull, "server is full");
+        return;
+    }
+    if (!config.authenticate || !config.authenticate(hello.accessToken)) {
+        reject(protocol::RejectReason::Unauthorized, "credentials were not accepted");
+        return;
     }
 
-    m_sentTerrainMeshes = true;
+    // The authoritative id is allocated by the server. Peer-provided identity
+    // and Chat.senderId values never establish entity ownership.
+    m_entity = m_gameServer.m_entityManager.createPlayer();
+    m_gameServer.m_entityManager.getRegistry().emplace<Components::Client>(
+        m_entity, m_id);
+    m_active = true;
+
+    const protocol::MapDescriptor map{
+        m_gameServer.m_mapPackage.manifest.mapId,
+        static_cast<std::uint16_t>(m_gameServer.m_mapPackage.manifest.formatVersion),
+        m_gameServer.m_mapPackage.manifest.contentHash};
+    const std::string configurationJson =
+        m_gameServer.m_gameConfig.toJsonString();
+    const std::string configurationHash =
+        util::sha256Identifier(configurationJson);
+    queue(protocol::encode(protocol::Welcome{
+        SessionConfiguration::ProtocolVersion, config.buildId,
+        static_cast<std::uint32_t>(m_entity), GameServer::kTicksPerSecond,
+        GameServer::kSnapshotsPerSecond, map, configurationHash}));
+    queue(protocol::encode(protocol::Configuration{
+        SessionConfiguration::ProtocolVersion, config.buildId, map,
+        configurationHash, configurationJson}));
+    // Queue after Welcome and Configuration. The record is constructed per
+    // recipient so only this entity's owner sees health and weapon state.
+    m_gameServer.broadcastPlayerSpawn(m_entity);
+    // ScoreChange is the authoritative scoreboard row. Send every current row
+    // after this client's ordered Welcome/Configuration/Spawn sequence so a
+    // mid-round join never needs to infer prior kills or deaths.
+    m_gameServer.queueCurrentScoreboard(*this);
+    sendBytes();
 }
+
+void Client::handleInputBatch(const protocol::InputBatch& batch, double now) {
+    prune(inputBatchTimes_, now, 1.0);
+    prune(inputCommandTimes_, now, 1.0);
+    if (inputBatchTimes_.size() >= kInputBatchesPerSecond ||
+        inputCommandTimes_.size() + batch.commands.size() > kInputCommandsPerSecond ||
+        pendingInputs_ + batch.commands.size() > kMaxPendingInputs) {
+        failProtocol("input rate or backlog exceeded", 1008U,
+                     ClientMessageMetric::RateLimited);
+        return;
+    }
+
+    auto previousSequence = lastReceivedSequence_;
+    auto previousTick = lastReceivedClientTick_;
+    for (const auto& command : batch.commands) {
+        const float magnitudeSquared = command.moveX * command.moveX +
+                                       command.moveY * command.moveY;
+        if (!std::isfinite(command.moveX) || !std::isfinite(command.moveY) ||
+            !std::isfinite(command.yaw) || !std::isfinite(command.pitch) ||
+            std::abs(command.moveX) > 1.0F || std::abs(command.moveY) > 1.0F ||
+            magnitudeSquared > 1.0002F || command.yaw < -kPi ||
+            command.yaw > kPi || command.pitch < -kPi / 2.0F ||
+            command.pitch > kPi / 2.0F ||
+            (command.buttonFlags & ~kKnownButtons) != 0U ||
+            (previousSequence && !isNewer(command.sequence, *previousSequence)) ||
+            (previousTick && !isNewer(command.clientTick, *previousTick))) {
+            failProtocol("invalid or non-monotonic input command", 1008U,
+                         ClientMessageMetric::Rejected);
+            return;
+        }
+        previousSequence = command.sequence;
+        previousTick = command.clientTick;
+    }
+
+    inputBatchTimes_.push_back(now);
+    for (const auto& command : batch.commands) {
+        inputCommandTimes_.push_back(now);
+        Components::PlayerInput input{};
+        input.movement = {command.moveX, command.moveY};
+        input.yaw = command.yaw;
+        input.angle = command.yaw;
+        input.pitch = command.pitch;
+        input.jump = (command.buttonFlags & kJump) != 0U;
+        input.mouseIsDown = (command.buttonFlags & kFire) != 0U;
+        input.dirtyClick = input.mouseIsDown;
+        input.reloadRequested = (command.buttonFlags & kReload) != 0U;
+        input.clientTick = command.clientTick;
+        input.inputSequence = command.sequence;
+        if (command.selectedWeapon == protocol::Weapon::Rifle) input.switchSlot = 0;
+        else if (command.selectedWeapon == protocol::Weapon::Shotgun) input.switchSlot = 1;
+        m_gameServer.queueValidatedInput(m_id, m_entity, input, command.sequence);
+        ++pendingInputs_;
+        m_gameServer.observePendingClientInputs(pendingInputs_);
+    }
+    lastReceivedSequence_ = previousSequence;
+    lastReceivedClientTick_ = previousTick;
+}
+
+void Client::handleChat(const protocol::Chat& chat, double now) {
+    prune(chatTimes_, now, kChatWindowSeconds);
+    if (chatTimes_.size() >= kChatsPerWindow) {
+        failProtocol("chat rate exceeded", 1008U,
+                     ClientMessageMetric::RateLimited);
+        return;
+    }
+    if (chat.channel != protocol::ChatChannel::Global || chat.text.empty()) {
+        failProtocol("invalid client chat", 1008U,
+                     ClientMessageMetric::Rejected);
+        return;
+    }
+    chatTimes_.push_back(now);
+    m_gameServer.broadcastChat(protocol::Chat{
+        static_cast<std::uint32_t>(m_entity), protocol::ChatChannel::Global,
+        chat.text});
+}
+
+void Client::writeGameState() {
+    if (!m_active || closing_) return;
+    const auto started = std::chrono::steady_clock::now();
+    protocol::Snapshot snapshot{};
+    snapshot.serverTick = static_cast<std::uint32_t>(m_gameServer.m_currentTick);
+    snapshot.lastProcessedInputSequence = lastProcessedInputSequence_.value_or(0U);
+    snapshot.match = m_gameServer.matchState();
+    const auto& registry = m_gameServer.m_entityManager.getRegistry();
+    const auto players = registry.view<Components::EntityBase,
+                                       Components::Transform3D,
+                                       Components::Velocity3D,
+                                       Components::CharacterController,
+                                       Components::PlayerInput,
+                                       Components::PlayerLife>();
+    snapshot.entities.reserve(players.size_hint());
+    for (const auto entity : players) {
+        if (players.get<Components::EntityBase>(entity).type != PLAYER) continue;
+        snapshot.entities.push_back(
+            m_gameServer.makeEntityRecord(entity, m_entity));
+    }
+    auto encoded = protocol::encode(snapshot);
+    m_gameServer.observeSnapshot(
+        std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - started)
+            .count(),
+        encoded.size());
+    queue(std::move(encoded));
+}
+
+void Client::queueSpawn(const protocol::Spawn& message) {
+    if (m_active && !closing_) queue(protocol::encode(message));
+}
+void Client::queueRemove(const protocol::Remove& message) {
+    if (m_active && !closing_) queue(protocol::encode(message));
+}
+void Client::queueChat(const protocol::Chat& message) {
+    if (m_active && !closing_) queue(protocol::encode(message));
+}
+void Client::queueShotConfirmed(const protocol::ShotConfirmed& message) {
+    if (m_active && !closing_) queue(protocol::encode(message));
+}
+void Client::queueImpact(const protocol::Impact& message) {
+    if (m_active && !closing_) queue(protocol::encode(message));
+}
+void Client::queueDamage(const protocol::Damage& message) {
+    if (m_active && !closing_) queue(protocol::encode(message));
+}
+void Client::queueDeath(const protocol::Death& message) {
+    if (m_active && !closing_) queue(protocol::encode(message));
+}
+void Client::queueRespawn(const protocol::Respawn& message) {
+    if (m_active && !closing_) queue(protocol::encode(message));
+}
+void Client::queueScoreChange(const protocol::ScoreChange& message) {
+    if (m_active && !closing_) queue(protocol::encode(message));
+}
+void Client::queueRoundTransition(const protocol::RoundTransition& message) {
+    if (m_active && !closing_) queue(protocol::encode(message));
+}
+
+void Client::markInputProcessed(std::uint32_t sequence) {
+    lastProcessedInputSequence_ = sequence;
+}
+void Client::markInputDequeued() {
+    if (pendingInputs_ > 0U) --pendingInputs_;
+}
+
+void Client::onClose() {
+    if (closeHandled_) return;
+    closeHandled_ = true;
+    if (m_active && m_entity != entt::null) {
+        m_gameServer.broadcastRemove(protocol::Remove{
+            static_cast<std::uint32_t>(m_gameServer.m_currentTick),
+            static_cast<std::uint32_t>(m_entity),
+            protocol::RemoveReason::Disconnected});
+        m_gameServer.m_entityManager.scheduleForRemoval(m_entity);
+    }
+    m_active = false;
+    closing_ = true;
+    outgoing_.clear();
+    outgoingBytes_ = 0U;
+}
+
+void Client::changeBody(entt::entity entity) { m_entity = entity; }

@@ -3,7 +3,7 @@
 Control-plane service for the multiplayer game, providing:
 - User account management and authentication
 - Game server discovery and registry
-- Static file hosting for browser client
+- Server registration and compatibility-aware browser discovery
 
 ## Technology Stack
 
@@ -99,11 +99,14 @@ npm run build
 npm start
 ```
 
-Or use Docker:
+Or build the production image from the repository root:
 ```bash
-docker build -t game-control-plane .
-docker run -p 3000:3000 --env-file .env game-control-plane
+docker build -f Dockerfile.web -t game-control-plane .
 ```
+
+Production Compose keeps this port private and routes `/api/` through the
+client nginx container. See [`../docs/deployment.md`](../docs/deployment.md)
+for migration, TLS, health, and rollout commands.
 
 ## API Routes
 

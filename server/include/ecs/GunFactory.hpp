@@ -19,15 +19,7 @@ inline Components::Gun makeFromConfig(const WeaponConfig& config) {
     gun.spread = config.spread;
     gun.pellets = config.pellets;
     gun.barrelLength = config.barrelLength;
-    gun.projectileSpeed = config.projectileSpeed;
-    gun.projectileLifetime = config.projectileLifetime;
     gun.automatic = config.automatic;
-    return gun;
-}
-
-inline Components::Gun makePistol(const GameConfig& config) {
-    Components::Gun gun = makeFromConfig(config.pistol);
-    gun.itemType = ItemType::GUN_PISTOL;
     return gun;
 }
 

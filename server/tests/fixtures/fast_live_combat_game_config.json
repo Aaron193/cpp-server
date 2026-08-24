@@ -1,0 +1,60 @@
+{
+  "weapons": {
+    "rifle": {
+      "fireMode": "hitscan",
+      "ammoType": "light",
+      "magazineSize": 30,
+      "ammoPerShot": 1,
+      "fireRate": 10.0,
+      "reloadTime": 0.25,
+      "damage": 100.0,
+      "range": 80.0,
+      "spread": 0.0,
+      "pellets": 1,
+      "barrelLength": 0.7,
+      "automatic": true
+    },
+    "shotgun": {
+      "fireMode": "hitscan",
+      "ammoType": "shell",
+      "magazineSize": 6,
+      "ammoPerShot": 1,
+      "fireRate": 2.0,
+      "reloadTime": 0.25,
+      "damage": 100.0,
+      "range": 20.0,
+      "spread": 0.0,
+      "pellets": 1,
+      "barrelLength": 0.65,
+      "automatic": false
+    }
+  },
+  "movement": {
+    "capsuleRadius": 0.42,
+    "capsuleHalfHeight": 0.48,
+    "eyeHeight": 1.62,
+    "groundSpeed": 7.5,
+    "groundAcceleration": 42.0,
+    "airAcceleration": 12.0,
+    "airControl": 0.45,
+    "jumpSpeed": 6.4,
+    "gravity": 20.0,
+    "terminalVelocity": 35.0,
+    "maxSlopeRadians": 0.78539816339,
+    "stepUpHeight": 0.42,
+    "stickToFloorDistance": 0.5
+  },
+  "loadout": {
+    "rifleReserveAmmo": 120,
+    "shotgunReserveAmmo": 24
+  },
+  "combat": {
+    "serverSeed": 12648430,
+    "maxLagCompensationMs": 250,
+    "scoreLimit": 1,
+    "roundSeconds": 5.0,
+    "intermissionSeconds": 1.5,
+    "respawnSeconds": 0.25,
+    "spawnProtectionSeconds": 0.0
+  }
+}

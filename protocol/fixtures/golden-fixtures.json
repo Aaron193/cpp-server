@@ -1,0 +1,50 @@
+[
+  {
+    "name": "hello-with-token",
+    "message": "Hello",
+    "value": { "protocolVersion": 3, "clientBuildId": "web-3d-a1", "supportedMapFormat": 1, "accessToken": "token-✓" }
+  },
+  {
+    "name": "version-mismatch-reject",
+    "message": "Reject",
+    "value": { "serverBuildId": "server-a1", "reason": 1, "detail": "protocol 65535 is unsupported", "expectedProtocolVersion": 3, "expectedMapFormat": 2 }
+  },
+  {
+    "name": "input-wrap-values",
+    "message": "InputBatch",
+    "value": { "commands": [{ "sequence": 4294967295, "clientTick": 4294967294, "moveX": -1, "moveY": 0.5, "buttonFlags": 65535, "yaw": 3.1415927410125732, "pitch": -1.25, "selectedWeapon": 2 }] }
+  },
+  {
+    "name": "snapshot-entity",
+    "message": "Snapshot",
+    "value": {
+      "serverTick": 4294967295,
+      "lastProcessedInputSequence": 0,
+      "match": { "phase": 2, "roundNumber": 7, "phaseEndsAtTick": 123456 },
+      "entities": [{
+        "entityId": 42, "kind": 1,
+        "position": { "x": 1.5, "y": -2.25, "z": 3.75 },
+        "velocity": { "x": 0, "y": 4.5, "z": -0.125 },
+        "bodyYaw": 1.25, "aimPitch": -0.5, "grounded": true, "stateFlags": 32769,
+        "equippedWeapon": 1,
+        "health": 100,
+        "weaponState": { "selected": 1, "magazineAmmo": 29, "reserveAmmo": 120, "stateFlags": 3 }
+      }]
+    }
+  },
+  {
+    "name": "unicode-chat",
+    "message": "Chat",
+    "value": { "senderId": null, "channel": 2, "text": "Ready • go!" }
+  },
+  {
+    "name": "authoritative-score-row",
+    "message": "ScoreChange",
+    "value": { "serverTick": 77, "playerId": 42, "score": 9, "delta": -1, "kills": 9, "deaths": 4 }
+  },
+  {
+    "name": "shot-confirmed-shotgun",
+    "message": "ShotConfirmed",
+    "value": { "serverTick": 88, "shooterId": 42, "inputSequence": 9, "shotId": 123, "weapon": 2 }
+  }
+]

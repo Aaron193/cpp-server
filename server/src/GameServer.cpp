@@ -1,1064 +1,1077 @@
 #include "GameServer.hpp"
 
-#include <box2d/box2d.h>
-#include <box2d/math_functions.h>
-
-#include <cassert>
 #include <chrono>
+#include <algorithm>
 #include <cmath>
-#include <cstdint>
 #include <cstdlib>
-#include <entt/entity/fwd.hpp>
-#include <glm/glm.hpp>
 #include <iostream>
-#include <random>
 #include <stdexcept>
 #include <thread>
-#include <utility>
+#include <limits>
+#include <unordered_set>
+#include <map>
+#include <nlohmann/json.hpp>
+#include <type_traits>
 
-#include "RaycastSystem.hpp"
-#include "World.hpp"
 #include "client/Client.hpp"
-#include "common/enums.hpp"
-#include "ecs/EntityManager.hpp"
-#include "ecs/GunFactory.hpp"
 #include "ecs/components.hpp"
-#include "physics/CollisionHelpers.hpp"
-#include "physics/PhysicsWorld.hpp"
-#include "util/units.hpp"
+#include "ecs/GunFactory.hpp"
 
-GameServer::GameServer() : m_entityManager(*this), m_physicsWorld(*this) {
-    std::cout << "Initializing GameServer..." << std::endl;
+#ifndef SERVER_SOURCE_DIR
+#define SERVER_SOURCE_DIR "."
+#endif
+#ifndef SERVER_MAP_DIR
+#define SERVER_MAP_DIR "../client/public/maps/graybox-arena"
+#endif
 
-    // Load gameplay configuration (guns, etc.)
-    m_gameConfig = GameConfig::loadFromFile("../game_config.json");
+namespace {
+protocol::Weapon protocolWeapon(const Components::Gun& gun) {
+    if (gun.itemType == ItemType::GUN_RIFLE) return protocol::Weapon::Rifle;
+    if (gun.itemType == ItemType::GUN_SHOTGUN) return protocol::Weapon::Shotgun;
+    return protocol::Weapon::None;
+}
 
-    // Initialize volcanic world generator
-    m_worldGenerator = std::make_unique<World>();
+protocol::Weapon protocolWeapon(ItemType weapon) {
+    if (weapon == ItemType::GUN_RIFLE) return protocol::Weapon::Rifle;
+    if (weapon == ItemType::GUN_SHOTGUN) return protocol::Weapon::Shotgun;
+    return protocol::Weapon::None;
+}
 
-    // Configure world generation parameters
-    const uint32_t seed = 834624467;
-    const int worldSize = 512;  // 512x512 world
-    const float islandSize = 0.75f;
+std::uint64_t secondsToTicks(float seconds) {
+    return static_cast<std::uint64_t>(
+        std::ceil(seconds * static_cast<float>(GameServer::kTicksPerSecond)));
+}
 
-    m_worldGenerator->setMasterSeed(seed);
-    m_worldGenerator->setIslandSize(islandSize);
-    m_worldGenerator->setNoiseLayers(3);
+protocol::ScoreChange scoreRow(std::uint64_t tick, entt::entity player,
+                               const Components::Score& score,
+                               std::int16_t delta) {
+    return {static_cast<std::uint32_t>(tick),
+            static_cast<std::uint32_t>(player), score.points, delta,
+            score.kills, score.deaths};
+}
 
-    // Generate the volcanic island terrain
-    std::cout << "Generating volcanic island terrain..." << std::endl;
-    m_worldGenerator->generateIsland(worldSize, worldSize, "");
+std::filesystem::path mapDirectory() {
+    if (const char* configured = std::getenv("MAP_PACKAGE_DIR")) return configured;
+    return SERVER_MAP_DIR;
+}
+}
 
-    // Build terrain meshes for physics
-    std::cout << "Building terrain meshes..." << std::endl;
-    m_terrainMeshes = m_worldGenerator->buildTerrainMeshes();
+std::string GameServer::resolveGameConfigPath(const char* environmentValue) {
+    if (environmentValue && environmentValue[0] != '\0')
+        return environmentValue;
+    return std::string(SERVER_SOURCE_DIR) + "/game_config.json";
+}
 
-    // Create Box2D physics from meshes
-    std::cout << "Building physics from meshes..." << std::endl;
-    m_worldGenerator->BuildMeshPhysics(m_terrainMeshes,
-                                       m_physicsWorld.m_worldId);
+GameServer::GameServer()
+    : GameServer(resolveGameConfigPath(std::getenv("GAME_CONFIG_PATH"))) {}
 
-    // Save final terrain visualization
-    std::cout << "Saving final terrain image..." << std::endl;
-    m_worldGenerator->saveFinalTerrainImage("final_terrain.png");
+GameServer::GameServer(const std::string& gameConfigPath)
+    : m_entityManager(*this), m_physicsWorld() {
+    metricsSink_ = [](const std::string& line) { std::cout << line << '\n'; };
+    m_gameConfig = GameConfig::loadFromFile(gameConfigPath);
+    m_mapPackage = MapPackageLoader::load(mapDirectory());
+    if (m_mapPackage.manifest.mapId != "graybox-arena")
+        throw std::runtime_error("server requires the graybox-arena map package");
+    mapBody_ = m_physicsWorld.addStaticCollision(m_mapPackage.collision);
+    phaseEndsAtTick_ = secondsToTicks(m_gameConfig.combat.roundSeconds);
+    std::cout << "Loaded map " << m_mapPackage.manifest.mapId << " ("
+              << m_mapPackage.collision.vertices.size() << " collision vertices, "
+              << m_mapPackage.manifest.spawnPoints.size() << " spawns)\n";
+}
 
-    // Store JSON file of terrain meshes for debugging
-    m_worldGenerator->saveTerrainMeshesJSON(m_terrainMeshes,
-                                            "terrain_meshes.json");
+const MapSpawnPoint& GameServer::selectSpawnPoint(
+    entt::entity spawningPlayer) const {
+    if (m_mapPackage.manifest.spawnPoints.empty())
+        throw std::runtime_error("loaded map has no spawn points");
 
-    // Initialize raycast system
-    m_raycastSystem = std::make_unique<RaycastSystem>(
-        m_entityManager.getRegistry(), m_physicsWorld.m_worldId);
-
-    m_entityManager.initProjectilePool(256);
-    spawnInitialPickups();
-
-    std::cout << "GameServer initialization complete!" << std::endl;
+    const auto& registry = m_entityManager.getRegistry();
+    const auto players = registry.view<Components::Transform3D,
+                                       Components::PlayerLife>();
+    const MapSpawnPoint* best = &m_mapPackage.manifest.spawnPoints.front();
+    float bestScore = -std::numeric_limits<float>::infinity();
+    for (const auto& spawn : m_mapPackage.manifest.spawnPoints) {
+        float nearest = 10000.0F;
+        float score = 0.0F;
+        bool nearbyVisibleEnemy = false;
+        for (const auto player : players) {
+            if (player == spawningPlayer ||
+                players.get<Components::PlayerLife>(player).dead)
+                continue;
+            const auto enemy =
+                players.get<Components::Transform3D>(player).position;
+            const float distance = glm::length(enemy - spawn.position);
+            nearest = std::min(nearest, distance);
+            const glm::vec3 eyeOffset{0.0F,
+                                      m_gameConfig.movement.eyeHeight, 0.0F};
+            const bool visible = !m_physicsWorld.staticRayBlocked(
+                spawn.position + eyeOffset, enemy + eyeOffset);
+            if (visible) {
+                score -= std::max(0.0F, 24.0F - distance);
+                if (distance < 12.0F) nearbyVisibleEnemy = true;
+            }
+        }
+        score += nearest;
+        if (nearbyVisibleEnemy) score -= 10000.0F;
+        if (score > bestScore) {
+            bestScore = score;
+            best = &spawn;
+        }
+    }
+    return *best;
 }
 
 void GameServer::run() {
-    std::cout << "starting game server!" << std::endl;
-
-    const std::chrono::duration<double> tickInterval(1.0 / m_tps);
-
-    auto lastTime = std::chrono::steady_clock::now();
-
-    while (1) {
-        auto currentTime = std::chrono::steady_clock::now();
-        std::chrono::duration<double> deltaTime = currentTime - lastTime;
-        lastTime = currentTime;
-
-        // socket server is ready
-        if (m_socketLoop) {
+    using Clock = std::chrono::steady_clock;
+    const auto pollInterval =
+        std::chrono::duration_cast<Clock::duration>(
+            std::chrono::duration<double>(FixedStepAccumulator::kStepSeconds));
+    auto last = Clock::now();
+    auto wake = last + pollInterval;
+    for (;;) {
+        const auto now = Clock::now();
+        const std::chrono::duration<double> elapsed = now - last;
+        last = now;
+        {
             std::lock_guard<std::mutex> lock(m_gameMutex);
-            tick(deltaTime.count());
-
-            // Update heartbeat timer (send heartbeat every X seconds)
-            updateHeartbeat(deltaTime.count());
+            advanceSimulation(elapsed.count());
+            updateHeartbeat(elapsed.count());
         }
-
-        auto tickTime = std::chrono::steady_clock::now() - currentTime;
-        std::cout << "tick time: "
-                  << std::chrono::duration<double, std::milli>(tickTime).count()
-                  << "ms" << std::endl;
-
-        auto sleepTime = tickInterval - tickTime;
-
-        if (sleepTime > std::chrono::duration<double>::zero()) {
-            std::this_thread::sleep_for(sleepTime);
-        }
+        std::this_thread::sleep_until(wake);
+        wake += pollInterval;
+        if (Clock::now() > wake + pollInterval) wake = Clock::now();
     }
 }
 
-void GameServer::processClientMessages() {
-    for (auto& message : m_messages) {
-        uint32_t id = message.first;
-        std::string_view data = message.second;
+void GameServer::consumeQueuedValidatedInput() {
+    auto& registry = m_entityManager.getRegistry();
+    std::unordered_set<std::uint32_t> consumedClients;
+    std::unordered_set<std::uint32_t> consumedPlayers;
 
-        auto it = m_clients.find(id);
-        if (it != m_clients.end()) {
-            Client* client = it->second;
-            try {  // TODO: I dont really like try-catch. Maybe lets just not
-                   // read outside buffer and set outside bytes to zero
-                client->onMessage(data);
-            } catch (std::runtime_error error) {
-                // Reading outside buffer view..
+    for (auto queued = queuedInputs_.begin(); queued != queuedInputs_.end();) {
+        Client* client = nullptr;
+        if (queued->clientId) {
+            const auto found = m_clients.find(*queued->clientId);
+            if (found != m_clients.end()) client = found->second;
+        }
+
+        const bool validEntity =
+            registry.valid(queued->player) &&
+            registry.all_of<Components::PlayerInput>(queued->player);
+        const bool validOwner =
+            !queued->clientId ||
+            (client && client->welcomed() && client->m_entity == queued->player);
+        if (!validEntity || !validOwner) {
+            if (client) client->markInputDequeued();
+            queued = queuedInputs_.erase(queued);
+            continue;
+        }
+
+        const auto playerKey = static_cast<std::uint32_t>(queued->player);
+        if (consumedPlayers.count(playerKey) != 0U ||
+            (queued->clientId &&
+             consumedClients.count(*queued->clientId) != 0U)) {
+            ++queued;
+            continue;
+        }
+
+        registry.replace<Components::PlayerInput>(queued->player,
+                                                   queued->input);
+        consumedPlayers.insert(playerKey);
+        if (queued->clientId) {
+            consumedClients.insert(*queued->clientId);
+            client->markInputDequeued();
+            if (queued->sequence) client->markInputProcessed(*queued->sequence);
+        }
+        queued = queuedInputs_.erase(queued);
+    }
+}
+
+void GameServer::updateMatchAndPlayerState(float) {
+    if (m_currentTick >= phaseEndsAtTick_) {
+        if (matchPhase_ == protocol::MatchPhase::Active)
+            transitionToIntermission();
+        else if (matchPhase_ == protocol::MatchPhase::Intermission)
+            resetRound();
+    }
+    auto& registry = m_entityManager.getRegistry();
+    const auto players = registry.view<Components::PlayerInput,
+                                       Components::WeaponInventory,
+                                       Components::PlayerLife>();
+    for (const auto entity : players) {
+        auto& input = players.get<Components::PlayerInput>(entity);
+        auto& inventory = players.get<Components::WeaponInventory>(entity);
+        const auto& life = players.get<Components::PlayerLife>(entity);
+        if (!life.dead && matchPhase_ == protocol::MatchPhase::Active &&
+            input.switchSlot >= 0) {
+            const auto previous = inventory.activeSlot;
+            if (inventory.setActiveSlot(
+                    static_cast<std::uint8_t>(input.switchSlot)) &&
+                previous != inventory.activeSlot) {
+                auto& oldGun = inventory.slots[previous].gun;
+                oldGun.reloadEndTick = 0;
+                oldGun.reloadRemaining = 0.0F;
             }
-        } else {
-            std::cout << "Client with ID " << id << " not found" << std::endl;
         }
+        input.switchSlot = -1;
     }
-
-    m_messages.clear();
 }
 
-void GameServer::tick(double delta) {
-    ++m_currentTick;
-    processClientMessages();
-
-    {  // game world update
-
-        /* Pre physics systems */
-        prePhysicsSystemUpdate(delta);
-
-        /* Physics update (can get slow when connection spamming) */
-        m_physicsWorld.tick(delta);
-
-        /* Post physics systems */
-        postPhysicsSystemUpdate(delta);
-
-        m_entityManager.removeEntities();
-    }
-
-    flushProjectileSpawnBatch();
-    flushProjectileDestroyBatch();
-
-    {  // server update
-        for (auto& c : m_clients) {
-            Client& client = *c.second;
-            client.writeGameState();
+void GameServer::updateCharacterMotors(float delta) {
+    auto& registry = m_entityManager.getRegistry();
+    const auto view = registry.view<Components::Transform3D,
+                                    Components::Velocity3D,
+                                    Components::CharacterController,
+                                    Components::PlayerInput,
+                                    Components::PlayerLife>();
+    for (const auto entity : view) {
+        auto& input = view.get<Components::PlayerInput>(entity);
+        auto& controller = view.get<Components::CharacterController>(entity);
+        if (view.get<Components::PlayerLife>(entity).dead) {
+            m_physicsWorld.setCharacterVelocity(controller.adapterId,
+                                                {0.0F, 0.0F, 0.0F});
+            input.jump = false;
+            continue;
         }
-
-        m_socketLoop->defer([this]() {
-            std::lock_guard<std::mutex> lock(m_gameMutex);
-            for (auto& c : m_clients) {
-                Client& client = *c.second;
-                client.sendBytes();
-            }
-        });
+        if (matchPhase_ != protocol::MatchPhase::Active) {
+            m_physicsWorld.setCharacterVelocity(controller.adapterId,
+                                                {0.0F, 0.0F, 0.0F});
+            input.jump = false;
+            continue;
+        }
+        const float forward = -input.movement.y;
+        const float right = input.movement.x;
+        const float sine = std::sin(input.yaw);
+        const float cosine = std::cos(input.yaw);
+        const float speed = m_gameConfig.movement.groundSpeed;
+        const glm::vec3 desired{(sine * forward + cosine * right) * speed,
+                                0.0F,
+                                (-cosine * forward + sine * right) * speed};
+        m_physicsWorld.updateCharacter(controller.adapterId, delta, desired,
+                                       input.jump);
+        input.jump = false;
     }
 }
 
-void GameServer::prePhysicsSystemUpdate(double delta) {
-    // biomeSystem();
-    stateSystem();
-    inputSystem(delta);
-    gunSystem(delta);
-    projectileSystem(delta);
-    meleeSystem(delta);
-    healthSystem(delta);
-    cameraSystem();
+void GameServer::recordPlayerHistory() {
+    HistoryFrame frame;
+    frame.tick = static_cast<std::uint32_t>(m_currentTick);
+    const auto& registry = m_entityManager.getRegistry();
+    const auto players = registry.view<Components::Transform3D,
+                                       Components::PlayerLife>();
+    frame.players.reserve(players.size_hint());
+    const float radius = m_gameConfig.movement.capsuleRadius;
+    const float halfHeight = m_gameConfig.movement.capsuleHalfHeight;
+    for (const auto player : players) {
+        const auto position =
+            players.get<Components::Transform3D>(player).position;
+        frame.players.push_back(HistoricalPlayer{
+            player, position,
+            {{position.x, position.y + radius, position.z},
+             {position.x, position.y + radius + 2.0F * halfHeight,
+              position.z},
+             radius},
+            players.get<Components::PlayerLife>(player).dead});
+    }
+    std::sort(frame.players.begin(), frame.players.end(),
+              [](const HistoricalPlayer& first,
+                 const HistoricalPlayer& second) {
+                  return static_cast<std::uint32_t>(first.entity) <
+                         static_cast<std::uint32_t>(second.entity);
+              });
+    history_.push_back(std::move(frame));
+    const std::size_t maxFrames =
+        static_cast<std::size_t>(std::ceil(
+            static_cast<double>(m_gameConfig.combat.maxLagCompensationMs) *
+            static_cast<double>(kTicksPerSecond) / 1000.0)) + 1U;
+    while (history_.size() > std::max<std::size_t>(2U, maxFrames))
+        history_.pop_front();
 }
 
-void GameServer::postPhysicsSystemUpdate(double /*delta*/) {
-    projectileImpactSystem();
-    pickupSystem();
+std::uint32_t GameServer::acceptedHistoryTick(std::uint32_t requested) const {
+    if (history_.empty()) return static_cast<std::uint32_t>(m_currentTick);
+    return CombatGeometry::clampHistoryTick(
+        requested, history_.front().tick, history_.back().tick);
 }
 
-void GameServer::spawnInitialPickups() {
-    if (!m_worldGenerator) {
+const GameServer::HistoryFrame* GameServer::findHistoryFrame(
+    std::uint32_t requested, std::uint32_t& accepted) const {
+    if (history_.empty()) return nullptr;
+    accepted = acceptedHistoryTick(requested);
+    for (auto frame = history_.rbegin(); frame != history_.rend(); ++frame) {
+        if (!CombatGeometry::tickBefore(accepted, frame->tick)) return &*frame;
+    }
+    return &history_.front();
+}
+
+void GameServer::startReload(Components::Gun& gun, Components::Ammo& ammo) {
+    if (gun.reloadEndTick != 0 || gun.ammoInMag >= gun.magazineSize ||
+        ammo.get(gun.ammoType) <= 0)
         return;
-    }
+    const auto ticks = std::max<std::uint64_t>(1U,
+                                               secondsToTicks(gun.reloadTime));
+    gun.reloadEndTick = m_currentTick + ticks;
+    gun.reloadRemaining = static_cast<float>(ticks) /
+                          static_cast<float>(kTicksPerSecond);
+}
 
-    constexpr int GUN_PICKUP_COUNT = 100;
-    constexpr int AMMO_PICKUP_COUNT = 200;
-
-    const float worldSizePixels =
-        static_cast<float>(m_worldGenerator->GetWorldSize()) * 64.0f;
-    if (worldSizePixels <= 0.0f) {
-        return;
-    }
-
-    std::random_device rd;
-    std::mt19937 rng(rd());
-    std::uniform_real_distribution<float> posDist(64.0f,
-                                                  worldSizePixels - 64.0f);
-    std::uniform_int_distribution<int> gunDist(0, 2);
-    std::uniform_int_distribution<int> ammoTypeDist(
-        0, static_cast<int>(AmmoType::COUNT) - 1);
-
-    auto pickLandPosition = [&]() {
-        constexpr int MAX_ATTEMPTS = 3000;
-        for (int attempt = 0; attempt < MAX_ATTEMPTS; ++attempt) {
-            float x = posDist(rng);
-            float y = posDist(rng);
-
-            BiomeType biome = m_worldGenerator->GetBiomeAtPosition(x, y);
-            if (biome != BiomeType::BIOME_DEEP_WATER &&
-                biome != BiomeType::BIOME_SHALLOW_WATER) {
-                return std::make_pair(x, y);
-            }
+void GameServer::completeReloads(entt::entity player) {
+    auto& registry = m_entityManager.getRegistry();
+    auto& inventory = registry.get<Components::WeaponInventory>(player);
+    auto& ammo = registry.get<Components::Ammo>(player);
+    for (auto& slot : inventory.slots) {
+        auto& gun = slot.gun;
+        if (gun.reloadEndTick == 0) continue;
+        if (m_currentTick < gun.reloadEndTick) {
+            gun.reloadRemaining = static_cast<float>(gun.reloadEndTick -
+                                                     m_currentTick) /
+                                  static_cast<float>(kTicksPerSecond);
+            continue;
         }
-
-        return std::make_pair(worldSizePixels * 0.5f, worldSizePixels * 0.5f);
-    };
-
-    for (int i = 0; i < GUN_PICKUP_COUNT; ++i) {
-        auto [x, y] = pickLandPosition();
-
-        Components::Gun gun;
-        int gunIndex = gunDist(rng);
-        if (gunIndex == 0) {
-            gun = GunFactory::makePistol(m_gameConfig);
-        } else if (gunIndex == 1) {
-            gun = GunFactory::makeRifle(m_gameConfig);
-        } else {
-            gun = GunFactory::makeShotgun(m_gameConfig);
-        }
-
-        m_entityManager.createGunPickup(gun, x, y);
-    }
-
-    for (int i = 0; i < AMMO_PICKUP_COUNT; ++i) {
-        auto [x, y] = pickLandPosition();
-
-        AmmoType ammoType = static_cast<AmmoType>(ammoTypeDist(rng));
-        int amount = 20;
-        switch (ammoType) {
-            case AmmoType::LIGHT:
-                amount = 45;
-                break;
-            case AmmoType::HEAVY:
-                amount = 30;
-                break;
-            case AmmoType::SHELL:
-                amount = 12;
-                break;
-            case AmmoType::ROCKET:
-                amount = 4;
-                break;
-            case AmmoType::COUNT:
-                amount = 0;
-                break;
-        }
-
-        m_entityManager.createAmmoPickup(ammoType, amount, x, y);
+        const int needed = gun.magazineSize - gun.ammoInMag;
+        gun.ammoInMag += ammo.take(gun.ammoType, needed);
+        gun.reloadEndTick = 0;
+        gun.reloadRemaining = 0.0F;
+        inventory.dirty = true;
     }
 }
 
-void GameServer::biomeSystem() {
-    entt::registry& reg = m_entityManager.getRegistry();
+void GameServer::fireWeapon(entt::entity shooter, Components::Gun& gun,
+                            const Components::PlayerInput& input) {
+    auto& registry = m_entityManager.getRegistry();
+    auto& life = registry.get<Components::PlayerLife>(shooter);
+    gun.ammoInMag -= gun.ammoPerShot;
+    const std::uint64_t cadence = std::max<std::uint64_t>(
+        1U, static_cast<std::uint64_t>(std::ceil(
+                static_cast<double>(kTicksPerSecond) / gun.fireRate)));
+    gun.nextFireTick = m_currentTick + cadence;
+    life.spawnProtectionRemaining = 0.0F;
+    const std::uint32_t shotId = nextShotId_++;
+    if (nextShotId_ == 0U) nextShotId_ = 1U;
+    ++combatMetrics_.shotsFired;
 
-    // Query biome for each entity with a position
-    reg.view<Components::EntityBase>().each([&](entt::entity entity,
-                                                Components::EntityBase& base) {
-        if (B2_IS_NULL(base.bodyId)) return;
+    emitReliable(std::nullopt, protocol::ShotConfirmed{
+        static_cast<std::uint32_t>(m_currentTick),
+        static_cast<std::uint32_t>(shooter), input.inputSequence, shotId,
+        protocolWeapon(gun)});
 
-        // Get entity's position
-        b2Vec2 pos = b2Body_GetPosition(base.bodyId);
+    std::uint32_t acceptedTick = 0;
+    const HistoryFrame* history = findHistoryFrame(input.clientTick, acceptedTick);
+    if (history && acceptedTick != input.clientTick) ++combatMetrics_.historyClamps;
+    if (!history) return;
 
-        // Convert from Box2D meters to world coordinates
-        // (Assuming pixels are the world coordinate system)
-        float worldX = pixels(pos.x);
-        float worldY = pixels(pos.y);
+    glm::vec3 shooterPosition =
+        registry.get<Components::Transform3D>(shooter).position;
+    for (const auto& historical : history->players)
+        if (historical.entity == shooter) shooterPosition = historical.position;
+    const float cosinePitch = std::cos(input.pitch);
+    const glm::vec3 aim = glm::normalize(glm::vec3{
+        std::sin(input.yaw) * cosinePitch, std::sin(input.pitch),
+        -std::cos(input.yaw) * cosinePitch});
+    const glm::vec3 eye = shooterPosition +
+                          glm::vec3{0.0F, m_gameConfig.movement.eyeHeight, 0.0F};
+    const glm::vec3 origin = eye + aim * gun.barrelLength;
+    std::map<std::uint32_t, float> damageByTarget;
 
-        // Query biome at this position
-        if (m_worldGenerator) {
-            BiomeType currentBiome =
-                m_worldGenerator->GetBiomeAtPosition(worldX, worldY);
-
-            std::cout << "Entity " << static_cast<uint32_t>(entity)
-                      << " is in biome: "
-                      << m_worldGenerator->GetBiomeName(currentBiome) << "\n";
-            // print out entity type
-            std::cout << "Entity type: " << static_cast<uint32_t>(base.type)
-                      << "\n";
+    for (int pellet = 0; pellet < gun.pellets; ++pellet) {
+        const glm::vec3 direction = CombatGeometry::spreadDirection(
+            aim, gun.spread, m_gameConfig.combat.serverSeed,
+            static_cast<std::uint32_t>(shooter), shotId,
+            static_cast<std::uint32_t>(pellet));
+        const auto worldHit =
+            m_physicsWorld.castStaticRay(origin, direction, gun.range);
+        float nearestDistance = worldHit ? worldHit->distance : gun.range;
+        const HistoricalPlayer* nearestPlayer = nullptr;
+        std::optional<CombatGeometry::RayHit> playerHit;
+        for (const auto& candidate : history->players) {
+            if (candidate.entity == shooter || candidate.dead) continue;
+            if (!registry.valid(candidate.entity) ||
+                !registry.all_of<Components::Health,
+                                 Components::PlayerLife>(candidate.entity) ||
+                registry.get<Components::Health>(candidate.entity).current <=
+                    0.0F ||
+                registry.get<Components::PlayerLife>(candidate.entity).dead)
+                continue;
+            const auto hit = CombatGeometry::rayCapsule(
+                origin, direction, candidate.capsule, nearestDistance);
+            if (hit && hit->distance < nearestDistance) {
+                nearestDistance = hit->distance;
+                nearestPlayer = &candidate;
+                playerHit = hit;
+            }
         }
-    });
+        if (nearestPlayer && playerHit) {
+            ++combatMetrics_.pelletHits;
+            emitReliable(std::nullopt, protocol::Impact{
+                static_cast<std::uint32_t>(m_currentTick), shotId,
+                {playerHit->position.x, playerHit->position.y,
+                 playerHit->position.z},
+                {playerHit->normal.x, playerHit->normal.y,
+                 playerHit->normal.z},
+                protocol::ImpactMaterial::Player});
+            damageByTarget[static_cast<std::uint32_t>(nearestPlayer->entity)] +=
+                gun.damage;
+        } else if (worldHit) {
+            emitReliable(std::nullopt, protocol::Impact{
+                static_cast<std::uint32_t>(m_currentTick), shotId,
+                {worldHit->position.x, worldHit->position.y,
+                 worldHit->position.z},
+                {worldHit->normal.x, worldHit->normal.y, worldHit->normal.z},
+                protocol::ImpactMaterial::World});
+        }
+    }
+    for (const auto& [rawTarget, damage] : damageByTarget) {
+        const auto target = static_cast<entt::entity>(rawTarget);
+        pendingDamage_.push_back(
+            PendingDamage{shooter, target, damage, gun.itemType});
+    }
 }
 
-void GameServer::stateSystem() {
-    entt::registry& reg = m_entityManager.getRegistry();
-
-    reg.view<Components::State>().each(
-        [&](entt::entity entity, Components::State& state) { state.clear(); });
-}
-
-void GameServer::inputSystem(double delta) {
-    entt::registry& reg = m_entityManager.getRegistry();
-
-    reg.view<Components::Input, Components::EntityBase>().each(
-        [&](entt::entity entity, Components::Input& input,
-            Components::EntityBase& base) {
-            uint8_t direction = input.direction;
-            float angle = input.angle;
-
-            float x = 0;
-            float y = 0;
-
-            if (direction & 1) y = -1.0f;
-            if (direction & 2) x = -1.0f;
-            if (direction & 4) y = 1.0f;
-            if (direction & 8) x = 1.0f;
-
-            // normalize input vector
-            float length = std::sqrt(x * x + y * y);
-            if (length != 0.0f) {
-                x /= length;
-                y /= length;
-            }
-
-            const float speed = 2.5f;
-
-            b2Vec2 inputVector = {x, y};
-            b2Vec2 velocity = {inputVector.x * speed, inputVector.y * speed};
-
-            b2BodyId bodyId = base.bodyId;
-
-            assert(B2_IS_NON_NULL(bodyId));
-
-            b2Body_SetLinearVelocity(bodyId, velocity);
-            b2Rot rotation = b2MakeRot(angle);
-            b2Body_SetTransform(bodyId, b2Body_GetPosition(bodyId), rotation);
-        });
-}
-
-void GameServer::meleeSystem(double delta) {
-    entt::registry& reg = m_entityManager.getRegistry();
-
-    reg.view<Components::EntityBase, Components::Input,
-             Components::AttackCooldown, Components::State>()
-        .each([&](entt::entity entity, Components::EntityBase& base,
-                  Components::Input& input,
-                  Components::AttackCooldown& cooldown,
-                  Components::State& state) {
-            if (reg.all_of<Components::Inventory>(entity)) {
-                const auto& inventory = reg.get<Components::Inventory>(entity);
-                if (inventory.hasGunInHands()) {
-                    return;
-                }
-            }
-
-            assert(B2_IS_NON_NULL(base.bodyId));
-
-            const bool shouldAttack = input.mouseIsDown || input.dirtyClick;
-            const bool finishedCooldown = cooldown.update(delta);
-
-            if (shouldAttack && finishedCooldown) {
-                cooldown.reset();
-
-                input.dirtyClick = false;
-
-                state.setState(EntityStates::MELEE);
-
-                const b2Vec2& pos = b2Body_GetPosition(base.bodyId);
-                const float angle =
-                    b2Rot_GetAngle(b2Body_GetRotation(base.bodyId));
-                int playerRadius = 25;
-
-                b2Vec2 meleePos = {
-                    pixels(pos.x) + playerRadius * std::cos(angle),
-                    pixels(pos.y) + playerRadius * std::sin(angle)};
-
-                Hit(entity, meleePos, 15);
-            }
-        });
-}
-
-void GameServer::gunSystem(double delta) {
-    entt::registry& reg = m_entityManager.getRegistry();
-
-    reg.view<Components::EntityBase, Components::Input, Components::Inventory>()
-        .each([&](entt::entity entity, Components::EntityBase& base,
-                  Components::Input& input, Components::Inventory& inventory) {
-            if (B2_IS_NULL(base.bodyId)) return;
-
-            if (input.switchSlot >= 0) {
-                uint8_t slot = static_cast<uint8_t>(input.switchSlot);
-                inventory.setActiveSlot(slot);
-                input.switchSlot = -1;
-            }
-
-            auto& slot = inventory.getActive();
-            if (!slot.isGun()) {
-                input.dirtyClick = false;
-                input.reloadRequested = false;
-                return;
-            }
-
-            Components::Gun& gun = slot.gun;
-            bool wasReloading = gun.isReloading();
-            gun.update(static_cast<float>(delta));
-
-            if (input.reloadRequested) {
-                input.reloadRequested = false;
-                if (!gun.isReloading() && gun.ammoInMag < gun.magazineSize) {
-                    if (reg.all_of<Components::Ammo>(entity)) {
-                        Components::Ammo& ammo =
-                            reg.get<Components::Ammo>(entity);
-                        if (ammo.get(gun.ammoType) > 0) {
-                            gun.startReload();
-                        }
-                    }
-                }
-            }
-
-            if (wasReloading && !gun.isReloading()) {
-                if (reg.all_of<Components::Ammo>(entity)) {
-                    Components::Ammo& ammo = reg.get<Components::Ammo>(entity);
-                    int needed = gun.magazineSize - gun.ammoInMag;
-                    int taken = ammo.take(gun.ammoType, needed);
-                    gun.ammoInMag += taken;
+void GameServer::updateWeaponsAndFire() {
+    auto& registry = m_entityManager.getRegistry();
+    const auto players = registry.view<Components::PlayerInput,
+                                       Components::PlayerLife,
+                                       Components::WeaponInventory,
+                                       Components::Ammo,
+                                       Components::PlayerCombat>();
+    for (const auto player : players) {
+        auto& input = players.get<Components::PlayerInput>(player);
+        auto& life = players.get<Components::PlayerLife>(player);
+        auto& combat = players.get<Components::PlayerCombat>(player);
+        completeReloads(player);
+        auto& inventory = players.get<Components::WeaponInventory>(player);
+        auto& gun = inventory.getActive().gun;
+        auto& ammo = players.get<Components::Ammo>(player);
+        if (matchPhase_ == protocol::MatchPhase::Active && !life.dead) {
+            if (input.reloadRequested) startReload(gun, ammo);
+            const bool wantsFire = gun.automatic
+                                       ? input.mouseIsDown
+                                       : input.mouseIsDown && !combat.triggerWasDown;
+            if (wantsFire) {
+                if (gun.reloadEndTick == 0 &&
+                    m_currentTick >= gun.nextFireTick &&
+                    gun.ammoInMag >= gun.ammoPerShot) {
+                    fireWeapon(player, gun, input);
                     inventory.dirty = true;
-                }
-            }
-
-            bool wantsFire = gun.automatic
-                                 ? (input.mouseIsDown || input.dirtyClick)
-                                 : input.dirtyClick;
-
-            if (!wantsFire) {
-                return;
-            }
-
-            if (!gun.canFire()) {
-                return;
-            }
-
-            gun.ammoInMag -= gun.ammoPerShot;
-            gun.triggerCooldown();
-            input.dirtyClick = false;
-            inventory.dirty = true;
-
-            if (reg.all_of<Components::State>(entity)) {
-                Components::State& state = reg.get<Components::State>(entity);
-                state.setState(EntityStates::SHOOTING);
-            }
-
-            b2Vec2 position = b2Body_GetPosition(base.bodyId);
-            const float playerRadiusMeters = meters(25.0f);
-
-            for (int pellet = 0; pellet < gun.pellets; ++pellet) {
-                float random01 = static_cast<float>(rand()) / RAND_MAX;
-                float spread = (random01 * 2.0f - 1.0f) * gun.spread;
-                float angle = input.angle + spread;
-
-                glm::vec2 origin = {position.x, position.y};
-                glm::vec2 direction = {std::cos(angle), std::sin(angle)};
-                float muzzleOffset = playerRadiusMeters + gun.barrelLength;
-                glm::vec2 muzzleOrigin = origin + direction * muzzleOffset;
-
-                // !!! Hitscan basically not gonna exist anymore !!!
-                if (gun.fireMode == GunFireMode::FIRE_HITSCAN) {
-                    RayHit hit = m_raycastSystem->FireBullet(
-                        entity, muzzleOrigin, direction, gun.range);
-
-                    glm::vec2 endPoint =
-                        hit.hit ? hit.point
-                                : glm::vec2{
-                                      muzzleOrigin.x + direction.x * gun.range,
-                                      muzzleOrigin.y + direction.y * gun.range};
-
-                    broadcastBulletTrace(entity, muzzleOrigin, endPoint);
-
-                    if (hit.hit && hit.entity != entt::null) {
-                        applyDamage(entity, hit.entity, gun.damage);
-                    }
                 } else {
-                    entt::entity projectileEntity =
-                        m_entityManager.acquireProjectile();
-
-                    if (reg.valid(projectileEntity) &&
-                        reg.all_of<Components::Projectile,
-                                   Components::EntityBase>(projectileEntity)) {
-                        auto& projectile =
-                            reg.get<Components::Projectile>(projectileEntity);
-                        auto& projBase =
-                            reg.get<Components::EntityBase>(projectileEntity);
-
-                        const float projectileSpeedPixels =
-                            pixels(gun.projectileSpeed);
-
-                        projectile.init(entity, gun, m_currentTick,
-                                        pixels(muzzleOrigin.x),
-                                        pixels(muzzleOrigin.y), direction.x,
-                                        direction.y, projectileSpeedPixels);
-
-                        b2Vec2 velocity = {direction.x * gun.projectileSpeed,
-                                           direction.y * gun.projectileSpeed};
-
-                        b2Vec2 muzzlePos = {muzzleOrigin.x, muzzleOrigin.y};
-
-                        b2Body_Enable(projBase.bodyId);
-                        b2Body_SetTransform(projBase.bodyId, muzzlePos,
-                                            b2MakeRot(angle));
-                        b2Body_SetLinearVelocity(projBase.bodyId, velocity);
-                        b2Body_SetAngularVelocity(projBase.bodyId, 0.0f);
-                    }
+                    ++combatMetrics_.rejectedFireAttempts;
                 }
             }
-        });
-}
-
-void GameServer::projectileSystem(double delta) {
-    entt::registry& reg = m_entityManager.getRegistry();
-
-    reg.view<Components::Projectile, Components::EntityBase>().each(
-        [&](entt::entity entity, Components::Projectile& proj,
-            Components::EntityBase& base) {
-            if (!proj.active) return;
-            if (B2_IS_NULL(base.bodyId)) return;
-
-            proj.remainingLife -= static_cast<float>(delta);
-            if (proj.remainingLife <= 0.0f) {
-                m_projectileDestroyQueue.push_back(
-                    static_cast<uint32_t>(entity));
-                m_entityManager.releaseProjectile(entity);
-            }
-        });
-}
-
-void GameServer::projectileImpactSystem() {
-    entt::registry& reg = m_entityManager.getRegistry();
-
-    b2ContactEvents events = b2World_GetContactEvents(m_physicsWorld.m_worldId);
-
-    for (int i = 0; i < events.beginCount; ++i) {
-        b2ContactBeginTouchEvent& evt = events.beginEvents[i];
-
-        b2BodyId bodyA = b2Shape_GetBody(evt.shapeIdA);
-        b2BodyId bodyB = b2Shape_GetBody(evt.shapeIdB);
-
-        void* userDataA = b2Body_GetUserData(bodyA);
-        void* userDataB = b2Body_GetUserData(bodyB);
-
-        entt::entity entityA = entt::null;
-        entt::entity entityB = entt::null;
-
-        if (userDataA) {
-            entityA = reinterpret_cast<EntityBodyUserData*>(userDataA)->entity;
         }
-        if (userDataB) {
-            entityB = reinterpret_cast<EntityBodyUserData*>(userDataB)->entity;
-        }
-
-        bool aIsProjectile = userDataA && reg.valid(entityA) &&
-                             reg.all_of<Components::Projectile>(entityA);
-        bool bIsProjectile = userDataB && reg.valid(entityB) &&
-                             reg.all_of<Components::Projectile>(entityB);
-
-        if (!aIsProjectile && !bIsProjectile) continue;
-
-        entt::entity projectileEntity = aIsProjectile ? entityA : entityB;
-        entt::entity targetEntity = aIsProjectile ? entityB : entityA;
-
-        auto& projectile = reg.get<Components::Projectile>(projectileEntity);
-        if (!projectile.active) continue;
-        if (projectile.owner == targetEntity) continue;
-
-        if (targetEntity != entt::null && reg.valid(targetEntity)) {
-            applyDamage(projectile.owner, targetEntity, projectile.damage);
-        }
-        m_projectileDestroyQueue.push_back(
-            static_cast<uint32_t>(projectileEntity));
-        m_entityManager.releaseProjectile(projectileEntity);
+        combat.triggerWasDown = input.mouseIsDown;
+        input.reloadRequested = false;
+        input.dirtyClick = false;
     }
 }
 
-namespace {
-
-entt::entity extractPickupEntity(b2ShapeId shapeId) {
-    b2BodyId bodyId = b2Shape_GetBody(shapeId);
-    void* userData = b2Body_GetUserData(bodyId);
-    if (!userData) return entt::null;
-    return reinterpret_cast<EntityBodyUserData*>(userData)->entity;
+void GameServer::resolvePendingDamage() {
+    for (const auto& damage : pendingDamage_)
+        applyDamage(damage.attacker, damage.target, damage.amount,
+                    damage.weapon);
+    pendingDamage_.clear();
 }
 
-std::pair<entt::entity, entt::entity> resolvePickupAndPlayer(
-    entt::registry& reg, entt::entity a, entt::entity b) {
-    if (!reg.valid(a) || !reg.valid(b)) return {entt::null, entt::null};
-
-    bool aPickup = reg.all_of<Components::GroundItem>(a);
-    bool bPickup = reg.all_of<Components::GroundItem>(b);
-    bool aPlayer =
-        reg.all_of<Components::Input, Components::Inventory, Components::Ammo>(
-            a);
-    bool bPlayer =
-        reg.all_of<Components::Input, Components::Inventory, Components::Ammo>(
-            b);
-
-    if (aPickup && bPlayer) return {a, b};
-    if (bPickup && aPlayer) return {b, a};
-    return {entt::null, entt::null};
+bool GameServer::applyDamage(entt::entity attacker, entt::entity target,
+                             float damage, ItemType weapon) {
+    auto& registry = m_entityManager.getRegistry();
+    if (!(std::isfinite(damage) && damage > 0.0F) ||
+        !registry.valid(target) ||
+        !registry.all_of<Components::Health, Components::PlayerLife>(target))
+        return false;
+    auto& life = registry.get<Components::PlayerLife>(target);
+    if (life.dead || life.spawnProtectionRemaining > 0.0F) return false;
+    auto& health = registry.get<Components::Health>(target);
+    if (health.current <= 0.0F) return false;
+    const float before = health.current;
+    health.decrement(damage, attacker);
+    life.killer = registry.valid(attacker) ? attacker : entt::null;
+    life.killingWeapon = weapon;
+    const auto roundedDamage = static_cast<std::uint16_t>(std::clamp(
+        std::lround(before - health.current), 0L, 65535L));
+    protocol::Damage event{
+        static_cast<std::uint32_t>(m_currentTick),
+        life.killer == entt::null
+            ? std::optional<std::uint32_t>{}
+            : std::optional<std::uint32_t>{
+                  static_cast<std::uint32_t>(life.killer)},
+        static_cast<std::uint32_t>(target), roundedDamage,
+        static_cast<std::uint16_t>(std::clamp(
+            std::lround(health.current), 0L, 65535L))};
+    emitReliable(target, event);
+    if (life.killer != entt::null && life.killer != target)
+        emitReliable(life.killer, event);
+    return before != health.current;
 }
 
-}  // namespace
-
-// Orchestrator: run each pickup sub-system in order.
-void GameServer::pickupSystem() {
-    const b2ContactEvents events =
-        b2World_GetContactEvents(m_physicsWorld.m_worldId);
-    processPickupContactBegin(events);
-    processPickupContactEnd(events);
-    refreshPickupOverlaps();
-    processPickupActions();
-}
-
-// Insert players into pickup overlap sets on first physical contact, and
-// auto-collect ammo pickups immediately.
-void GameServer::processPickupContactBegin(const b2ContactEvents& events) {
-    entt::registry& reg = m_entityManager.getRegistry();
-
-    for (int i = 0; i < events.beginCount; ++i) {
-        const b2ContactBeginTouchEvent& evt = events.beginEvents[i];
-
-        entt::entity entityA = extractPickupEntity(evt.shapeIdA);
-        entt::entity entityB = extractPickupEntity(evt.shapeIdB);
-
-        auto [pickupEntity, playerEntity] =
-            resolvePickupAndPlayer(reg, entityA, entityB);
-        if (pickupEntity == entt::null || playerEntity == entt::null) continue;
-
-        if (!reg.valid(pickupEntity) ||
-            reg.all_of<Components::Removal>(pickupEntity))
-            continue;
-
-        auto& pickup = reg.get<Components::GroundItem>(pickupEntity);
-        pickup.overlaps.insert(playerEntity);
-
-        if (!pickup.isGun() && pickup.ammoAmount > 0) {
-            reg.get<Components::Ammo>(playerEntity)
-                .add(pickup.ammoType, pickup.ammoAmount);
-            reg.get<Components::Inventory>(playerEntity).dirty = true;
-            m_entityManager.scheduleForRemoval(pickupEntity);
-        }
-    }
-}
-
-// Remove players from pickup overlap sets when physical contact ends.
-void GameServer::processPickupContactEnd(const b2ContactEvents& events) {
-    entt::registry& reg = m_entityManager.getRegistry();
-
-    for (int i = 0; i < events.endCount; ++i) {
-        const b2ContactEndTouchEvent& evt = events.endEvents[i];
-
-        entt::entity entityA = extractPickupEntity(evt.shapeIdA);
-        entt::entity entityB = extractPickupEntity(evt.shapeIdB);
-
-        auto [pickupEntity, playerEntity] =
-            resolvePickupAndPlayer(reg, entityA, entityB);
-        if (pickupEntity == entt::null || playerEntity == entt::null) continue;
-
-        if (!reg.valid(pickupEntity) ||
-            !reg.all_of<Components::GroundItem>(pickupEntity))
-            continue;
-
-        reg.get<Components::GroundItem>(pickupEntity)
-            .overlaps.erase(playerEntity);
-    }
-}
-
-// Fallback proximity sweep: keeps overlap sets accurate when Box2D contact
-// events are not emitted (e.g. for certain shape/filter combinations).
-// Also auto-collects ammo pickups found in range. (TODO: refactor, this is MVP)
-void GameServer::refreshPickupOverlaps() {
-    entt::registry& reg = m_entityManager.getRegistry();
-
-    constexpr float PICKUP_INTERACT_RADIUS_PIXELS = 55.0f;
-    const float pickupRangeMeters = meters(PICKUP_INTERACT_RADIUS_PIXELS);
-    const float pickupRangeSq = pickupRangeMeters * pickupRangeMeters;
-
-    auto pickupBodyView =
-        reg.view<Components::GroundItem, Components::EntityBase>();
-    auto playerBodyView = reg.view<Components::Input, Components::Inventory,
-                                   Components::Ammo, Components::EntityBase>();
-
-    for (auto pickupEntity : pickupBodyView) {
-        if (!reg.valid(pickupEntity) ||
-            reg.all_of<Components::Removal>(pickupEntity))
-            continue;
-
-        auto& pickup = pickupBodyView.get<Components::GroundItem>(pickupEntity);
-        auto& pickupBase =
-            pickupBodyView.get<Components::EntityBase>(pickupEntity);
-
-        if (B2_IS_NULL(pickupBase.bodyId)) continue;
-
-        b2Vec2 pickupPos = b2Body_GetPosition(pickupBase.bodyId);
-
-        for (auto playerEntity : playerBodyView) {
-            if (!reg.valid(playerEntity)) continue;
-
-            auto& playerBase =
-                playerBodyView.get<Components::EntityBase>(playerEntity);
-            if (B2_IS_NULL(playerBase.bodyId)) continue;
-
-            b2Vec2 playerPos = b2Body_GetPosition(playerBase.bodyId);
-            float dx = playerPos.x - pickupPos.x;
-            float dy = playerPos.y - pickupPos.y;
-
-            if (dx * dx + dy * dy <= pickupRangeSq) {
-                pickup.overlaps.insert(playerEntity);
-
-                if (!pickup.isGun() && pickup.ammoAmount > 0) {
-                    playerBodyView.get<Components::Ammo>(playerEntity)
-                        .add(pickup.ammoType, pickup.ammoAmount);
-                    playerBodyView.get<Components::Inventory>(playerEntity)
-                        .dirty = true;
-                    m_entityManager.scheduleForRemoval(pickupEntity);
-                    break;
-                }
-            } else {
-                pickup.overlaps.erase(playerEntity);
+void GameServer::resolveHealthAndDeaths() {
+    auto& registry = m_entityManager.getRegistry();
+    const auto view = registry.view<Components::Health, Components::PlayerLife,
+                                    Components::CharacterController,
+                                    Components::Score>();
+    for (const auto entity : view) {
+        auto& health = view.get<Components::Health>(entity);
+        auto& life = view.get<Components::PlayerLife>(entity);
+        if (!life.dead && health.current <= 0.0F) {
+            life.dead = true;
+            life.deathTick = m_currentTick;
+            life.respawnRemaining = m_gameConfig.combat.respawnSeconds;
+            life.spawnProtectionRemaining = 0.0F;
+            life.deathPublished = true;
+            auto& victimScore = view.get<Components::Score>(entity);
+            ++victimScore.deaths;
+            m_physicsWorld.setCharacterVelocity(
+                view.get<Components::CharacterController>(entity).adapterId,
+                {0.0F, 0.0F, 0.0F});
+            emitReliable(std::nullopt, protocol::Death{
+                static_cast<std::uint32_t>(m_currentTick),
+                static_cast<std::uint32_t>(entity),
+                life.killer == entt::null
+                    ? std::optional<std::uint32_t>{}
+                    : std::optional<std::uint32_t>{
+                          static_cast<std::uint32_t>(life.killer)},
+                protocolWeapon(life.killingWeapon)});
+            emitReliable(std::nullopt,
+                         scoreRow(m_currentTick, entity, victimScore, 0));
+            if (life.killer != entt::null && life.killer != entity &&
+                registry.valid(life.killer) &&
+                registry.all_of<Components::Score>(life.killer)) {
+                auto& killerScore = registry.get<Components::Score>(life.killer);
+                ++killerScore.kills;
+                ++killerScore.points;
+                emitReliable(std::nullopt,
+                             scoreRow(m_currentTick, life.killer,
+                                      killerScore, 1));
+                if (killerScore.kills >= m_gameConfig.combat.scoreLimit &&
+                    matchPhase_ == protocol::MatchPhase::Active)
+                    transitionToIntermission();
             }
         }
     }
 }
 
-// Process explicit pickup key presses: add the nearest overlapping gun to the
-// player's inventory.
-void GameServer::processPickupActions() {
-    entt::registry& reg = m_entityManager.getRegistry();
+void GameServer::advanceRespawns(float delta) {
+    auto& registry = m_entityManager.getRegistry();
+    const auto view = registry.view<Components::Transform3D,
+                                    Components::Velocity3D,
+                                    Components::Health,
+                                    Components::PlayerLife,
+                                    Components::CharacterController>();
+    for (const auto entity : view) {
+        auto& life = view.get<Components::PlayerLife>(entity);
+        if (!life.dead) {
+            life.spawnProtectionRemaining =
+                std::max(0.0F, life.spawnProtectionRemaining - delta);
+            continue;
+        }
+        if (life.deathTick == m_currentTick) continue;
+        const std::uint64_t elapsedTicks = m_currentTick - life.deathTick;
+        const std::uint64_t respawnTicks =
+            secondsToTicks(m_gameConfig.combat.respawnSeconds);
+        life.respawnRemaining = elapsedTicks >= respawnTicks
+                                    ? 0.0F
+                                    : m_gameConfig.combat.respawnSeconds -
+                                          static_cast<float>(elapsedTicks) * delta;
+        if (elapsedTicks < respawnTicks) continue;
+        const auto& spawn = selectSpawnPoint(entity);
+        auto& transform = view.get<Components::Transform3D>(entity);
+        auto& velocity = view.get<Components::Velocity3D>(entity);
+        auto& controller = view.get<Components::CharacterController>(entity);
+        transform.position = spawn.position;
+        transform.rotation =
+            glm::angleAxis(spawn.yaw, glm::vec3{0.0F, 1.0F, 0.0F});
+        velocity.linear = {0.0F, 0.0F, 0.0F};
+        m_physicsWorld.setCharacterPosition(controller.adapterId, spawn.position);
+        m_physicsWorld.setCharacterVelocity(controller.adapterId, velocity.linear);
+        auto& health = view.get<Components::Health>(entity);
+        health.current = health.max;
+        health.dirty = true;
+        life.dead = false;
+        life.killer = entt::null;
+        life.killingWeapon = ItemType::ITEM_NONE;
+        life.deathPublished = false;
+        life.spawnProtectionRemaining =
+            m_gameConfig.combat.spawnProtectionSeconds;
+        auto& inventory = registry.get<Components::WeaponInventory>(entity);
+        inventory.slots[0].gun = GunFactory::makeRifle(m_gameConfig);
+        inventory.slots[1].gun = GunFactory::makeShotgun(m_gameConfig);
+        inventory.activeSlot = 0;
+        inventory.dirty = true;
+        auto& ammo = registry.get<Components::Ammo>(entity);
+        ammo.amounts.fill(0);
+        ammo.add(AmmoType::LIGHT, m_gameConfig.loadout.rifleReserveAmmo);
+        ammo.add(AmmoType::SHELL, m_gameConfig.loadout.shotgunReserveAmmo);
+        emitReliable(std::nullopt, protocol::Respawn{
+            static_cast<std::uint32_t>(m_currentTick),
+            static_cast<std::uint32_t>(entity),
+            {spawn.position.x, spawn.position.y, spawn.position.z}, spawn.yaw});
+    }
+}
 
-    auto playerView =
-        reg.view<Components::Input, Components::Inventory, Components::Ammo>();
-    auto pickupView = reg.view<Components::GroundItem>();
+protocol::MatchState GameServer::matchState() const {
+    return {matchPhase_, roundNumber_,
+            static_cast<std::uint32_t>(phaseEndsAtTick_)};
+}
 
-    for (auto playerEntity : playerView) {
-        auto& input = playerView.get<Components::Input>(playerEntity);
-        if (!input.pickupRequested) continue;
+void GameServer::emitReliable(std::optional<entt::entity> recipient,
+                              ReliableGameEvent event) {
+    ++observability_.reliableEvents;
+    if (reliableEventHook_) reliableEventHook_(recipient, event);
+    for (const auto& [id, client] : m_clients) {
+        (void)id;
+        if (!client || !client->welcomed() || client->closing()) continue;
+        if (recipient && client->m_entity != *recipient) continue;
+        std::visit(
+            [client](const auto& message) {
+                using Message = std::decay_t<decltype(message)>;
+                if constexpr (std::is_same_v<Message, protocol::ShotConfirmed>)
+                    client->queueShotConfirmed(message);
+                else if constexpr (std::is_same_v<Message, protocol::Impact>)
+                    client->queueImpact(message);
+                else if constexpr (std::is_same_v<Message, protocol::Damage>)
+                    client->queueDamage(message);
+                else if constexpr (std::is_same_v<Message, protocol::Death>)
+                    client->queueDeath(message);
+                else if constexpr (std::is_same_v<Message, protocol::Respawn>)
+                    client->queueRespawn(message);
+                else if constexpr (std::is_same_v<Message, protocol::ScoreChange>)
+                    client->queueScoreChange(message);
+                else if constexpr (std::is_same_v<Message, protocol::RoundTransition>)
+                    client->queueRoundTransition(message);
+            },
+            event);
+    }
+}
 
-        auto& inventory = playerView.get<Components::Inventory>(playerEntity);
+void GameServer::transitionToIntermission() {
+    if (matchPhase_ != protocol::MatchPhase::Active) return;
+    matchPhase_ = protocol::MatchPhase::Ended;
+    phaseEndsAtTick_ = m_currentTick;
+    emitReliable(std::nullopt, protocol::RoundTransition{
+        static_cast<std::uint32_t>(m_currentTick),
+        protocol::RoundTransitionKind::Ended, matchState()});
+    matchPhase_ = protocol::MatchPhase::Intermission;
+    phaseEndsAtTick_ = m_currentTick +
+                       secondsToTicks(m_gameConfig.combat.intermissionSeconds);
+    emitReliable(std::nullopt, protocol::RoundTransition{
+        static_cast<std::uint32_t>(m_currentTick),
+        protocol::RoundTransitionKind::Intermission, matchState()});
+}
 
-        for (auto pickupEntity : pickupView) {
-            if (!reg.valid(pickupEntity) ||
-                reg.all_of<Components::Removal>(pickupEntity))
-                continue;
+void GameServer::resetPlayerForRound(entt::entity player,
+                                     const MapSpawnPoint& spawn) {
+    auto& registry = m_entityManager.getRegistry();
+    auto& transform = registry.get<Components::Transform3D>(player);
+    auto& velocity = registry.get<Components::Velocity3D>(player);
+    auto& controller = registry.get<Components::CharacterController>(player);
+    transform.position = spawn.position;
+    transform.rotation =
+        glm::angleAxis(spawn.yaw, glm::vec3{0.0F, 1.0F, 0.0F});
+    velocity.linear = {0.0F, 0.0F, 0.0F};
+    m_physicsWorld.setCharacterPosition(controller.adapterId, spawn.position);
+    m_physicsWorld.setCharacterVelocity(controller.adapterId, velocity.linear);
+    auto& health = registry.get<Components::Health>(player);
+    health.current = health.max;
+    health.attacker = entt::null;
+    health.dirty = true;
+    auto& life = registry.get<Components::PlayerLife>(player);
+    life = Components::PlayerLife{};
+    life.spawnProtectionRemaining =
+        m_gameConfig.combat.spawnProtectionSeconds;
+    registry.get<Components::Score>(player) = Components::Score{};
+    auto& inventory = registry.get<Components::WeaponInventory>(player);
+    inventory = Components::WeaponInventory{};
+    inventory.addItem(GunFactory::makeRifle(m_gameConfig));
+    inventory.addItem(GunFactory::makeShotgun(m_gameConfig));
+    auto& ammo = registry.get<Components::Ammo>(player);
+    ammo.amounts.fill(0);
+    ammo.add(AmmoType::LIGHT, m_gameConfig.loadout.rifleReserveAmmo);
+    ammo.add(AmmoType::SHELL, m_gameConfig.loadout.shotgunReserveAmmo);
+    registry.get<Components::PlayerInput>(player) = Components::PlayerInput{};
+    registry.get<Components::PlayerCombat>(player) = Components::PlayerCombat{};
+}
 
-            auto& pickup = pickupView.get<Components::GroundItem>(pickupEntity);
-            if (!pickup.isGun()) continue;
-            if (!pickup.overlaps.count(playerEntity)) continue;
-            if (!inventory.addItem(pickup.gun)) continue;
+void GameServer::resetRound() {
+    if (matchPhase_ != protocol::MatchPhase::Intermission) return;
+    ++roundNumber_;
+    if (roundNumber_ == 0U) roundNumber_ = 1U;
+    matchPhase_ = protocol::MatchPhase::Active;
+    phaseEndsAtTick_ =
+        m_currentTick + secondsToTicks(m_gameConfig.combat.roundSeconds);
+    auto& registry = m_entityManager.getRegistry();
+    const auto view = registry.view<Components::EntityBase,
+                                    Components::Transform3D,
+                                    Components::Velocity3D,
+                                    Components::CharacterController,
+                                    Components::Health,
+                                    Components::PlayerLife,
+                                    Components::Score,
+                                    Components::WeaponInventory,
+                                    Components::Ammo,
+                                    Components::PlayerInput,
+                                    Components::PlayerCombat>();
+    std::vector<entt::entity> players;
+    for (const auto entity : view)
+        if (view.get<Components::EntityBase>(entity).type == PLAYER)
+            players.push_back(entity);
+    std::sort(players.begin(), players.end(), [](entt::entity first,
+                                                 entt::entity second) {
+        return static_cast<std::uint32_t>(first) <
+               static_cast<std::uint32_t>(second);
+    });
+    for (std::size_t index = 0; index < players.size(); ++index) {
+        const auto previousPoints =
+            registry.get<Components::Score>(players[index]).points;
+        const auto spawnIndex =
+            (static_cast<std::size_t>(roundNumber_) + index) %
+            m_mapPackage.manifest.spawnPoints.size();
+        resetPlayerForRound(players[index],
+                            m_mapPackage.manifest.spawnPoints[spawnIndex]);
+        emitReliable(std::nullopt,
+                     scoreRow(m_currentTick, players[index],
+                              registry.get<Components::Score>(players[index]),
+                              static_cast<std::int16_t>(std::clamp(
+                                  -previousPoints,
+                                  static_cast<std::int32_t>(
+                                      std::numeric_limits<std::int16_t>::min()),
+                                  static_cast<std::int32_t>(
+                                      std::numeric_limits<std::int16_t>::max())))));
+    }
+    history_.clear();
+    nextShotId_ = 1U;
+    emitReliable(std::nullopt, protocol::RoundTransition{
+        static_cast<std::uint32_t>(m_currentTick),
+        protocol::RoundTransitionKind::Reset, matchState()});
+    emitReliable(std::nullopt, protocol::RoundTransition{
+        static_cast<std::uint32_t>(m_currentTick),
+        protocol::RoundTransitionKind::Started, matchState()});
+}
 
-            m_entityManager.scheduleForRemoval(pickupEntity);
+void GameServer::publishEventsAndSnapshots() {
+    if (m_currentTick % (kTicksPerSecond / kSnapshotsPerSecond) != 0) return;
+    if (snapshotHook_) snapshotHook_(m_currentTick);
+    for (const auto& entry : m_clients) entry.second->writeGameState();
+    if (networkFlushHook_) networkFlushHook_();
+}
+
+void GameServer::simulateOneTick() {
+    using MetricsClock = std::chrono::steady_clock;
+    const auto tickStarted = MetricsClock::now();
+    if (m_currentTick == std::numeric_limits<std::uint64_t>::max())
+        throw std::overflow_error("authoritative simulation tick overflow");
+    ++m_currentTick;
+    constexpr float delta = 1.0F / static_cast<float>(kTicksPerSecond);
+
+    // Authoritative order: input, match/player state, motors, Jolt,
+    // weapon/fire, damage/death, respawns, then publication.
+    consumeQueuedValidatedInput();
+    updateMatchAndPlayerState(delta);
+    updateCharacterMotors(delta);
+    const auto joltStarted = MetricsClock::now();
+    m_physicsWorld.step(delta);
+    observability_.observeJolt(
+        std::chrono::duration<double, std::milli>(MetricsClock::now() -
+                                                  joltStarted)
+            .count());
+
+    auto& registry = m_entityManager.getRegistry();
+    const auto characters = registry.view<Components::Transform3D,
+                                          Components::Velocity3D,
+                                          Components::CharacterController>();
+    for (const auto entity : characters) {
+        auto& controller = characters.get<Components::CharacterController>(entity);
+        const auto state = m_physicsWorld.characterState(controller.adapterId);
+        characters.get<Components::Transform3D>(entity).position = state.position;
+        characters.get<Components::Velocity3D>(entity).linear = state.velocity;
+        controller.grounded = state.grounded;
+    }
+    recordPlayerHistory();
+    updateWeaponsAndFire();
+    resolvePendingDamage();
+    resolveHealthAndDeaths();
+    advanceRespawns(delta);
+    m_entityManager.removeEntities();
+    publishEventsAndSnapshots();
+    observability_.observeTick(
+        std::chrono::duration<double, std::milli>(MetricsClock::now() -
+                                                  tickStarted)
+            .count());
+    if (metricsSink_ && m_currentTick % (5U * kTicksPerSecond) == 0U)
+        metricsSink_(observabilityJson());
+}
+
+std::size_t GameServer::advanceSimulation(double elapsedSeconds) {
+    const auto steps = accumulator_.consume(
+        elapsedSeconds, [this](double) { simulateOneTick(); });
+    observability_.observeAdvance(steps, accumulator_.lastDroppedSeconds());
+    return steps;
+}
+
+void GameServer::queueValidatedInput(
+    entt::entity player, const Components::PlayerInput& input) {
+    if (!(std::isfinite(input.movement.x) && std::isfinite(input.movement.y) &&
+          std::isfinite(input.yaw) && std::isfinite(input.pitch)) ||
+        glm::length(input.movement) > 1.0001F ||
+        input.yaw < -3.14159265359F || input.yaw > 3.14159265359F ||
+        input.pitch < -1.57079632679F || input.pitch > 1.57079632679F)
+        throw std::invalid_argument("invalid authoritative player input");
+    if (queuedInputs_.size() >= 2048U)
+        throw std::length_error("authoritative input queue is full");
+    queuedInputs_.push_back({std::nullopt, player, input, std::nullopt});
+    observability_.observeQueuedInputs(queuedInputs_.size());
+}
+
+void GameServer::queueValidatedInput(
+    std::uint32_t clientId, entt::entity player,
+    const Components::PlayerInput& input, std::uint32_t sequence) {
+    if (!(std::isfinite(input.movement.x) && std::isfinite(input.movement.y) &&
+          std::isfinite(input.yaw) && std::isfinite(input.pitch)) ||
+        glm::length(input.movement) > 1.0001F ||
+        input.yaw < -3.14159265359F || input.yaw > 3.14159265359F ||
+        input.pitch < -1.57079632679F || input.pitch > 1.57079632679F)
+        throw std::invalid_argument("invalid authoritative player input");
+    if (queuedInputs_.size() >= 2048U)
+        throw std::length_error("authoritative input queue is full");
+    queuedInputs_.push_back({clientId, player, input, sequence});
+    observability_.observeQueuedInputs(queuedInputs_.size());
+}
+
+std::size_t GameServer::welcomedClientCount() const {
+    return static_cast<std::size_t>(std::count_if(
+        m_clients.begin(), m_clients.end(),
+        [](const auto& entry) { return entry.second && entry.second->welcomed(); }));
+}
+
+protocol::EntityRecord GameServer::makeEntityRecord(
+    entt::entity entity, entt::entity recipient) const {
+    const auto& registry = m_entityManager.getRegistry();
+    if (!registry.valid(entity) ||
+        !registry.all_of<Components::EntityBase, Components::Transform3D,
+                         Components::Velocity3D,
+                         Components::CharacterController,
+                         Components::PlayerInput, Components::PlayerLife>(entity))
+        throw std::invalid_argument("entity is not a replicated player");
+    if (registry.get<Components::EntityBase>(entity).type != PLAYER)
+        throw std::invalid_argument("entity record requires a player");
+
+    const auto& transform = registry.get<Components::Transform3D>(entity);
+    const auto& velocity = registry.get<Components::Velocity3D>(entity);
+    const auto& controller =
+        registry.get<Components::CharacterController>(entity);
+    const auto& input = registry.get<Components::PlayerInput>(entity);
+    const auto& life = registry.get<Components::PlayerLife>(entity);
+    protocol::EntityRecord record{};
+    record.entityId = static_cast<std::uint32_t>(entity);
+    record.kind = protocol::EntityKind::Player;
+    record.position = {transform.position.x, transform.position.y,
+                       transform.position.z};
+    record.velocity = {velocity.linear.x, velocity.linear.y,
+                       velocity.linear.z};
+    record.bodyYaw = input.yaw;
+    record.aimPitch = input.pitch;
+    record.grounded = controller.grounded;
+    record.stateFlags = life.dead ? 1U : 0U;
+
+    const auto* inventory =
+        registry.try_get<Components::WeaponInventory>(entity);
+    if (inventory)
+        record.equippedWeapon = protocolWeapon(inventory->getActive().gun);
+
+    if (entity != recipient) return record;
+    if (const auto* health = registry.try_get<Components::Health>(entity))
+        record.health = static_cast<std::uint16_t>(std::clamp(
+            std::lround(health->current), 0L, 65535L));
+    const auto* ammo = registry.try_get<Components::Ammo>(entity);
+    if (inventory && ammo) {
+        const auto& gun = inventory->getActive().gun;
+        record.weaponState = protocol::WeaponState{
+            protocolWeapon(gun),
+            static_cast<std::uint16_t>(
+                std::clamp(gun.ammoInMag, 0, 65535)),
+            static_cast<std::uint16_t>(
+                std::clamp(ammo->get(gun.ammoType), 0, 65535)),
+            static_cast<std::uint8_t>(gun.isReloading() ? 1U : 0U)};
+    }
+    return record;
+}
+
+void GameServer::broadcastPlayerSpawn(entt::entity entity) {
+    for (const auto& entry : m_clients) {
+        Client* recipient = entry.second;
+        if (!recipient || !recipient->welcomed() || recipient->closing())
+            continue;
+        recipient->queueSpawn(protocol::Spawn{
+            static_cast<std::uint32_t>(m_currentTick),
+            makeEntityRecord(entity, recipient->m_entity)});
+    }
+}
+
+void GameServer::broadcastSpawn(const protocol::Spawn& message) {
+    for (const auto& entry : m_clients) entry.second->queueSpawn(message);
+}
+
+void GameServer::broadcastRemove(const protocol::Remove& message) {
+    for (const auto& entry : m_clients) entry.second->queueRemove(message);
+}
+
+void GameServer::broadcastChat(const protocol::Chat& message) {
+    for (const auto& entry : m_clients) entry.second->queueChat(message);
+}
+
+void GameServer::queueCurrentScoreboard(Client& recipient) const {
+    const auto& registry = m_entityManager.getRegistry();
+    const auto view = registry.view<Components::EntityBase, Components::Score>();
+    std::vector<entt::entity> players;
+    players.reserve(view.size_hint());
+    for (const auto entity : view)
+        if (view.get<Components::EntityBase>(entity).type == PLAYER)
+            players.push_back(entity);
+    std::sort(players.begin(), players.end(), [](entt::entity first,
+                                                 entt::entity second) {
+        return static_cast<std::uint32_t>(first) <
+               static_cast<std::uint32_t>(second);
+    });
+    for (const auto player : players)
+        recipient.queueScoreChange(
+            scoreRow(m_currentTick, player,
+                     registry.get<Components::Score>(player), 0));
+}
+
+void GameServer::triggerDeath(entt::entity player) {
+    auto& registry = m_entityManager.getRegistry();
+    if (!registry.valid(player) || !registry.all_of<Components::Health>(player))
+        throw std::invalid_argument("death trigger requires a live player entity");
+    auto& health = registry.get<Components::Health>(player);
+    health.current = 0.0F;
+    health.dirty = true;
+    auto& life = registry.get<Components::PlayerLife>(player);
+    life.killer = entt::null;
+    life.killingWeapon = ItemType::ITEM_NONE;
+}
+
+void GameServer::setSnapshotHook(
+    std::function<void(std::uint64_t)> hook) {
+    snapshotHook_ = std::move(hook);
+}
+
+void GameServer::setNetworkFlushHook(std::function<void()> hook) {
+    networkFlushHook_ = std::move(hook);
+}
+
+void GameServer::setReliableEventHook(std::function<void(
+    std::optional<entt::entity>, const ReliableGameEvent&)> hook) {
+    reliableEventHook_ = std::move(hook);
+}
+
+std::size_t GameServer::replicatedPlayerCount() const {
+    const auto& registry = m_entityManager.getRegistry();
+    const auto view = registry.view<Components::EntityBase>();
+    std::size_t players = 0U;
+    for (const auto entity : view)
+        if (view.get<Components::EntityBase>(entity).type == PLAYER) ++players;
+    return players;
+}
+
+ServerMetricsSnapshot GameServer::observabilityMetrics() const {
+    return observability_.snapshot(
+        replicatedPlayerCount(), combatMetrics_.shotsFired,
+        combatMetrics_.pelletHits, combatMetrics_.rejectedFireAttempts,
+        combatMetrics_.historyClamps);
+}
+
+std::string GameServer::observabilityJson() const {
+    const auto metrics = observabilityMetrics();
+    const auto distribution = [](const MetricDistribution& value) {
+        return nlohmann::ordered_json{{"count", value.count},
+                                      {"p50", value.p50},
+                                      {"p95", value.p95},
+                                      {"p99", value.p99},
+                                      {"max", value.max}};
+    };
+    nlohmann::ordered_json json{
+        {"event", "server_metrics"},
+        {"serverTick", m_currentTick},
+        {"tickMilliseconds", distribution(metrics.tickMilliseconds)},
+        {"joltMilliseconds", distribution(metrics.joltMilliseconds)},
+        {"snapshotMilliseconds",
+         distribution(metrics.snapshotMilliseconds)},
+        {"snapshotBytes", distribution(metrics.snapshotBytes)},
+        {"accumulatorCalls", metrics.accumulatorCalls},
+        {"catchUpSteps", metrics.catchUpSteps},
+        {"maxStepsPerAdvance", metrics.maxStepsPerAdvance},
+        {"droppedTimeSeconds", metrics.droppedTimeSeconds},
+        {"playerCount", metrics.playerCount},
+        {"queuedInputHighWater", metrics.queuedInputHighWater},
+        {"pendingClientInputHighWater",
+         metrics.pendingClientInputHighWater},
+        {"outboundQueueBytesHighWater",
+         metrics.outboundQueueBytesHighWater},
+        {"outboundQueueMessagesHighWater",
+         metrics.outboundQueueMessagesHighWater},
+        {"snapshots", metrics.snapshots},
+        {"reliableEvents", metrics.reliableEvents},
+        {"inboundMessages", metrics.inboundMessages},
+        {"inboundBytes", metrics.inboundBytes},
+        {"outboundMessages", metrics.outboundMessages},
+        {"outboundBytes", metrics.outboundBytes},
+        {"rejectedMessages", metrics.rejectedMessages},
+        {"malformedMessages", metrics.malformedMessages},
+        {"rateLimitedMessages", metrics.rateLimitedMessages},
+        {"unknownMessages", metrics.unknownMessages},
+        {"backpressureCloses", metrics.backpressureCloses},
+        {"shotsFired", metrics.shotsFired},
+        {"pelletHits", metrics.pelletHits},
+        {"rejectedFireAttempts", metrics.rejectedFireAttempts},
+        {"historyClamps", metrics.historyClamps}};
+    return json.dump();
+}
+
+void GameServer::resetObservabilityMetrics() { observability_.reset(); }
+
+void GameServer::setMetricsSink(
+    std::function<void(const std::string&)> sink) {
+    metricsSink_ = std::move(sink);
+}
+
+void GameServer::recordInboundMessage(std::size_t bytes) {
+    ++observability_.inboundMessages;
+    observability_.inboundBytes += bytes;
+}
+
+void GameServer::recordOutboundMessage(std::size_t bytes) {
+    ++observability_.outboundMessages;
+    observability_.outboundBytes += bytes;
+}
+
+void GameServer::recordClientMessageMetric(ClientMessageMetric metric) {
+    switch (metric) {
+        case ClientMessageMetric::Rejected:
+            ++observability_.rejectedMessages;
             break;
-        }
-
-        input.pickupRequested = false;
-    }
-}
-
-void GameServer::flushProjectileSpawnBatch() {
-    entt::registry& reg = m_entityManager.getRegistry();
-    auto projectileView =
-        reg.view<Components::Projectile, Components::EntityBase>();
-
-    if (projectileView.begin() == projectileView.end()) {
-        return;
-    }
-
-    for (auto& [id, client] : m_clients) {
-        if (!reg.valid(client->m_entity) ||
-            !reg.all_of<Components::Camera>(client->m_entity)) {
-            continue;
-        }
-
-        Components::Camera& cam = reg.get<Components::Camera>(client->m_entity);
-        bool targetValid = (cam.target != entt::null && reg.valid(cam.target));
-        const b2Vec2& camPos =
-            targetValid
-                ? b2Body_GetPosition(
-                      reg.get<Components::EntityBase>(cam.target).bodyId)
-                : cam.position;
-        float halfViewX = meters(cam.width) * 0.5f;
-        float halfViewY = meters(cam.height) * 0.5f;
-
-        b2AABB queryAABB;
-        queryAABB.lowerBound = {camPos.x - halfViewX, camPos.y - halfViewY};
-        queryAABB.upperBound = {camPos.x + halfViewX, camPos.y + halfViewY};
-
-        struct SpawnPayload {
-            uint32_t id;
-            float originX;
-            float originY;
-            float dirX;
-            float dirY;
-            float speed;
-            uint64_t spawnTick;
-        };
-
-        std::vector<SpawnPayload> newlyVisible;
-
-        for (auto entity : projectileView) {
-            auto& projectile =
-                projectileView.get<Components::Projectile>(entity);
-            auto& base = projectileView.get<Components::EntityBase>(entity);
-
-            if (!projectile.active) continue;
-            if (B2_IS_NULL(base.bodyId)) continue;
-            if (!b2Body_IsEnabled(base.bodyId)) continue;
-
-            const b2Vec2& pos = b2Body_GetPosition(base.bodyId);
-            if (!AABBCollision::pointInAABB(pos, queryAABB)) {
-                continue;
-            }
-
-            uint32_t projectileId = static_cast<uint32_t>(entity);
-            if (client->m_visibleProjectiles.insert(projectileId).second) {
-                newlyVisible.push_back({projectileId, projectile.originX,
-                                        projectile.originY, projectile.dirX,
-                                        projectile.dirY, projectile.speed,
-                                        projectile.spawnTick});
-            }
-        }
-
-        if (newlyVisible.empty()) {
-            continue;
-        }
-
-        client->m_writer.writeU8(ServerHeader::PROJECTILE_SPAWN_BATCH);
-        client->m_writer.writeU64(m_currentTick);
-        client->m_writer.writeU32(static_cast<uint32_t>(newlyVisible.size()));
-
-        for (const auto& spawn : newlyVisible) {
-            client->m_writer.writeU32(spawn.id);
-            client->m_writer.writeFloat(spawn.originX);
-            client->m_writer.writeFloat(spawn.originY);
-            client->m_writer.writeFloat(spawn.dirX);
-            client->m_writer.writeFloat(spawn.dirY);
-            client->m_writer.writeFloat(spawn.speed);
-            client->m_writer.writeU64(spawn.spawnTick);
-        }
-    }
-}
-
-void GameServer::flushProjectileDestroyBatch() {
-    if (m_projectileDestroyQueue.empty()) {
-        return;
-    }
-
-    for (auto& [id, client] : m_clients) {
-        for (uint32_t projectileId : m_projectileDestroyQueue) {
-            auto it = client->m_visibleProjectiles.find(projectileId);
-            if (it == client->m_visibleProjectiles.end()) {
-                continue;
-            }
-            client->m_visibleProjectiles.erase(it);
-            client->m_writer.writeU8(ServerHeader::PROJECTILE_DESTROY);
-            client->m_writer.writeU32(projectileId);
-        }
-    }
-
-    m_projectileDestroyQueue.clear();
-}
-
-void GameServer::cameraSystem() {
-    entt::registry& reg = m_entityManager.getRegistry();
-    reg.view<Components::Camera>().each(
-        [&](entt::entity entity, Components::Camera& cam) {
-            if (reg.valid(cam.target)) {
-                assert(reg.all_of<Components::EntityBase>(cam.target));
-
-                b2BodyId bodyId =
-                    reg.get<Components::EntityBase>(cam.target).bodyId;
-                cam.position = b2Body_GetPosition(bodyId);
-            }
-        });
-}
-
-void GameServer::healthSystem(double delta) {
-    entt::registry& reg = m_entityManager.getRegistry();
-
-    reg.view<Components::Health>().each(
-        [&](entt::entity entity, Components::Health& health) {
-            if (health.current <= 0) {
-                Die(entity);
-            }
-        });
-}
-
-void GameServer::applyDamage(entt::entity attacker, entt::entity target,
-                             float damage) {
-    entt::registry& reg = m_entityManager.getRegistry();
-
-    if (reg.valid(target) && reg.all_of<Components::Health>(target)) {
-        Components::Health& health = reg.get<Components::Health>(target);
-        health.decrement(damage, attacker);
-
-        if (reg.all_of<Components::State>(target)) {
-            Components::State& state = reg.get<Components::State>(target);
-            state.setState(EntityStates::HURT);
-        }
-    }
-
-    if (reg.valid(target) && reg.all_of<Components::Destructible>(target)) {
-        Components::Destructible& dest =
-            reg.get<Components::Destructible>(target);
-        dest.damage(damage);
-    }
-}
-
-void GameServer::Hit(entt::entity attacker, b2Vec2& pos, int radius) {
-    float mRadius = meters(radius);
-
-    float x = meters(pos.x);
-    float y = meters(pos.y);
-
-    b2AABB queryAABB;
-    queryAABB.lowerBound = {x - mRadius, y - mRadius};
-    queryAABB.upperBound = {x + mRadius, y + mRadius};
-
-    entt::registry& reg = m_entityManager.getRegistry();
-
-    auto healthView = reg.view<Components::EntityBase, Components::Health>();
-
-    for (auto entity : healthView) {
-        if (attacker == entity) continue;
-
-        assert(healthView.contains(entity));
-        auto& base = healthView.get<Components::EntityBase>(entity);
-
-        if (B2_IS_NULL(base.bodyId)) continue;
-
-        // Get entity position
-        b2Vec2 entityPos = b2Body_GetPosition(base.bodyId);
-
-        // Simple distance check first
-        b2Vec2 diff = {entityPos.x - x, entityPos.y - y};
-        float distSq = diff.x * diff.x + diff.y * diff.y;
-        if (distSq > (mRadius + 2.0f) * (mRadius + 2.0f))
-            continue;  // Simple bounds check
-
-        Components::Health& health = healthView.get<Components::Health>(entity);
-
-        // Get all shapes for this body and test overlap
-        int shapeCount = b2Body_GetShapeCount(base.bodyId);
-        b2ShapeId* shapes = new b2ShapeId[shapeCount];
-        b2Body_GetShapes(base.bodyId, shapes, shapeCount);
-
-        bool hit = false;
-        for (int i = 0; i < shapeCount; ++i) {
-            b2ShapeId shapeId = shapes[i];
-
-            // Get shape bounds
-            b2AABB shapeAABB = b2Shape_GetAABB(shapeId);
-            if (AABBCollision::circleAABBOverlap({x, y}, mRadius, shapeAABB)) {
-                // damage entity
-                const int DAMAGE = 10;
-                health.decrement(DAMAGE, attacker);
-
-                // if entity has a state, we will set it to hurt
-                if (reg.all_of<Components::State>(entity)) {
-                    Components::State& state =
-                        reg.get<Components::State>(entity);
-
-                    state.setState(EntityStates::HURT);
-                }
-                hit = true;
-                break;  // Only hit once per entity
-            }
-        }
-        delete[] shapes;
-    }
-}
-
-void GameServer::Die(entt::entity entity) {
-    entt::registry& reg = m_entityManager.getRegistry();
-    assert(reg.all_of<Components::EntityBase>(entity));
-
-    EntityTypes type = reg.get<Components::EntityBase>(entity).type;
-
-    // Entities cannot be 'killed' unless they have a health component
-    assert(reg.all_of<Components::Health>(entity));
-
-    switch (type) {
-        case EntityTypes::PLAYER: {
-            assert(reg.all_of<Components::Client>(entity));
-
-            uint32_t id = reg.get<Components::Client>(entity).id;
-            auto it = m_clients.find(id);
-
-            // It is possible for the client to have disconnected already
-            if (it == m_clients.end()) {
-                return;
-            }
-
-            Client* client = it->second;
-
-            m_entityManager.scheduleForRemoval(client->m_entity);
-            client->changeBody(m_entityManager.createSpectator(
-                reg.get<Components::Health>(entity).attacker));
-            client->m_active = false;
-            client->m_writer.writeU8(ServerHeader::DIED);
-
-            broadcastKill(entity);
+        case ClientMessageMetric::Malformed:
+            ++observability_.malformedMessages;
             break;
-        }
-
-        default:
-            std::cout << "Did not implement case for " << type << std::endl;
-            assert(false);
+        case ClientMessageMetric::RateLimited:
+            ++observability_.rateLimitedMessages;
+            break;
+        case ClientMessageMetric::Unknown:
+            ++observability_.unknownMessages;
+            break;
+        case ClientMessageMetric::Backpressure:
+            ++observability_.backpressureCloses;
             break;
     }
 }
 
-void GameServer::broadcastKill(entt::entity subject) {
-    entt::registry& reg = m_entityManager.getRegistry();
-    entt::entity killer = reg.get<Components::Health>(subject).attacker;
-
-    for (auto& [id, client] : m_clients) {
-        client->m_writer.writeU8(ServerHeader::NEWS);
-        client->m_writer.writeU8(NewsType::KILL);
-        client->m_writer.writeU32(static_cast<uint32_t>(subject));
-        client->m_writer.writeU32(static_cast<uint32_t>(killer));
-    }
+void GameServer::observePendingClientInputs(std::size_t count) {
+    observability_.observePendingClientInputs(count);
 }
 
-void GameServer::broadcastMessage(const std::string& message) {
-    for (auto& [id, client] : m_clients) {
-        client->m_writer.writeU8(ServerHeader::NEWS);
-        client->m_writer.writeU8(NewsType::TEXT);
-        client->m_writer.writeString(message);
-    }
+void GameServer::observeOutboundQueue(std::size_t messages,
+                                      std::size_t bytes) {
+    observability_.observeOutboundQueue(messages, bytes);
 }
 
-// TODO: this should maybe be serialized from within Client.cpp game state AND
-// this should not send to every client, only those who can see the trace
-void GameServer::broadcastBulletTrace(entt::entity shooter, glm::vec2 start,
-                                      glm::vec2 end) {
-    float startX = pixels(start.x);
-    float startY = pixels(start.y);
-    float endX = pixels(end.x);
-    float endY = pixels(end.y);
-
-    for (auto& [id, client] : m_clients) {
-        client->m_writer.writeU8(ServerHeader::BULLET_TRACE);
-        client->m_writer.writeU32(static_cast<uint32_t>(shooter));
-        client->m_writer.writeFloat(startX);
-        client->m_writer.writeFloat(startY);
-        client->m_writer.writeFloat(endX);
-        client->m_writer.writeFloat(endY);
-    }
+void GameServer::observeSnapshot(double milliseconds, std::size_t bytes) {
+    observability_.observeSnapshot(milliseconds, bytes);
 }
 
 void GameServer::setServerRegistration(ServerRegistration* registration) {
@@ -1066,17 +1079,11 @@ void GameServer::setServerRegistration(ServerRegistration* registration) {
 }
 
 void GameServer::updateHeartbeat(double delta) {
-    if (!m_serverRegistration) {
-        return;  // No registration configured
-    }
-
+    if (!m_serverRegistration) return;
     m_heartbeatTimer += delta;
-
     if (m_heartbeatTimer >= m_heartbeatInterval) {
         m_heartbeatTimer = 0.0;
-
-        // Send heartbeat with current player count
-        int playerCount = static_cast<int>(m_clients.size());
-        m_serverRegistration->sendHeartbeatAsync(playerCount);
+        m_serverRegistration->sendHeartbeatAsync(
+            static_cast<int>(welcomedClientCount()));
     }
 }

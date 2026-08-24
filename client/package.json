@@ -1,32 +1,40 @@
 {
     "name": "client",
     "version": "1.0.0",
+    "private": true,
+    "type": "module",
     "description": "",
-    "main": "index.js",
     "scripts": {
-        "dev": "webpack serve --mode development",
-        "build": "webpack --mode production",
-        "typecheck": "tsc --noEmit"
+        "dev": "vite",
+        "build": "vite build",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run",
+        "protocol:generate": "node ../protocol/generate.mjs",
+        "protocol:check": "node ../protocol/generate.mjs --check",
+        "map:compile": "node --import tsx tools/map-compiler/cli.ts maps/graybox-arena.gltf public/maps/graybox-arena",
+        "map:check": "node --import tsx tools/map-compiler/cli.ts --check maps/graybox-arena.gltf public/maps/graybox-arena",
+        "smoke:jolt": "node --import tsx tools/jolt-smoke.ts",
+        "smoke:performance": "node --import tsx tools/performance-smoke.ts",
+        "bots:syntax": "node --import tsx --check bots_test/bots.js && node --import tsx --check bots_test/spambots.js && node --import tsx --check bots_test/two-client-harness.js",
+        "harness:phase4": "node --import tsx bots_test/two-client-harness.js",
+        "harness:phase5": "node --import tsx bots_test/two-client-harness.js"
     },
     "keywords": [],
     "author": "",
     "license": "ISC",
     "devDependencies": {
-        "clean-webpack-plugin": "^4.0.0",
-        "copy-webpack-plugin": "^12.0.2",
-        "css-loader": "^7.1.2",
-        "fork-ts-checker-webpack-plugin": "^9.0.2",
-        "html-webpack-plugin": "^5.6.3",
-        "mini-css-extract-plugin": "^2.9.1",
+        "@types/node": "^26.0.0",
+        "@types/ws": "8.18.1",
         "prettier": "^3.6.2",
-        "style-loader": "^4.0.0",
-        "ts-loader": "^9.5.1",
+        "tsx": "^4.20.0",
         "typescript": "^5.6.3",
-        "webpack": "^5.95.0",
-        "webpack-cli": "^5.1.4",
-        "webpack-dev-server": "^5.1.0"
+        "vite": "8.2.2",
+        "vitest": "4.1.11",
+        "ws": "8.21.3"
     },
     "dependencies": {
-        "pixi.js": "^8.9.2"
+        "@babylonjs/core": "9.22.1",
+        "@babylonjs/loaders": "9.22.1",
+        "jolt-physics": "1.1.0"
     }
 }

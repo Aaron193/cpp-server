@@ -1,5 +1,6 @@
 libs/
 build/
+.build/
 
 .cache
 run-notes.txt

@@ -1,16 +1,16 @@
 # Dockerfile for Client (Static Build)
 
-FROM node:20-alpine AS builder
+FROM node:20.19.5-alpine AS builder
 
 WORKDIR /app
 
 # Accept build arguments for environment configuration
-ARG CLIENT_API_BASE
-ARG CLIENT_GAME_SERVER_WS
+ARG CLIENT_API_BASE=/api
+ARG CLIENT_BUILD_ID=dev
 
-# Set as environment variables for webpack
-ENV CLIENT_API_BASE=${CLIENT_API_BASE}
-ENV CLIENT_GAME_SERVER_WS=${CLIENT_GAME_SERVER_WS}
+# Vite exposes only explicitly prefixed client build variables.
+ENV VITE_CLIENT_API_BASE=${CLIENT_API_BASE}
+ENV VITE_CLIENT_BUILD_ID=${CLIENT_BUILD_ID}
 
 # Copy package files
 COPY client/package*.json ./
@@ -27,7 +27,10 @@ RUN npm run build
 # =============================================================================
 # Production stage with nginx
 # =============================================================================
-FROM nginx:alpine AS production
+# Stock nginx includes gzip and the standard application/wasm MIME table. It
+# does not include Brotli, so the production configuration deliberately does
+# not advertise or enable Brotli.
+FROM nginx:1.27.5-alpine AS production
 
 # Copy custom nginx configuration
 COPY nginx.conf /etc/nginx/nginx.conf
@@ -44,12 +47,12 @@ RUN chown -R nginx:nginx /usr/share/nginx/html && \
 # Use non-root user
 USER nginx
 
-# Expose port
-EXPOSE 80
+# The master process runs unprivileged, so nginx binds a non-privileged port.
+EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost/ || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:8080/health || exit 1
 
 # Start nginx
 CMD ["nginx", "-g", "daemon off;"]

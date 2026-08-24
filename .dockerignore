@@ -1,0 +1,12 @@
+.git
+.github
+.env
+**/.env
+**/node_modules
+**/.build
+**/build
+client/dist
+web/coverage
+server/coverage
+*.log
+*.gif

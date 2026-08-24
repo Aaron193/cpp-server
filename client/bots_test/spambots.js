@@ -1,129 +1,39 @@
-const WebSocket = require('ws')
+import WebSocket from 'ws'
+import { MessageType, PROTOCOL_VERSION, Weapon, decodeEnvelope, encodeMessage } from '../src/protocol/generated.ts'
 
-let botCounter = 0
-let activeConnections = 0
-const maxConcurrentConnections = 500
-const totalBotsCreated = { count: 0 }
+const websocketUrl = process.env.BOT_WEBSOCKET_URL || 'ws://localhost:9001'
+const buildId = process.env.BOT_BUILD_ID || 'dev'
+const maxConcurrentConnections = Number(process.env.BOT_COUNT || 100)
+let activeConnections = 0, botCounter = 0
 
 function createBot() {
-    if (activeConnections >= maxConcurrentConnections) {
-        return
-    }
-
-    const botId = ++botCounter
-    const ws = new WebSocket('ws://localhost:9001')
-
-    console.log(
-        `[Bot ${botId}] Connecting... (Active: ${activeConnections + 1})`
-    )
+    if (activeConnections >= maxConcurrentConnections) return
+    const botId = ++botCounter, ws = new WebSocket(websocketUrl)
+    let sequence = 0, tick = 0, movement
     activeConnections++
-    totalBotsCreated.count++
-
-    ws.onopen = function () {
-        console.log(`[Bot ${botId}] Connected! Spawning player...`)
-
-        // Send spawn packet
-        ws.send(
-            new Uint8Array([
-                0x00, 0x08, 0x00, 0x6d, 0x79, 0x20, 0x6e, 0x61, 0x6d, 0x65,
-                0x21,
-            ])
-        )
-
-        // Send movement packets
-        const movementInterval = setInterval(
-            () => {
-                if (ws.readyState === WebSocket.OPEN) {
-                    const randomMovement = Math.floor(Math.random() * 256)
-                    ws.send(new Uint8Array([2, randomMovement]))
-                    console.log(
-                        `[Bot ${botId}] Sent movement: ${randomMovement}`
-                    )
-                } else {
-                    clearInterval(movementInterval)
-                }
-            },
-            50 + Math.random() * 100
-        )
-
-        // Spam server with random packets
-        const randomDataInterval = setInterval(
-            () => {
-                if (ws.readyState === WebSocket.OPEN) {
-                    const packetSize = Math.floor(Math.random() * 10) + 1
-                    const randomPacket = new Uint8Array(packetSize)
-
-                    for (let i = 0; i < packetSize; i++) {
-                        randomPacket[i] = Math.floor(Math.random() * 256)
-                    }
-
-                    ws.send(randomPacket)
-                    console.log(
-                        `[Bot ${botId}] Sent random data: [${Array.from(randomPacket).join(', ')}]`
-                    )
-                } else {
-                    clearInterval(randomDataInterval)
-                }
-            },
-            80 + Math.random() * 120
-        )
-
-        const disconnectTime = Math.random() * 2500 + 500
-
-        setTimeout(() => {
-            if (ws.readyState === WebSocket.OPEN) {
-                console.log(
-                    `[Bot ${botId}] Disconnecting after ${disconnectTime.toFixed(0)}ms`
-                )
-                clearInterval(movementInterval)
-                clearInterval(randomDataInterval)
-                ws.close()
+    ws.on('open', () => ws.send(encodeMessage({ type: MessageType.Hello, payload: { protocolVersion: PROTOCOL_VERSION, clientBuildId: buildId, supportedMapFormat: 1, accessToken: null } })))
+    ws.on('message', (data) => {
+        const bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+        let offset = 0
+        while (offset < bytes.length) {
+            const envelope = decodeEnvelope(bytes, offset); offset = envelope.nextOffset
+            if (!envelope.known || movement) continue
+            if (envelope.message.type === MessageType.Reject) { ws.close(); return }
+            if (envelope.message.type === MessageType.Configuration) {
+                movement = setInterval(() => {
+                    const angle = (botId + tick / 60) % (Math.PI * 2)
+                    tick = (tick + 1) >>> 0
+                    const selectedWeapon = Math.floor((tick + botId) / 180) % 2 ? Weapon.Shotgun : Weapon.Rifle
+                    const command = { sequence: sequence = (sequence + 1) >>> 0, clientTick: tick, moveX: Math.sin(angle), moveY: Math.cos(angle), buttonFlags: 2 | (tick % 240 === 0 ? 1 : 0) | (tick % 360 === 0 ? 4 : 0), yaw: angle - Math.PI, pitch: 0, selectedWeapon }
+                    if (ws.readyState === WebSocket.OPEN) ws.send(encodeMessage({ type: MessageType.InputBatch, payload: { commands: [command] } }))
+                }, 1000 / 60)
             }
-        }, disconnectTime)
-    }
-
-    ws.onclose = function () {
-        console.log(
-            `[Bot ${botId}] Disconnected (Active: ${activeConnections - 1})`
-        )
-        activeConnections--
-    }
-
-    ws.onerror = function (error) {
-        console.log(`[Bot ${botId}] Error:`, error.message)
-        activeConnections--
-    }
-}
-
-function startContinuousTest() {
-    console.log('Starting continuous bot stress test...')
-    console.log(`Max concurrent connections: ${maxConcurrentConnections}`)
-
-    for (let i = 0; i < maxConcurrentConnections; i++) {
-        setTimeout(() => createBot(), i * 10)
-    }
-
-    setInterval(() => {
-        const botsToCreate = Math.min(
-            5,
-            maxConcurrentConnections - activeConnections
-        )
-        for (let i = 0; i < botsToCreate; i++) {
-            setTimeout(() => createBot(), i * 20)
         }
-    }, 100)
-
-    setInterval(() => {
-        console.log(
-            `--- Status: ${activeConnections} active, ${totalBotsCreated.count} total created ---`
-        )
-    }, 2000)
+    })
+    ws.once('close', () => { if (movement) clearInterval(movement); activeConnections = Math.max(0, activeConnections - 1) })
+    ws.on('error', (error) => console.error(`[Bot ${botId}] ${error.message}`))
 }
 
-startContinuousTest()
-
-process.on('SIGINT', () => {
-    console.log('\nShutting down bot test...')
-    console.log(`Total bots created: ${totalBotsCreated.count}`)
-    process.exit(0)
-})
+for (let index = 0; index < maxConcurrentConnections; index++) setTimeout(createBot, index * 10)
+setInterval(() => { while (activeConnections < maxConcurrentConnections) createBot() }, 1000)
+setInterval(() => console.log(`${activeConnections} active bots; ${botCounter} created; ${websocketUrl}`), 5000)

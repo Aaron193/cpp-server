@@ -48,6 +48,11 @@ export const gameServers = pgTable(
         host: text('host').notNull(),
         port: integer('port').notNull(),
         region: text('region').notNull(),
+        buildId: text('build_id').notNull(),
+        protocolVersion: integer('protocol_version').notNull(),
+        mapId: text('map_id').notNull(),
+        mode: text('mode').notNull(),
+        websocketUrl: text('websocket_url').notNull(),
         maxPlayers: integer('max_players').notNull(),
         currentPlayers: integer('current_players').notNull().default(0),
         lastHeartbeat: timestamp('last_heartbeat')

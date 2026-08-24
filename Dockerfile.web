@@ -1,6 +1,6 @@
 # Dockerfile for Web Server
 
-FROM node:20-bullseye AS builder
+FROM node:20.19.5-bullseye AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -27,7 +27,7 @@ RUN npm run build
 # =============================================================================
 # Production stage
 # =============================================================================
-FROM node:20-bullseye-slim AS production
+FROM node:20.19.5-bullseye-slim AS production
 
 WORKDIR /app
 
@@ -35,8 +35,9 @@ WORKDIR /app
 COPY web/package*.json ./
 RUN npm ci --only=production
 
-# Copy built application from builder
-COPY --from=builder /app/dist ./dist
+# Copy built application from the service-owned build directory. Local builds
+# use the same path and never need to replace a Docker-owned web/dist tree.
+COPY --from=builder /app/.build/dist ./dist
 COPY --from=builder /app/src/db/migrations ./dist/db/migrations
 
 # Create non-root user

@@ -1,0 +1,210 @@
+{
+  "format": "cpp-server-map",
+  "formatVersion": 1,
+  "mapId": "graybox-arena",
+  "coordinateSystem": {
+    "handedness": "right",
+    "upAxis": "Y",
+    "units": "meters"
+  },
+  "worldBounds": {
+    "min": [
+      -30,
+      -1,
+      -24
+    ],
+    "max": [
+      30,
+      14,
+      24
+    ]
+  },
+  "renderAsset": "scene.glb",
+  "collisionAsset": "collision.bin",
+  "debugReport": "debug-report.json",
+  "spawnPoints": [
+    {
+      "id": "spawn-center-east",
+      "position": [
+        4,
+        3.1,
+        -3
+      ],
+      "yaw": -1.57
+    },
+    {
+      "id": "spawn-center-west",
+      "position": [
+        -4,
+        3.1,
+        3
+      ],
+      "yaw": 1.57
+    },
+    {
+      "id": "spawn-east-north",
+      "position": [
+        25,
+        0.1,
+        -8
+      ],
+      "yaw": -1.57
+    },
+    {
+      "id": "spawn-east-south",
+      "position": [
+        25,
+        0.1,
+        8
+      ],
+      "yaw": -1.57
+    },
+    {
+      "id": "spawn-north-mid-east",
+      "position": [
+        9,
+        0.1,
+        -19
+      ],
+      "yaw": 0
+    },
+    {
+      "id": "spawn-north-mid-west",
+      "position": [
+        -9,
+        0.1,
+        -19
+      ],
+      "yaw": 0
+    },
+    {
+      "id": "spawn-northeast",
+      "position": [
+        24,
+        0.1,
+        -18
+      ],
+      "yaw": -0.75
+    },
+    {
+      "id": "spawn-northwest",
+      "position": [
+        -24,
+        0.1,
+        -18
+      ],
+      "yaw": 0.75
+    },
+    {
+      "id": "spawn-south-mid-east",
+      "position": [
+        10,
+        0.1,
+        20
+      ],
+      "yaw": 3.14
+    },
+    {
+      "id": "spawn-south-mid-west",
+      "position": [
+        -10,
+        0.1,
+        20
+      ],
+      "yaw": 3.14
+    },
+    {
+      "id": "spawn-southeast",
+      "position": [
+        24,
+        0.1,
+        19
+      ],
+      "yaw": -2.35
+    },
+    {
+      "id": "spawn-southwest",
+      "position": [
+        -24,
+        0.1,
+        19
+      ],
+      "yaw": 2.35
+    },
+    {
+      "id": "spawn-upper-east",
+      "position": [
+        6,
+        5.1,
+        -14
+      ],
+      "yaw": -1.1
+    },
+    {
+      "id": "spawn-upper-west",
+      "position": [
+        -6,
+        5.1,
+        -14
+      ],
+      "yaw": 1.1
+    },
+    {
+      "id": "spawn-west-north",
+      "position": [
+        -25,
+        0.1,
+        -8
+      ],
+      "yaw": 1.57
+    },
+    {
+      "id": "spawn-west-south",
+      "position": [
+        -25,
+        0.1,
+        8
+      ],
+      "yaw": 1.57
+    }
+  ],
+  "markers": [
+    {
+      "id": "marker-center-high",
+      "type": "landmark",
+      "position": [
+        0,
+        4,
+        0
+      ]
+    },
+    {
+      "id": "marker-item-west",
+      "type": "pickup",
+      "position": [
+        -20,
+        0.5,
+        0
+      ]
+    },
+    {
+      "id": "marker-north-deck",
+      "type": "landmark",
+      "position": [
+        0,
+        5.5,
+        -14
+      ]
+    },
+    {
+      "id": "marker-south-tunnel",
+      "type": "landmark",
+      "position": [
+        0,
+        1,
+        16
+      ]
+    }
+  ],
+  "contentHash": "sha256:9185ea6742b55dee10cd168f24b0b866f0decafe747abbec932dc983c36eae64"
+}

@@ -7,6 +7,7 @@ import {
 } from './servers.service'
 import { authenticateGameServer } from '../middleware/auth'
 import type { GameServerInfo } from '../types/shared'
+import { serverRegistrationSchema } from './server-registration-validation'
 
 const serversRoutes: FastifyPluginAsync = async (fastify) => {
     /**
@@ -18,13 +19,7 @@ const serversRoutes: FastifyPluginAsync = async (fastify) => {
         {
             preHandler: authenticateGameServer,
             schema: {
-                body: z.object({
-                    id: z.string(),
-                    host: z.string(),
-                    port: z.number().int().positive(),
-                    region: z.string(),
-                    maxPlayers: z.number().int().positive(),
-                }),
+                body: serverRegistrationSchema,
             },
         },
         async (request, reply) => {
@@ -34,11 +29,18 @@ const serversRoutes: FastifyPluginAsync = async (fastify) => {
                 port: number
                 region: string
                 maxPlayers: number
+                buildId: string
+                protocolVersion: number
+                mapId: string
+                mode: string
+                websocketUrl: string
             }
-            const { id, host, port, region, maxPlayers } = body
+            const { id, host, port, region, maxPlayers, buildId,
+                protocolVersion, mapId, mode, websocketUrl } = body
 
             try {
-                await registerGameServer(id, host, port, region, maxPlayers)
+                await registerGameServer(id, host, port, region, maxPlayers,
+                    buildId, protocolVersion, mapId, mode, websocketUrl)
 
                 // Log server registration
                 request.log.info(

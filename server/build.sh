@@ -1,11 +1,12 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 BUILD_TYPE=Release
 RUN_AFTER_BUILD=0
+RUN_TESTS=0
 
-VCPKG_ROOT="$HOME/vcpkg"
-VCPKG_TOOLCHAIN="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUILD_ROOT="${CPP_SERVER_BUILD_ROOT:-${SCRIPT_DIR}/.build/3d}"
 
 for arg in "$@"; do
     case $arg in
@@ -18,15 +19,26 @@ for arg in "$@"; do
         --run)
             RUN_AFTER_BUILD=1
             ;;
+        --test)
+            RUN_TESTS=1
+            ;;
         *)
             echo "Unknown option: $arg"
-            echo "Usage: $0 [--debug|--release] [--run]"
+            echo "Usage: $0 [--debug|--release] [--test] [--run]"
             exit 1
             ;;
     esac
 done
 
 # Check prerequisites
+if [[ -z "${VCPKG_ROOT:-}" ]]; then
+    echo "ERROR: VCPKG_ROOT is not set"
+    echo "Set it to a vcpkg checkout before building the server."
+    exit 1
+fi
+
+VCPKG_TOOLCHAIN="${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+
 if [[ ! -f "$VCPKG_TOOLCHAIN" ]]; then
     echo "ERROR: vcpkg toolchain not found!"
     echo "Expected: $VCPKG_TOOLCHAIN"
@@ -39,31 +51,31 @@ if ! command -v cmake >/dev/null; then
     exit 1
 fi
 
-# Build
-mkdir -p build
-cd build
+# Build in a fresh 3D-specific tree. The legacy server/build cache is not used.
+BUILD_FLAVOR="$(printf '%s' "$BUILD_TYPE" | tr '[:upper:]' '[:lower:]')"
+BUILD_DIR="${BUILD_ROOT}/${BUILD_FLAVOR}"
+mkdir -p "$BUILD_DIR"
 
-cmake \
+cmake -S "$SCRIPT_DIR" -B "$BUILD_DIR" \
     -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
-    -DCMAKE_TOOLCHAIN_FILE="$VCPKG_TOOLCHAIN" \
-    ..
+    -DCMAKE_TOOLCHAIN_FILE="$VCPKG_TOOLCHAIN"
 
-cmake --build . --parallel
+cmake --build "$BUILD_DIR" --parallel
 
-# Run 
+if [[ $RUN_TESTS -eq 1 ]]; then
+    ctest --test-dir "$BUILD_DIR" --output-on-failure
+fi
+
+# Run
 if [[ $RUN_AFTER_BUILD -eq 1 ]]; then
     # Load .env if present (dev convenience)
-    if [[ -f "./.env" ]]; then
+    if [[ -f "${SCRIPT_DIR}/.env" ]]; then
         echo "[Dev] Loading environment from .env"
         set -o allexport
-        source ./.env
-        set +o allexport
-    elif [[ -f "../.env" ]]; then
-        echo "[Dev] Loading environment from ../.env"
-        set -o allexport
-        source ../.env
+        source "${SCRIPT_DIR}/.env"
         set +o allexport
     fi
 
-    ./server
+    cd "$SCRIPT_DIR"
+    "$BUILD_DIR/server"
 fi

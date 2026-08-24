@@ -3,6 +3,7 @@ import { getDb } from '../db/client'
 import { gameServers, NewGameServer } from '../db/schema'
 import { CONSTANTS } from '../config/constants'
 import type { GameServerInfo } from '../types/shared'
+import { getServerDiscoveryCutoff, toGameServerInfo } from './server-discovery'
 
 /**
  * Register a new game server or update existing one
@@ -12,7 +13,12 @@ export async function registerGameServer(
     host: string,
     port: number,
     region: string,
-    maxPlayers: number
+    maxPlayers: number,
+    buildId: string,
+    protocolVersion: number,
+    mapId: string,
+    mode: string,
+    websocketUrl: string
 ): Promise<void> {
     const db = getDb()
 
@@ -21,6 +27,11 @@ export async function registerGameServer(
         host,
         port,
         region,
+        buildId,
+        protocolVersion,
+        mapId,
+        mode,
+        websocketUrl,
         maxPlayers,
         currentPlayers: 0,
         isOnline: true,
@@ -37,6 +48,11 @@ export async function registerGameServer(
                 host: serverData.host,
                 port: serverData.port,
                 region: serverData.region,
+                buildId: serverData.buildId,
+                protocolVersion: serverData.protocolVersion,
+                mapId: serverData.mapId,
+                mode: serverData.mode,
+                websocketUrl: serverData.websocketUrl,
                 maxPlayers: serverData.maxPlayers,
                 isOnline: true,
                 lastHeartbeat: serverData.lastHeartbeat,
@@ -70,9 +86,7 @@ export async function updateHeartbeat(
 export async function getOnlineServers(): Promise<GameServerInfo[]> {
     const db = getDb()
 
-    const cutoffTime = new Date(
-        Date.now() - CONSTANTS.HEARTBEAT_TIMEOUT_SECONDS * 1000
-    )
+    const cutoffTime = getServerDiscoveryCutoff()
 
     const servers = await db
         .select({
@@ -80,6 +94,11 @@ export async function getOnlineServers(): Promise<GameServerInfo[]> {
             host: gameServers.host,
             port: gameServers.port,
             region: gameServers.region,
+            buildId: gameServers.buildId,
+            protocolVersion: gameServers.protocolVersion,
+            mapId: gameServers.mapId,
+            mode: gameServers.mode,
+            websocketUrl: gameServers.websocketUrl,
             currentPlayers: gameServers.currentPlayers,
             maxPlayers: gameServers.maxPlayers,
             lastHeartbeat: gameServers.lastHeartbeat,
@@ -94,10 +113,7 @@ export async function getOnlineServers(): Promise<GameServerInfo[]> {
         )
         .orderBy(gameServers.region, gameServers.currentPlayers)
 
-    return servers.map((s) => ({
-        ...s,
-        lastHeartbeat: s.lastHeartbeat.toISOString(),
-    }))
+    return servers.map(toGameServerInfo)
 }
 
 /**
@@ -107,9 +123,7 @@ export async function getOnlineServers(): Promise<GameServerInfo[]> {
 export async function markExpiredServersOffline(): Promise<number> {
     const db = getDb()
 
-    const cutoffTime = new Date(
-        Date.now() - CONSTANTS.HEARTBEAT_TIMEOUT_SECONDS * 1000
-    )
+    const cutoffTime = getServerDiscoveryCutoff()
 
     const result = await db
         .update(gameServers)

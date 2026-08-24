@@ -2,11 +2,13 @@
   "name": "game-control-plane",
   "version": "1.0.0",
   "description": "Control-plane web server for multiplayer game",
-  "main": "dist/index.js",
+  "main": ".build/dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
+    "build": "node scripts/clean-build-output.mjs && tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "start": "node .build/dist/index.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts"

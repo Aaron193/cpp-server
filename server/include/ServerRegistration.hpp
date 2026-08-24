@@ -7,6 +7,9 @@ class ServerRegistration {
     ServerRegistration(const std::string& webApiUrl,
                        const std::string& serverId, const std::string& host,
                        int port, const std::string& region, int maxPlayers,
+                       const std::string& buildId, int protocolVersion,
+                       const std::string& mapId, const std::string& mode,
+                       const std::string& websocketUrl,
                        const std::string& sharedSecret);
 
     ~ServerRegistration() = default;
@@ -27,5 +30,10 @@ class ServerRegistration {
     int m_port;
     std::string m_region;
     int m_maxPlayers;
+    std::string m_buildId;
+    int m_protocolVersion;
+    std::string m_mapId;
+    std::string m_mode;
+    std::string m_websocketUrl;
     std::string m_sharedSecret;
 };

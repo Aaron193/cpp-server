@@ -1,21 +1,21 @@
 #pragma once
 
-#include <uwebsockets/WebSocket.h>
-#include <uwebsockets/WebSocketData.h>
-
+#include <chrono>
 #include <cstdint>
 #include <entt/entt.hpp>
-#include <unordered_set>
+#include <deque>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
 
-#include "packet/buffer/PacketReader.hpp"
-#include "packet/buffer/PacketWriter.hpp"
+#include "network/PeerTransport.hpp"
+#include "observability/ServerMetrics.hpp"
+#include "protocol/generated.hpp"
 
 // forward declaration
 class GameServer;
-
-struct WebSocketData {
-    uint32_t id;
-};
 
 class Client {
    public:
@@ -24,44 +24,66 @@ class Client {
     // entity may change throughout the lifetime of the client
     entt::entity m_entity;
 
-    uWS::WebSocket<false, true, WebSocketData>* m_ws;
-    PacketReader m_reader;
-    PacketWriter m_writer;
+    bool m_active = false;  // true only after Hello has been accepted
 
-    std::string m_name;
-    // we are actively playing inside the game world, spectators are inactive
-    bool m_active = false;
-    bool m_sentTerrainMeshes = false;
-    std::unordered_set<entt::entity> m_previousVisibleEntities;
-    std::unordered_set<size_t> m_previousVisibleBiomes;
-    std::unordered_set<uint32_t> m_visibleProjectiles;
-
-    Client(GameServer& gameServer,
-           uWS::WebSocket<false, true, WebSocketData>* ws, uint32_t id);
+    Client(GameServer& gameServer, std::unique_ptr<PeerTransport> transport,
+           uint32_t id);
     ~Client();
 
     void changeBody(entt::entity entity);
 
-    void onMessage(const std::string_view& message);
-
-    void onSpawn();
+    void onMessage(std::string_view message);
+    void onMessageAt(std::string_view message, double monotonicSeconds);
     void onClose();
-    void onMovement();
-    void onMouse();
-    void onMouseClick(bool isDown);
-    void onChat();
-    void onReload();
-    void onSwitchItem();
-    void onPickupRequest();
-
-    void updateCamera();
 
     void writeGameState();
     void sendBytes();
+    void queueSpawn(const protocol::Spawn& message);
+    void queueRemove(const protocol::Remove& message);
+    void queueChat(const protocol::Chat& message);
+    void queueShotConfirmed(const protocol::ShotConfirmed& message);
+    void queueImpact(const protocol::Impact& message);
+    void queueDamage(const protocol::Damage& message);
+    void queueDeath(const protocol::Death& message);
+    void queueRespawn(const protocol::Respawn& message);
+    void queueScoreChange(const protocol::ScoreChange& message);
+    void queueRoundTransition(const protocol::RoundTransition& message);
+    void markInputProcessed(std::uint32_t sequence);
+    void markInputDequeued();
 
-   private:
-    void sendTerrainMeshes();
+    bool welcomed() const { return m_active; }
+    bool closing() const { return closing_; }
+    bool closeHandled() const { return closeHandled_; }
+    std::size_t pendingInputCount() const { return pendingInputs_; }
+    std::size_t outgoingBytes() const { return outgoingBytes_; }
+    std::size_t outgoingMessageCount() const { return outgoing_.size(); }
+    std::optional<std::uint32_t> lastProcessedInputSequence() const {
+        return lastProcessedInputSequence_;
+    }
 
    private:
     GameServer& m_gameServer;
+    std::unique_ptr<PeerTransport> transport_;
+    std::vector<std::vector<std::uint8_t>> outgoing_;
+    std::size_t outgoingBytes_ = 0U;
+    bool closing_ = false;
+    bool closeHandled_ = false;
+    std::optional<std::uint32_t> lastReceivedSequence_;
+    std::optional<std::uint32_t> lastReceivedClientTick_;
+    std::optional<std::uint32_t> lastProcessedInputSequence_;
+    std::size_t pendingInputs_ = 0;
+    std::deque<double> inputBatchTimes_;
+    std::deque<double> inputCommandTimes_;
+    std::deque<double> chatTimes_;
+
+    void handleHello(const protocol::Hello& hello);
+    void handleInputBatch(const protocol::InputBatch& batch,
+                          double monotonicSeconds);
+    void handleChat(const protocol::Chat& chat, double monotonicSeconds);
+    void reject(protocol::RejectReason reason, std::string detail);
+    void failProtocol(
+        std::string_view reason, std::uint16_t code = 1002U,
+        ClientMessageMetric metric = ClientMessageMetric::Rejected);
+    void queue(std::vector<std::uint8_t> bytes);
+    static bool isNewer(std::uint32_t value, std::uint32_t previous);
 };

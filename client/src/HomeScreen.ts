@@ -1,6 +1,7 @@
 import { isDevelopment } from './utils/environment'
+import { PROTOCOL_VERSION } from './protocol/generated'
 
-interface GameServer {
+export interface GameServer {
     id: string
     host: string
     port: number
@@ -9,6 +10,11 @@ interface GameServer {
     currentPlayers: number
     lastHeartbeat: string
     isOnline: boolean
+    buildId: string
+    protocolVersion: number
+    mapId: string
+    mode: string
+    websocketUrl: string
 }
 
 interface ChangelogEntry {
@@ -38,12 +44,14 @@ interface User {
 type LeaderboardPeriod = 'all' | 'weekly' | 'daily'
 
 const API_BASE =
-    // (process.env as any).CLIENT_API_BASE ||
-    isDevelopment() ? 'http://localhost:3000' : window.location.origin + '/api'
+    import.meta.env.VITE_CLIENT_API_BASE ||
+    (isDevelopment()
+        ? 'http://localhost:3000'
+        : window.location.origin + '/api')
 
 export class HomeScreen {
     private container: HTMLElement
-    private onServerSelect: (host: string, port: number) => void
+    private onServerSelect: (server: GameServer | null) => void
     private refreshInterval: number | null = null
     private playerName: string = ''
     private servers: GameServer[] = []
@@ -51,10 +59,11 @@ export class HomeScreen {
     private changelog: ChangelogEntry[] = []
     private leaderboard: LeaderboardEntry[] = []
     private currentLeaderboardPeriod: LeaderboardPeriod = 'all'
+    private visible = false
 
     constructor(
         containerId: string,
-        onServerSelect: (host: string, port: number) => void
+        onServerSelect: (server: GameServer | null) => void
     ) {
         const element = document.getElementById(containerId)
         if (!element) {
@@ -76,7 +85,7 @@ export class HomeScreen {
                 <!-- Header -->
                 <header class="header">
                     <h1 class="game-title">Game.io</h1>
-                    <p class="game-subtitle">Multiplayer Battle Royale</p>
+                    <p class="game-subtitle">Authoritative 3D Arena</p>
                 </header>
 
                 <!-- Player Identity Section -->
@@ -100,7 +109,7 @@ export class HomeScreen {
                 <!-- Quick Play -->
                 <section class="quick-play-section">
                     <button id="quick-play-btn" class="btn btn-success btn-lg quick-play-btn">
-                        ▶ Quick Play
+                        ▶ Play Offline
                     </button>
                 </section>
 
@@ -720,38 +729,26 @@ export class HomeScreen {
     }
 
     private quickPlay(): void {
-        // Find the best available server (online with lowest player count relative to max)
-        const availableServers = this.servers.filter((s) => s.isOnline)
-
-        if (availableServers.length === 0) {
-            alert('No servers available. Please try again later.')
-            return
-        }
-
-        // Sort by available slots (descending) then by region preference
-        availableServers.sort((a, b) => {
-            const aSlots = a.maxPlayers - a.currentPlayers
-            const bSlots = b.maxPlayers - b.currentPlayers
-            return bSlots - aSlots
-        })
-
-        const server = availableServers[0]
-        this.onServerSelect(this.normalizeHost(server.host), server.port)
+        this.onServerSelect(null)
     }
 
     async show(): Promise<void> {
+        this.visible = true
         this.container.style.display = 'flex'
 
         // Check auth status and fetch servers in parallel
         await Promise.all([this.checkAuthStatus(), this.fetchServers()])
 
         // Auto-refresh every 10 seconds
-        this.refreshInterval = window.setInterval(() => {
-            this.fetchServers()
-        }, 10000)
+        if (this.visible) {
+            this.refreshInterval = window.setInterval(() => {
+                this.fetchServers()
+            }, 10000)
+        }
     }
 
     hide(): void {
+        this.visible = false
         this.container.style.display = 'none'
 
         if (this.refreshInterval !== null) {
@@ -801,12 +798,9 @@ export class HomeScreen {
         // Attach click handlers
         servers.forEach((server) => {
             const card = document.getElementById(`server-${server.id}`)
-            if (card && server.isOnline) {
+            if (card && server.isOnline && this.isCompatible(server)) {
                 card.addEventListener('click', () => {
-                    this.onServerSelect(
-                        this.normalizeHost(server.host),
-                        server.port
-                    )
+                    this.onServerSelect(server)
                 })
             }
         })
@@ -815,7 +809,8 @@ export class HomeScreen {
     private createServerCard(server: GameServer): string {
         const playerPercentage =
             (server.currentPlayers / server.maxPlayers) * 100
-        const disabledClass = !server.isOnline ? 'disabled' : ''
+        const compatible = this.isCompatible(server)
+        const disabledClass = !server.isOnline || !compatible ? 'disabled' : ''
         const statusClass = server.isOnline ? 'online' : 'offline'
 
         return `
@@ -823,7 +818,7 @@ export class HomeScreen {
                 <div class="server-status-dot ${statusClass}"></div>
                 <div class="server-info">
                     <span class="server-name">${this.escapeHtml(server.region)}</span>
-                    <span class="server-host">${server.host}:${server.port}</span>
+                    <span class="server-host">${this.escapeHtml(server.websocketUrl)} · ${this.escapeHtml(server.mapId)} · ${this.escapeHtml(server.mode)}</span>
                 </div>
                 <div class="server-players">
                     <span>${server.currentPlayers}/${server.maxPlayers}</span>
@@ -831,7 +826,7 @@ export class HomeScreen {
                         <div class="player-bar-fill" style="width: ${playerPercentage}%"></div>
                     </div>
                 </div>
-                <span class="server-action">Join →</span>
+                <span class="server-action">${compatible ? 'Join →' : 'Incompatible'}</span>
             </div>
         `
     }
@@ -853,13 +848,9 @@ export class HomeScreen {
         return div.innerHTML
     }
 
-    private normalizeHost(host: string): string {
-        // Convert 0.0.0.0 to localhost for browser WebSocket connections
-        // 0.0.0.0 is valid for server binding but not for client connections
-        if (host === '0.0.0.0') {
-            return 'localhost'
-        }
-        return host
+    private isCompatible(server: GameServer): boolean {
+        const clientBuild = import.meta.env.VITE_CLIENT_BUILD_ID || 'dev'
+        return server.protocolVersion === PROTOCOL_VERSION && server.buildId === clientBuild && server.mapId === 'graybox-arena' && /^wss?:\/\//.test(server.websocketUrl)
     }
 
     // Public method to get the player name

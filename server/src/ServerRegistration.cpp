@@ -1,6 +1,7 @@
 #include "ServerRegistration.hpp"
 
 #include <httplib.h>
+#include <nlohmann/json.hpp>
 
 #include <iostream>
 #include <sstream>
@@ -11,6 +12,11 @@ ServerRegistration::ServerRegistration(const std::string& webApiUrl,
                                        const std::string& host, int port,
                                        const std::string& region,
                                        int maxPlayers,
+                                       const std::string& buildId,
+                                       int protocolVersion,
+                                       const std::string& mapId,
+                                       const std::string& mode,
+                                       const std::string& websocketUrl,
                                        const std::string& sharedSecret)
     : m_webApiUrl(webApiUrl),
       m_serverId(serverId),
@@ -18,22 +24,23 @@ ServerRegistration::ServerRegistration(const std::string& webApiUrl,
       m_port(port),
       m_region(region),
       m_maxPlayers(maxPlayers),
+      m_buildId(buildId),
+      m_protocolVersion(protocolVersion),
+      m_mapId(mapId),
+      m_mode(mode),
+      m_websocketUrl(websocketUrl),
       m_sharedSecret(sharedSecret) {}
 
 void ServerRegistration::registerServerAsync() {
     std::cout << "[ServerRegistration] Registering server with web API: "
               << m_webApiUrl << std::endl;
 
-    // Build JSON payload
-    std::ostringstream payload;
-    payload << "{"
-            << "\"id\":\"" << m_serverId << "\","
-            << "\"host\":\"" << m_host << "\","
-            << "\"port\":" << m_port << ","
-            << "\"region\":\"" << m_region << "\","
-            << "\"maxPlayers\":" << m_maxPlayers << "}";
-
-    std::string body = payload.str();
+    const std::string body = nlohmann::json{
+        {"id", m_serverId}, {"host", m_host}, {"port", m_port},
+        {"region", m_region}, {"maxPlayers", m_maxPlayers},
+        {"buildId", m_buildId}, {"protocolVersion", m_protocolVersion},
+        {"mapId", m_mapId}, {"mode", m_mode},
+        {"websocketUrl", m_websocketUrl}}.dump();
     std::cout << "[ServerRegistration] Registration payload: " << body
               << std::endl;
 

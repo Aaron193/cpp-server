@@ -1,52 +1,60 @@
 {
   "weapons": {
-    "pistol": {
-      "fireMode": "projectile",
+    "rifle": {
+      "fireMode": "hitscan",
       "ammoType": "light",
       "magazineSize": 30,
       "ammoPerShot": 1,
-      "fireRate": 8.0,
-      "reloadTime": 1.2,
-      "damage": 12.0,
-      "range": 12.0,
-      "spread": 0.02,
-      "pellets": 1,
-      "barrelLength": 0.6,
-      "projectileSpeed": 15.0,
-      "projectileLifetime": 1.2,
-      "automatic": true
-    },
-    "rifle": {
-      "fireMode": "projectile",
-      "ammoType": "light",
-      "magazineSize": 40,
-      "ammoPerShot": 1,
       "fireRate": 10.0,
-      "reloadTime": 1.6,
-      "damage": 10.0,
-      "range": 15.0,
-      "spread": 0.015,
+      "reloadTime": 1.8,
+      "damage": 24.0,
+      "range": 80.0,
+      "spread": 0.006,
       "pellets": 1,
       "barrelLength": 0.7,
-      "projectileSpeed": 20.0,
-      "projectileLifetime": 1.4,
       "automatic": true
     },
     "shotgun": {
-      "fireMode": "projectile",
+      "fireMode": "hitscan",
       "ammoType": "shell",
       "magazineSize": 6,
       "ammoPerShot": 1,
-      "fireRate": 1.6,
-      "reloadTime": 2.0,
-      "damage": 7.0,
-      "range": 9.0,
-      "spread": 0.08,
-      "pellets": 6,
+      "fireRate": 1.2,
+      "reloadTime": 2.2,
+      "damage": 12.0,
+      "range": 20.0,
+      "spread": 0.055,
+      "pellets": 8,
       "barrelLength": 0.65,
-      "projectileSpeed": 15.0,
-      "projectileLifetime": 0.9,
       "automatic": false
     }
+  },
+  "movement": {
+    "capsuleRadius": 0.42,
+    "capsuleHalfHeight": 0.48,
+    "eyeHeight": 1.62,
+    "groundSpeed": 7.5,
+    "groundAcceleration": 42.0,
+    "airAcceleration": 12.0,
+    "airControl": 0.45,
+    "jumpSpeed": 6.4,
+    "gravity": 20.0,
+    "terminalVelocity": 35.0,
+    "maxSlopeRadians": 0.78539816339,
+    "stepUpHeight": 0.42,
+    "stickToFloorDistance": 0.5
+  },
+  "loadout": {
+    "rifleReserveAmmo": 120,
+    "shotgunReserveAmmo": 24
+  },
+  "combat": {
+    "serverSeed": 12648430,
+    "maxLagCompensationMs": 250,
+    "scoreLimit": 25,
+    "roundSeconds": 600.0,
+    "intermissionSeconds": 10.0,
+    "respawnSeconds": 3.0,
+    "spawnProtectionSeconds": 1.5
   }
 }
