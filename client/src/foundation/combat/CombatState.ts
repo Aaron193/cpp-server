@@ -67,6 +67,10 @@ export class CombatPresentationState {
         if (this.pendingShots.size > 64) this.pendingShots.delete(this.pendingShots.values().next().value!)
         this.push({ kind: 'local-fire', sequence, weapon })
     }
+    canLocalFire(weapon: Weapon): boolean {
+        return !this.local.dead && !this.local.reloading &&
+            this.local.weapon === weapon && this.local.magazineAmmo > 0
+    }
     shot(value: ShotConfirmed): void {
         const correlated = value.shooterId === this.local.playerId && this.pendingShots.delete(value.inputSequence)
         this.push({ kind: 'shot', value, correlated })

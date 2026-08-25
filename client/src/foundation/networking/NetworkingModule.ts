@@ -88,7 +88,8 @@ export class NetworkingModule implements ClientModule {
                 yaw: input.angles.yaw, pitch: input.angles.pitch, selectedWeapon: snapshot.selectedWeapon === 2 ? Weapon.Shotgun : Weapon.Rifle,
             }
             const cosmeticInterval = command.selectedWeapon === Weapon.Shotgun ? 700 : 100
-            if (snapshot.fire && now - this.lastLocalFireAtMs >= cosmeticInterval) {
+            if (snapshot.fire && this.combat.canLocalFire(command.selectedWeapon) &&
+                now - this.lastLocalFireAtMs >= cosmeticInterval) {
                 this.lastLocalFireAtMs = now
                 this.combat.localFire(command.sequence, command.selectedWeapon)
             }
@@ -205,7 +206,10 @@ export class NetworkingModule implements ClientModule {
                 case MessageType.Death: this.combat.death(message.payload); break
                 case MessageType.Respawn:
                     this.combat.respawn(message.payload)
-                    if (message.payload.playerId === this.welcome.playerId) this.context?.services.get(PHYSICS).setAuthoritativeState(message.payload.position, { x: 0, y: 0, z: 0 })
+                    if (message.payload.playerId === this.welcome.playerId) {
+                        this.context?.services.get(PHYSICS).setAuthoritativeState(message.payload.position, { x: 0, y: 0, z: 0 })
+                        this.context?.services.get(INPUT).angles.set(message.payload.bodyYaw, 0)
+                    }
                     break
                 case MessageType.ScoreChange: this.combat.score(message.payload); break
                 case MessageType.RoundTransition: this.combat.round(message.payload); break
@@ -237,13 +241,17 @@ export class NetworkingModule implements ClientModule {
         this.previousSnapshotAtMs = now
         this.lastSnapshotAtMs = now
         this.latestServerTick = snapshot.serverTick
-        if (!this.clientTickAligned) {
+        const initialSnapshot = !this.clientTickAligned
+        if (initialSnapshot) {
             this.clientTick = alignClientTick(this.clientTick, snapshot.serverTick)
             this.clientTickAligned = true
         }
         this.combat.acceptSnapshot(snapshot)
         const local = snapshot.entities.find((entity) => entity.entityId === this.welcome?.playerId)
-        if (local) this.reconcile(local, snapshot.lastProcessedInputSequence, now)
+        if (local) {
+            if (initialSnapshot) this.context.services.get(INPUT).angles.set(local.bodyYaw, local.aimPitch)
+            this.reconcile(local, snapshot.lastProcessedInputSequence, now)
+        }
         for (const entity of snapshot.entities) if (entity.entityId !== this.welcome.playerId) this.acceptEntity(snapshot.serverTick, entity)
     }
 

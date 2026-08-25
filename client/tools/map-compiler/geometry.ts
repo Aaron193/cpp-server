@@ -13,8 +13,8 @@ const BOX_INDICES = [
 ]
 
 const RAMP_INDICES = [
-    0, 2, 1, 0, 3, 2, 0, 1, 5, 0, 5, 4, 1, 2, 5, 2, 3, 5, 3, 0, 4, 3,
-    4, 5,
+    0, 1, 2, 0, 2, 3, 0, 5, 1, 0, 4, 5, 1, 5, 2, 2, 5, 3, 3, 4, 0, 3,
+    5, 4,
 ]
 
 function vec3(value: unknown, context: string): Vec3 {

@@ -9,6 +9,7 @@
         "build": "vite build",
         "typecheck": "tsc --noEmit",
         "test": "vitest run",
+        "test:e2e": "playwright test",
         "protocol:generate": "node ../protocol/generate.mjs",
         "protocol:check": "node ../protocol/generate.mjs --check",
         "map:compile": "node --import tsx tools/map-compiler/cli.ts maps/graybox-arena.gltf public/maps/graybox-arena",
@@ -23,6 +24,7 @@
     "author": "",
     "license": "ISC",
     "devDependencies": {
+        "@playwright/test": "^1.62.1",
         "@types/node": "^26.0.0",
         "@types/ws": "8.18.1",
         "prettier": "^3.6.2",

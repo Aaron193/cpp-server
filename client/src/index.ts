@@ -5,6 +5,12 @@ import './assets/styles/style.css'
 let client: FoundationClient | undefined
 let animationFrame = 0
 
+declare global {
+    interface Window {
+        __gameDebug?: () => ReturnType<FoundationClient['debugSnapshot']> | undefined
+    }
+}
+
 async function startGame(homeScreen: HomeScreen, server: GameServer | null): Promise<void> {
     if (client) return
     homeScreen.hide()
@@ -31,6 +37,7 @@ async function startGame(homeScreen: HomeScreen, server: GameServer | null): Pro
         })
         await client.initialize()
         await client.start()
+        if (import.meta.env.DEV) window.__gameDebug = () => client?.debugSnapshot()
         let previous = performance.now()
         let elapsedSeconds = 0
         let frame = 0
@@ -57,5 +64,6 @@ window.addEventListener('load', async () => {
 
 window.addEventListener('beforeunload', () => {
     cancelAnimationFrame(animationFrame)
+    delete window.__gameDebug
     void client?.dispose()
 })

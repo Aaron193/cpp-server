@@ -109,7 +109,10 @@ export class HomeScreen {
                 <!-- Quick Play -->
                 <section class="quick-play-section">
                     <button id="quick-play-btn" class="btn btn-success btn-lg quick-play-btn">
-                        ▶ Play Offline
+                        ▶ Quick Play
+                    </button>
+                    <button id="offline-play-btn" class="btn btn-ghost offline-play-btn">
+                        Practice Offline · Movement Only
                     </button>
                 </section>
 
@@ -165,6 +168,11 @@ export class HomeScreen {
         const quickPlayBtn = document.getElementById('quick-play-btn')
         if (quickPlayBtn) {
             quickPlayBtn.addEventListener('click', () => this.quickPlay())
+        }
+
+        const offlinePlayBtn = document.getElementById('offline-play-btn')
+        if (offlinePlayBtn) {
+            offlinePlayBtn.addEventListener('click', () => this.onServerSelect(null))
         }
 
         // Refresh button
@@ -729,7 +737,14 @@ export class HomeScreen {
     }
 
     private quickPlay(): void {
-        this.onServerSelect(null)
+        const server = this.servers
+            .filter((candidate) => candidate.isOnline && this.isCompatible(candidate))
+            .sort((left, right) => left.currentPlayers - right.currentPlayers)[0]
+        if (!server) {
+            this.showError('No compatible game server is available. Start the web discovery service and native server, then refresh the server list.')
+            return
+        }
+        this.onServerSelect(server)
     }
 
     async show(): Promise<void> {

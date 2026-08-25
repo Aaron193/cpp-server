@@ -87,8 +87,16 @@ const MapSpawnPoint& GameServer::selectSpawnPoint(
     const auto& registry = m_entityManager.getRegistry();
     const auto players = registry.view<Components::Transform3D,
                                        Components::PlayerLife>();
+    std::size_t liveOpponents = 0U;
+    for (const auto player : players)
+        if (player != spawningPlayer &&
+            !players.get<Components::PlayerLife>(player).dead)
+            ++liveOpponents;
+
     const MapSpawnPoint* best = &m_mapPackage.manifest.spawnPoints.front();
+    const MapSpawnPoint* visibleDuelSpawn = nullptr;
     float bestScore = -std::numeric_limits<float>::infinity();
+    float visibleDuelDistance = std::numeric_limits<float>::infinity();
     for (const auto& spawn : m_mapPackage.manifest.spawnPoints) {
         float nearest = 10000.0F;
         float score = 0.0F;
@@ -106,6 +114,14 @@ const MapSpawnPoint& GameServer::selectSpawnPoint(
             const bool visible = !m_physicsWorld.staticRayBlocked(
                 spawn.position + eyeOffset, enemy + eyeOffset);
             if (visible) {
+                // Put the second joining player within clear sight of the first
+                // so a fresh local match is immediately testable. Respawns and
+                // matches with more players retain the safer distance scoring.
+                if (spawningPlayer == entt::null && liveOpponents == 1U &&
+                    distance >= 6.0F && distance < visibleDuelDistance) {
+                    visibleDuelSpawn = &spawn;
+                    visibleDuelDistance = distance;
+                }
                 score -= std::max(0.0F, 24.0F - distance);
                 if (distance < 12.0F) nearbyVisibleEnemy = true;
             }
@@ -117,7 +133,7 @@ const MapSpawnPoint& GameServer::selectSpawnPoint(
             best = &spawn;
         }
     }
-    return *best;
+    return visibleDuelSpawn ? *visibleDuelSpawn : *best;
 }
 
 void GameServer::run() {

@@ -62,7 +62,9 @@ entt::entity EntityManager::createPlayer() {
     physicsConfig.terminalVelocity = movement.terminalVelocity;
     controller.adapterId = m_gameServer.m_physicsWorld.createCharacter(physicsConfig, transform.position);
     m_registry.emplace<NetworkReplicated>(entity);
-    m_registry.emplace<PlayerInput>(entity);
+    auto& input = m_registry.emplace<PlayerInput>(entity);
+    input.yaw = spawn.yaw;
+    input.angle = spawn.yaw;
     m_registry.emplace<Health>(entity, 100.0F, 100.0F);
     auto& life = m_registry.emplace<PlayerLife>(entity);
     life.spawnProtectionRemaining =

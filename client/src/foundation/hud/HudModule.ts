@@ -23,12 +23,12 @@ export class HudModule implements ClientModule {
         this.context = context; context.services.provide(HUD, this)
         context.hudRoot.innerHTML = `
             <div class="fps-crosshair" aria-hidden="true"><span id="fps-hitmarker">×</span></div><div id="fps-damage" class="fps-damage" aria-hidden="true"></div>
-            <div class="fps-vitals" aria-label="Player status"><div><span class="fps-label">HEALTH</span><strong id="fps-health">—</strong></div><div><span class="fps-label">AMMO</span><strong id="fps-ammo">—</strong><span id="fps-reload"></span></div></div>
+            <div id="fps-vitals" class="fps-vitals" aria-label="Player status"><div><span class="fps-label">HEALTH</span><strong id="fps-health">—</strong></div><div><span class="fps-label">AMMO</span><strong id="fps-ammo">—</strong><span id="fps-reload"></span></div></div>
             <div id="fps-scoreboard" class="fps-scoreboard hidden"><h2>SCOREBOARD</h2><div id="fps-score-rows"></div></div><div id="fps-kill-feed" class="fps-kill-feed"></div><div id="fps-round" class="fps-round hidden"></div><div id="fps-chat-log" class="fps-chat-log"></div>
             <div id="fps-debug" class="fps-debug hidden"><div id="fps-status">Loading offline arena…</div><div id="fps-motion"></div><div id="fps-network"></div><div id="fps-performance"></div><svg id="fps-correction-graph" class="fps-correction-graph" viewBox="0 0 180 32" aria-label="Prediction correction history"></svg>
             ${isDevelopment() ? `<div class="fps-net-controls"><label>Latency <input id="net-latency" type="number" min="0" max="2000" value="0"> ms</label><label>Jitter <input id="net-jitter" type="number" min="0" max="1000" value="0"> ms</label><label><input id="net-stall" type="checkbox"> Stall</label></div>` : ''}
             <div>WASD move · LMB fire · R reload · 1/2 weapons · Tab scoreboard · Enter chat · F3 network/collision</div></div><div id="fps-pointer-prompt" class="fps-pointer-prompt">Click to enter the arena</div>`
-        for (const id of ['fps-hitmarker', 'fps-damage', 'fps-health', 'fps-ammo', 'fps-reload', 'fps-scoreboard', 'fps-score-rows', 'fps-kill-feed', 'fps-round', 'fps-chat-log', 'fps-debug', 'fps-status', 'fps-motion', 'fps-network', 'fps-performance', 'fps-pointer-prompt', 'net-latency', 'net-jitter', 'net-stall']) {
+        for (const id of ['fps-hitmarker', 'fps-damage', 'fps-vitals', 'fps-health', 'fps-ammo', 'fps-reload', 'fps-scoreboard', 'fps-score-rows', 'fps-kill-feed', 'fps-round', 'fps-chat-log', 'fps-debug', 'fps-status', 'fps-motion', 'fps-network', 'fps-performance', 'fps-pointer-prompt', 'net-latency', 'net-jitter', 'net-stall']) {
             const node = context.hudRoot.querySelector<HTMLElement>(`#${id}`); if (node) this.refs.set(id, node)
         }
         const svg = context.hudRoot.querySelector<SVGSVGElement>('#fps-correction-graph')
@@ -39,6 +39,7 @@ export class HudModule implements ClientModule {
     update(_frame: FrameUpdate): void {
         if (!this.context) return
         const networking = this.context.services.get(NETWORKING), combat = networking.combat, now = performance.now()
+        const online = networking.status !== 'offline'
         if (this.combatCursor > combat.lastEventId) this.combatCursor = 0
         combat.forEachEventAfter(this.combatCursor, this.processCombatEvent)
         const local = combat.localPlayer
@@ -50,9 +51,13 @@ export class HudModule implements ClientModule {
         if (this.scoreRevision !== combat.scoreRevision) { this.scoreRevision = combat.scoreRevision; this.renderScores(combat.scores) }
         if (this.feedRevision !== combat.feedRevision) { this.feedRevision = combat.feedRevision; this.renderFeed(combat.killFeed) }
         if (this.chatRevision !== combat.chatRevision) { this.chatRevision = combat.chatRevision; this.renderChat(combat.chatMessages) }
+        this.refs.get('fps-vitals')?.classList.toggle('hidden', !online)
         const latestTick = networking.latestTick ?? 0, remainingTicks = (combat.match.phaseEndsAtTick - latestTick) >>> 0
-        const countdown = remainingTicks < 0x80000000 ? Math.ceil(remainingTicks / networking.tickRate) : 0, showRound = combat.match.phase !== 2 || (countdown > 0 && countdown <= 5)
-        this.refs.get('fps-round')?.classList.toggle('hidden', !showRound); setTextIfChanged(this.refs.get('fps-round'), `${this.phaseName(combat.match.phase)}${countdown ? ` · ${countdown}` : ''}`)
+        const countdown = remainingTicks < 0x80000000 ? Math.ceil(remainingTicks / networking.tickRate) : 0
+        const awaitingSnapshot = networking.status !== 'connected' || networking.latestTick === undefined
+        const showRound = online && (awaitingSnapshot || combat.match.phase !== 2 || (countdown > 0 && countdown <= 5))
+        const roundText = awaitingSnapshot ? this.connectionName(networking.status) : `${this.phaseName(combat.match.phase)}${countdown ? ` · ${countdown}` : ''}`
+        this.refs.get('fps-round')?.classList.toggle('hidden', !showRound); setTextIfChanged(this.refs.get('fps-round'), roundText)
         this.refs.get('fps-pointer-prompt')?.classList.toggle('hidden', this.context.services.get(INPUT).hasPointerLock)
         this.refs.get('fps-debug')?.classList.toggle('hidden', !this.context.services.get(ARENA).isDebugVisible)
         if (now >= this.nextDebugUpdateAt) { this.nextDebugUpdateAt = now + 250; this.refreshDebug() }
@@ -79,6 +84,7 @@ export class HudModule implements ClientModule {
     private renderChat(rows: readonly ChatRow[]): void { this.refs.get('fps-chat-log')?.replaceChildren(...rows.slice(-8).map((row) => { const line = this.row([]), who = document.createElement('strong'); who.textContent = row.senderId === null ? 'SYSTEM' : `#${row.senderId}`; line.append(who, ` ${row.text}`); return line })) }
     private row(values: readonly string[]): HTMLDivElement { const row = document.createElement('div'); for (const value of values) { const span = document.createElement('span'); span.textContent = value; row.append(span) } return row }
     private phaseName(phase: number): string { return phase === 1 ? 'WAITING' : phase === 2 ? 'ROUND ACTIVE' : phase === 3 ? 'INTERMISSION' : 'ROUND ENDED' }
+    private connectionName(status: string): string { return status === 'rejected' ? 'CONNECTION REJECTED' : status === 'disconnected' ? 'DISCONNECTED' : status === 'reconnecting' ? 'RECONNECTING…' : 'CONNECTING…' }
     private readonly updateImpairment = (): void => { if (!this.context) return; const latency = this.refs.get('net-latency') as HTMLInputElement | undefined, jitter = this.refs.get('net-jitter') as HTMLInputElement | undefined, stall = this.refs.get('net-stall') as HTMLInputElement | undefined; this.context.services.get(NETWORKING).setSyntheticImpairment({ latencyMs: Number(latency?.value ?? 0), jitterMs: Number(jitter?.value ?? 0), stalled: stall?.checked ?? false }) }
     get root(): HTMLElement { if (!this.context) throw new Error('HUD is not initialized'); return this.context.hudRoot }
     dispose(): void { if (this.context) this.context.hudRoot.replaceChildren(); this.context?.services.remove(HUD); this.context = undefined; this.refs.clear(); this.graph = undefined; this.combatCursor = 0 }

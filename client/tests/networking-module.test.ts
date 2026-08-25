@@ -26,7 +26,8 @@ describe('NetworkingModule integration lifecycle', () => {
         const views = { clearAndDispose: vi.fn(), applyRemotePlayer: vi.fn(), removeAndDispose: vi.fn() }
         services.provide(ARENA, { mapManifest: manifest } as any)
         services.provide(PHYSICS, physics as any)
-        services.provide(INPUT, { snapshot: () => ({ forward: 0, right: 0, jump: false, fire: true, reload: true, selectedWeapon: 2, scoreboard: false }), consumeChatMessages: () => [], angles: { yaw: 0, pitch: 0 } } as any)
+        const angles = { yaw: 0, pitch: 0, set: vi.fn() }
+        services.provide(INPUT, { snapshot: () => ({ forward: 0, right: 0, jump: false, fire: true, reload: true, selectedWeapon: 2, scoreboard: false }), consumeChatMessages: () => [], angles } as any)
         services.provide(ENTITY_VIEWS, views as any)
         const fullUrl = 'wss://edge.example/game/socket?ticket=do-not-rewrite'
         const module = new NetworkingModule({ transport, clientBuildId: 'dev', server: { websocketUrl: fullUrl, buildId: 'dev', protocolVersion: PROTOCOL_VERSION, mapId: manifest.mapId, mode: 'ffa' } })
@@ -47,10 +48,11 @@ describe('NetworkingModule integration lifecycle', () => {
         expect(transport.sent.some((bytes) => { const value = decodeEnvelope(bytes); return value.known && value.message.type === MessageType.InputBatch })).toBe(false)
 
         const remote = { entityId: 9, kind: EntityKind.Player, position: { x: 1, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, equippedWeapon: Weapon.Rifle, health: null, weaponState: null }
-        const local = { ...remote, entityId: 7, health: 90, equippedWeapon: Weapon.Shotgun, weaponState: { selected: Weapon.Shotgun, magazineAmmo: 5, reserveAmmo: 20, stateFlags: 0 } }
+        const local = { ...remote, entityId: 7, health: 90, equippedWeapon: Weapon.Shotgun, weaponState: { selected: Weapon.Shotgun, magazineAmmo: 0, reserveAmmo: 20, stateFlags: 0 } }
         transport.callbacks!.message(encodeMessage({ type: MessageType.Snapshot, payload: { serverTick: 100, lastProcessedInputSequence: 0, match: { phase: MatchPhase.Active, roundNumber: 1, phaseEndsAtTick: 600 }, entities: [local, remote] } }))
         await vi.waitFor(() => expect(module.metrics.remotePlayers).toBe(1))
-        expect(module.combat.localPlayer).toMatchObject({ health: 90, magazineAmmo: 5, weapon: Weapon.Shotgun })
+        expect(angles.set).toHaveBeenCalledWith(local.bodyYaw, local.aimPitch)
+        expect(module.combat.localPlayer).toMatchObject({ health: 90, magazineAmmo: 0, weapon: Weapon.Shotgun })
         transport.callbacks!.message(encodeMessage({ type: MessageType.Damage, payload: { serverTick: 101, sourceId: 7, targetId: 9, amount: 10, remainingHealth: 90 } }))
         transport.callbacks!.message(encodeMessage({ type: MessageType.ScoreChange, payload: { serverTick: 101, playerId: 7, score: 10, delta: 10, kills: 1, deaths: 0 } }))
         transport.callbacks!.message(encodeMessage({ type: MessageType.RoundTransition, payload: { serverTick: 102, transition: RoundTransitionKind.Intermission, match: { phase: MatchPhase.Intermission, roundNumber: 1, phaseEndsAtTick: 200 } } }))
@@ -60,6 +62,7 @@ describe('NetworkingModule integration lifecycle', () => {
         module.update({ deltaSeconds: 1 / 60, elapsedSeconds: 1, frame: 1 })
         const batch = transport.sent.map((bytes) => decodeEnvelope(bytes)).reverse().find((value) => value.known && value.message.type === MessageType.InputBatch)
         expect(batch?.known && batch.message.type === MessageType.InputBatch && batch.message.payload.commands[0]).toMatchObject({ clientTick: 101, buttonFlags: 6, selectedWeapon: Weapon.Shotgun })
+        expect(module.combat.eventsAfter(0).some((event) => event.kind === 'local-fire')).toBe(false)
         module.reconnect()
         expect(module.status).toBe('reconnecting')
         expect(module.metrics.remotePlayers).toBe(0)

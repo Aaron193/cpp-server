@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 import { compileMapGltf, MapCompileError } from '../tools/map-compiler/index'
+import { expandInlineGeometry } from '../tools/map-compiler/geometry'
 
 function boxGeometry(): object {
     return { shape: 'box', size: [2, 1, 2] }
@@ -22,6 +23,28 @@ function validSource(spawnCount = 12): any {
 }
 
 describe('offline map compiler', () => {
+    it('winds every procedural ramp face toward its exterior', () => {
+        const ramp = expandInlineGeometry({ shape: 'ramp', size: [4, 2, 6] }, 'ramp')
+        const normals = [] as number[][]
+        for (let index = 0; index < ramp.indices.length; index += 3) {
+            const [a, b, c] = ramp.indices.slice(index, index + 3).map((vertex) => ramp.positions[vertex])
+            const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]]
+            const ac = [c[0] - a[0], c[1] - a[1], c[2] - a[2]]
+            normals.push([
+                ab[1] * ac[2] - ab[2] * ac[1],
+                ab[2] * ac[0] - ab[0] * ac[2],
+                ab[0] * ac[1] - ab[1] * ac[0],
+            ])
+        }
+        expect(normals[0][1]).toBeLessThan(0)
+        expect(normals[1][1]).toBeLessThan(0)
+        expect(normals[2][1]).toBeGreaterThan(0); expect(normals[2][2]).toBeLessThan(0)
+        expect(normals[3][1]).toBeGreaterThan(0); expect(normals[3][2]).toBeLessThan(0)
+        expect(normals[4][0]).toBeGreaterThan(0)
+        expect(normals[5][2]).toBeGreaterThan(0); expect(normals[6][0]).toBeLessThan(0)
+        expect(normals[7][2]).toBeGreaterThan(0)
+    })
+
     it('emits byte-identical packages and stable hashes', () => {
         const first = compileMapGltf(validSource())
         const second = compileMapGltf(structuredClone(validSource()))
@@ -91,6 +114,12 @@ describe('offline map compiler', () => {
         const compiled = compileMapGltf(JSON.parse(await readFile(path, 'utf8')))
         expect(compiled.manifest.spawnPoints).toHaveLength(16)
         expect(compiled.manifest.spawnPoints.some((spawn) => spawn.position[1] > 3)).toBe(true)
+        for (const spawn of compiled.manifest.spawnPoints) {
+            const [x, , z] = spawn.position
+            const inwardX = -x, inwardZ = -z
+            const forwardX = Math.sin(spawn.yaw), forwardZ = -Math.cos(spawn.yaw)
+            expect(forwardX * inwardX + forwardZ * inwardZ).toBeGreaterThan(0)
+        }
         expect(compiled.manifest.markers.length).toBeGreaterThanOrEqual(4)
         expect(new TextDecoder().decode(compiled.files.get('debug-report.json'))).toContain('triangleCount')
         expect(compiled.files.get('collision.bin')?.slice(0, 4)).toEqual(Uint8Array.from([0x4d, 0x33, 0x43, 0x4c]))

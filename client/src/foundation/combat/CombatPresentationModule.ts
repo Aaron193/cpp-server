@@ -6,6 +6,7 @@ import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder.
 import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder.js'
 import type { Mesh } from '@babylonjs/core/Meshes/mesh.js'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode.js'
+import '@babylonjs/core/Culling/ray.js'
 import { ImpactMaterial, Weapon, type Vec3 } from '../../protocol/generated'
 import type { ClientModule, ClientModuleContext, FrameUpdate } from '../lifecycle'
 import { AUDIO, CAMERA, COMBAT_PRESENTATION, ENTITY_VIEWS, NETWORKING, SCENE } from '../services'
@@ -23,7 +24,7 @@ function makeWeapon(name: string, weapon: Weapon, context: ClientModuleContext):
     const body = CreateBox(`${name}/body`, { width: weapon === Weapon.Shotgun ? .16 : .13, height: .16, depth: weapon === Weapon.Shotgun ? .72 : .62 }, scene)
     body.parent = root; body.material = dark
     const barrel = CreateCylinder(`${name}/barrel`, { diameter: weapon === Weapon.Shotgun ? .065 : .04, height: weapon === Weapon.Shotgun ? .68 : .58, tessellation: 8 }, scene)
-    barrel.parent = root; barrel.rotation.x = Math.PI / 2; barrel.position.z = .58; barrel.material = dark
+    barrel.parent = root; barrel.rotation.x = Math.PI / 2; barrel.position.z = -.58; barrel.material = dark
     const grip = CreateBox(`${name}/grip`, { width: .1, height: .28, depth: .12 }, scene)
     grip.parent = root; grip.position.set(0, -.18, -.12); grip.rotation.x = -.25; grip.material = dark
     for (const mesh of [body, barrel, grip]) { mesh.isPickable = false; mesh.renderingGroupId = 1 }
@@ -55,7 +56,9 @@ export class CombatPresentationModule implements ClientModule {
         const camera = context.services.get(CAMERA)
         this.rifle = makeWeapon('viewmodel/rifle', Weapon.Rifle, context)
         this.shotgun = makeWeapon('viewmodel/shotgun', Weapon.Shotgun, context)
-        for (const root of [this.rifle, this.shotgun]) { root.parent = camera; root.position.set(.34, -.28, .7) }
+        // A right-handed Babylon camera looks down local -Z. Positive Z places
+        // camera children behind the player and makes the viewmodel invisible.
+        for (const root of [this.rifle, this.shotgun]) { root.parent = camera; root.position.set(.34, -.28, -.7) }
         const scene = context.services.get(SCENE)
         const flashMaterial = material('effects/muzzle', new Color3(1, .7, .15), context); flashMaterial.emissiveColor = flashMaterial.diffuseColor
         this.worldImpactMaterial = material('effects/impact-world', new Color3(1, .35, .1), context); this.worldImpactMaterial.emissiveColor = this.worldImpactMaterial.diffuseColor
@@ -75,7 +78,7 @@ export class CombatPresentationModule implements ClientModule {
             this.shotgun.setEnabled(local.weapon === Weapon.Shotgun && !local.dead)
             this.recoil *= Math.exp(-frame.deltaSeconds * 18)
             const root = local.weapon === Weapon.Shotgun ? this.shotgun : this.rifle
-            root.position.z = .7 - this.recoil * .12; root.rotation.x = this.recoil * .09
+            root.position.z = -.7 + this.recoil * .12; root.rotation.x = this.recoil * .09
         }
         networking.combat.forEachEventAfter(this.eventCursor, (event) => {
             this.eventCursor = event.id
@@ -85,7 +88,13 @@ export class CombatPresentationModule implements ClientModule {
                     const ray = context.services.get(CAMERA).getForwardRay(1)
                     ray.direction.scaleToRef(.8, this.muzzlePosition)
                     ray.origin.addToRef(this.muzzlePosition, this.muzzlePosition)
-                    this.flash(this.muzzlePosition, performance.now())
+                    const now = performance.now()
+                    ray.direction.scaleToRef(24, this.tracerEnd)
+                    ray.origin.addToRef(this.tracerEnd, this.tracerEnd)
+                    this.flash(this.muzzlePosition, now)
+                    // Combat is hitscan, but an immediate cosmetic tracer makes
+                    // every trigger pull readable even when the shot hits sky.
+                    this.tracer(this.muzzlePosition, this.tracerEnd, now)
                     context.services.get(AUDIO).playWeapon(event.weapon)
                     break
                 }

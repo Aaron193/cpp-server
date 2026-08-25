@@ -65,7 +65,7 @@ TEST_CASE(committed_manifest_spawns_hash_and_bounds_validate) {
     EXPECT_EQ(package.manifest.mapId, "graybox-arena");
     EXPECT_TRUE(package.manifest.spawnPoints.size() >= 12U);
     EXPECT_EQ(package.manifest.contentHash,
-              "sha256:9185ea6742b55dee10cd168f24b0b866f0decafe747abbec932dc983c36eae64");
+              "sha256:f53f54d7df39162f8abaa3f0e6fed888bf94402f28b82b24d3533e914579e6d0");
     EXPECT_EQ(package.manifest.boundsMin, package.collision.boundsMin);
     EXPECT_EQ(package.manifest.boundsMax, package.collision.boundsMax);
 }

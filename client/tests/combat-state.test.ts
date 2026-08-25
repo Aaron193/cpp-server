@@ -15,6 +15,16 @@ describe('authoritative combat presentation model', () => {
         expect(state.localPlayer.magazineAmmo).toBe(4)
         state.acceptSnapshot(snapshot(local(33, 4))); expect(state.localPlayer.health).toBe(33)
     })
+    it('only predicts local shots for the equipped, loaded weapon', () => {
+        const state = new CombatPresentationState(); state.setPlayerId(7)
+        state.acceptSnapshot(snapshot(local(83, 0)))
+        expect(state.canLocalFire(Weapon.Shotgun)).toBe(false)
+        state.acceptSnapshot(snapshot(local(83, 1)))
+        expect(state.canLocalFire(Weapon.Rifle)).toBe(false)
+        expect(state.canLocalFire(Weapon.Shotgun)).toBe(false) // Reloading.
+        state.acceptSnapshot({ ...snapshot(local(83, 1)), entities: [{ ...local(83, 1), weaponState: { ...local(83, 1).weaponState!, stateFlags: 0 } }] })
+        expect(state.canLocalFire(Weapon.Shotgun)).toBe(true)
+    })
     it('routes correlations, scores, rounds, feed, chat and clears all bounded state', () => {
         const state = new CombatPresentationState(); state.setPlayerId(7); state.localFire(9, Weapon.Rifle)
         state.shot({ serverTick: 1, shooterId: 7, inputSequence: 9, shotId: 4, weapon: Weapon.Rifle })

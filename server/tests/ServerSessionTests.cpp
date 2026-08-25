@@ -1,5 +1,6 @@
 #include "TestHarness.hpp"
 
+#include <cmath>
 #include <memory>
 #include <string>
 #include <utility>
@@ -143,6 +144,25 @@ TEST_CASE(spawn_is_ordered_and_matches_snapshot_with_per_recipient_privacy) {
     EXPECT_TRUE(!publicSpawn.entity.health.has_value());
     EXPECT_TRUE(!publicSpawn.entity.weaponState.has_value());
     EXPECT_EQ(publicSpawn.entity.equippedWeapon, protocol::Weapon::Rifle);
+    const auto firstRecord = server.makeEntityRecord(
+        first.client->m_entity, first.client->m_entity);
+    const float joinDistance = std::hypot(
+        publicSpawn.entity.position.x - firstRecord.position.x,
+        publicSpawn.entity.position.z - firstRecord.position.z);
+    EXPECT_TRUE(joinDistance >= 6.0F && joinDistance < 12.0F);
+    const float secondForwardX = std::sin(publicSpawn.entity.bodyYaw);
+    const float secondForwardZ = -std::cos(publicSpawn.entity.bodyYaw);
+    const float directionToFirstX = firstRecord.position.x - publicSpawn.entity.position.x;
+    const float directionToFirstZ = firstRecord.position.z - publicSpawn.entity.position.z;
+    EXPECT_TRUE(secondForwardX * directionToFirstX +
+                secondForwardZ * directionToFirstZ > 0.0F);
+    EXPECT_TRUE(!server.m_physicsWorld.staticRayBlocked(
+        {publicSpawn.entity.position.x,
+         publicSpawn.entity.position.y + server.m_gameConfig.movement.eyeHeight,
+         publicSpawn.entity.position.z},
+        {firstRecord.position.x,
+         firstRecord.position.y + server.m_gameConfig.movement.eyeHeight,
+         firstRecord.position.z}));
     EXPECT_NEAR(publicSpawn.entity.position.x,
                 ownerSpawn.entity.position.x, 0.0001F);
     EXPECT_NEAR(publicSpawn.entity.position.y,

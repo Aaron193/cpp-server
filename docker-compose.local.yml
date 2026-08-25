@@ -1,0 +1,5 @@
+# Local development override: the host-run Fastify API needs PostgreSQL on localhost.
+services:
+  db:
+    ports:
+      - "127.0.0.1:5432:5432"
