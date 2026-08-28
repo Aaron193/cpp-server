@@ -6,6 +6,7 @@
 #include "GameServer.hpp"
 #include "ServerRegistration.hpp"
 #include "SocketServer.hpp"
+#include "security/JoinTicketValidator.hpp"
 
 // Helper function to get environment variable with default value
 std::string getEnvVar(const char* name, const std::string& defaultValue = "") {
@@ -29,6 +30,9 @@ int main() {
     std::string websocketUrl = getEnvVar(
         "SERVER_WEBSOCKET_URL",
         "ws://" + serverHost + ":" + std::to_string(serverPort));
+    std::string joinTicketSecret = getEnvVar("JOIN_TICKET_SECRET", "");
+    std::string joinTicketAudience = getEnvVar(
+        "JOIN_TICKET_AUDIENCE", "arena-game-server");
 
     std::cout << "[Config] Server ID: " << serverId << std::endl;
     std::cout << "[Config] Host: " << serverHost << ":" << serverPort
@@ -44,6 +48,20 @@ int main() {
     gameServer.m_sessionConfiguration.mode = mode;
     gameServer.m_sessionConfiguration.maxPlayers =
         static_cast<std::size_t>(maxPlayers);
+    std::shared_ptr<JoinTicketValidator> ticketValidator;
+    if (!joinTicketSecret.empty()) {
+        ticketValidator = std::make_shared<JoinTicketValidator>(
+            joinTicketSecret, joinTicketAudience, serverId);
+        gameServer.m_sessionConfiguration.authenticate =
+            [ticketValidator](const std::optional<std::string>& ticket) {
+                return ticket && ticketValidator->validate(*ticket);
+            };
+        std::cout << "[Security] Short-lived server-scoped join tickets required"
+                  << std::endl;
+    } else {
+        std::cout << "[Security] JOIN_TICKET_SECRET not set; only tokenless local joins are accepted"
+                  << std::endl;
+    }
     SocketServer socketServer(gameServer, serverPort);
 
     // Initialize server registration if web API URL and secret are configured
@@ -52,7 +70,9 @@ int main() {
         registration = std::make_unique<ServerRegistration>(
             webApiUrl, serverId, serverHost, serverPort, serverRegion,
             maxPlayers, buildId, SessionConfiguration::ProtocolVersion,
-            gameServer.m_mapPackage.manifest.mapId, mode, websocketUrl,
+            gameServer.m_mapPackage.manifest.mapId, mode,
+            static_cast<int>(gameServer.m_mapPackage.manifest.formatVersion),
+            gameServer.m_mapPackage.manifest.contentHash, websocketUrl,
             sharedSecret);
 
         // Register server with web API (async, non-blocking)

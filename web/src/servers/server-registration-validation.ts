@@ -9,6 +9,8 @@ export const serverRegistrationSchema = z.object({
     buildId: z.string().trim().min(1).max(64),
     protocolVersion: z.number().int().positive().max(65535),
     mapId: z.string().trim().min(1).max(64),
+    mapFormatVersion: z.number().int().min(1).max(65535),
+    mapContentHash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
     mode: z.string().trim().min(1).max(64),
     websocketUrl: z.string().url().refine((value) => {
         const protocol = new URL(value).protocol

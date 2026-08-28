@@ -1,7 +1,7 @@
 import type { AssetDefinition } from './AssetRegistry'
 import { GltfAssetRegistry } from './GltfAssetRegistry'
 import type { ClientModule, ClientModuleContext } from '../lifecycle'
-import { ASSETS, SCENE } from '../services'
+import { ASSETS, RENDER_QUALITY, SCENE } from '../services'
 
 export class AssetsModule implements ClientModule {
     readonly name = 'assets'
@@ -13,7 +13,8 @@ export class AssetsModule implements ClientModule {
         this.context = context
         const registry = new GltfAssetRegistry(
             context.services.get(SCENE),
-            this.catalog
+            this.catalog,
+            context.services.get(RENDER_QUALITY)
         )
         context.services.provide(ASSETS, registry)
     }

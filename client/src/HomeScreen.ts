@@ -13,6 +13,8 @@ export interface GameServer {
     buildId: string
     protocolVersion: number
     mapId: string
+    mapFormatVersion: number
+    mapContentHash: string
     mode: string
     websocketUrl: string
 }
@@ -865,7 +867,7 @@ export class HomeScreen {
 
     private isCompatible(server: GameServer): boolean {
         const clientBuild = import.meta.env.VITE_CLIENT_BUILD_ID || 'dev'
-        return server.protocolVersion === PROTOCOL_VERSION && server.buildId === clientBuild && server.mapId === 'graybox-arena' && /^wss?:\/\//.test(server.websocketUrl)
+        return server.protocolVersion === PROTOCOL_VERSION && server.buildId === clientBuild && /^[a-z][a-z0-9-]{0,63}$/.test(server.mapId) && /^wss?:\/\//.test(server.websocketUrl)
     }
 
     // Public method to get the player name

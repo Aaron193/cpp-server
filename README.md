@@ -6,11 +6,12 @@ multiplayer stack:
 - Babylon.js renders the Vite-built TypeScript client.
 - Jolt Physics powers the browser character controller and the authoritative
   C++17 simulation.
-- uWebSockets carries the generated protocol-v3 binary session protocol.
+- uWebSockets carries the generated protocol-v6 binary session protocol.
 - Fastify and PostgreSQL provide authentication, server registration, and
   discovery.
-- The authored `graybox-arena` package supplies a GLB render scene, versioned
-  collision binary, spawn metadata, and a compatibility hash.
+- Map package v2 ships two original selectable maps (`graybox-arena` and
+  `copper-yard`) with PBR GLB render data, bounded collision, gameplay/nav/radar
+  metadata, per-asset hashes, and a canonical package hash.
 
 The active runtime is the Babylon/Jolt 3D path. PixiJS, Box2D, Webpack, and the
 old 2D world/sprite runtime are not part of the production build.
@@ -21,7 +22,7 @@ old 2D world/sprite runtime are not part of the production build.
 client/                         Babylon.js/Jolt browser client and Vite build
 client/maps/                    authored map sources
 client/public/maps/             committed deployable map packages
-protocol/                       protocol-v3 schema, generator, and fixtures
+protocol/                       protocol-v6 schema, generator, and fixtures
 server/                         native Jolt/uWebSockets authoritative server
 web/                            Fastify/PostgreSQL control plane
 Dockerfile.{client,server,web}  production images
@@ -46,6 +47,7 @@ Client, protocol, map compiler, Jolt smoke test, and Vite bundle:
 cd client
 npm ci
 npm run protocol:check
+npm run fixtures:check
 npm run typecheck
 npm test
 npm run map:check
@@ -104,13 +106,17 @@ The web container also runs migrations before serving, so the explicit
 migration command is useful as a controlled rollout gate but is idempotent.
 `SERVER_WEBSOCKET_URL` must be a complete externally reachable URL such as
 `wss://game.example.com/game/`; discovery returns this value verbatim. The
-server and client images must use the same `SERVER_BUILD_ID`, protocol v3, and
-`graybox-arena` package.
+server and client images must use the same `SERVER_BUILD_ID`, protocol v6, and
+discovery-selected map descriptor. Selection uses `SERVER_MAP_ID` without code
+changes per map.
 
 See [docs/deployment.md](docs/deployment.md) for TLS termination, cache and MIME
 behavior, health checks, compatibility rollout order, rollback, and image
 validation. The historical 2D recovery boundary remains documented in
-[docs/3d-migration-guardrails.md](docs/3d-migration-guardrails.md).
+[docs/3d-migration-guardrails.md](docs/3d-migration-guardrails.md). Phase 7
+gates, measured local results, migration decisions, and remaining hardware/DCC/
+SBOM work are in
+[docs/production-hardening-phase7.md](docs/production-hardening-phase7.md).
 
 ## Map and protocol changes
 
@@ -129,6 +135,12 @@ Deploy the database migration and control plane first, then the native server,
 then the matching client/static image. Do not advertise a new server until its
 matching client assets are ready to roll out.
 
+Phase 0 also locks the current protocol and committed map artifacts by SHA-256.
+After an intentional regenerated protocol/map change passes both language test
+paths, review it and run `node scripts/check-phase0-fixtures.mjs --update`.
+
 ## License
 
 See [LICENSE](LICENSE).
+Third-party source and asset provenance, including unresolved legacy media, is
+tracked in [docs/source-asset-inventory.md](docs/source-asset-inventory.md).

@@ -9,6 +9,8 @@ export interface TransportCallbacks {
 
 export interface NetworkTransport {
     readonly state: TransportState
+    /** Bytes accepted by WebSocket but not yet transmitted. */
+    readonly bufferedBytes?: number
     connect(url: string, callbacks: TransportCallbacks): void
     send(data: Uint8Array): void
     update(nowMs: number): void
@@ -75,6 +77,7 @@ export class BrowserWebSocketTransport implements NetworkTransport {
     }
 
     get state(): TransportState { return this.currentState }
+    get bufferedBytes(): number { return this.socket?.bufferedAmount ?? 0 }
 
     setImpairment(impairment: SyntheticImpairment): void {
         this.impairment = {

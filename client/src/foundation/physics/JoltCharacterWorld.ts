@@ -97,6 +97,7 @@ export class JoltCharacterWorld {
         characterSettings.mPredictiveContactDistance = 0.1
         characterSettings.mPenetrationRecoverySpeed = 1
         characterSettings.mSupportingVolume = new Jolt.Plane(Jolt.Vec3.prototype.sAxisY(), -tuning.capsuleRadius)
+        characterSettings.mMass = 80
         this.spawnVector = new Jolt.RVec3(spawn.x, spawn.y, spawn.z)
         this.character = new Jolt.CharacterVirtual(characterSettings, this.spawnVector, identity, this.physicsSystem)
         capsuleResult.Clear()
@@ -119,11 +120,12 @@ export class JoltCharacterWorld {
 
     step(command: MovementCommand, dt: number): void {
         if (this.disposed) return
-        this.character.UpdateGroundVelocity()
         const current = this.character.GetLinearVelocity()
+        const groundVelocity = this.character.GetGroundVelocity()
         const velocity = stepMovementVelocity(
             { x: current.GetX(), y: current.GetY(), z: current.GetZ() }, command,
-            this.character.IsSupported(), dt, this.tuning
+            this.character.GetGroundState() === this.Jolt.EGroundState_OnGround,
+            dt, this.tuning, groundVelocity.GetY()
         )
         this.velocityVector.Set(velocity.x, velocity.y, velocity.z)
         this.character.SetLinearVelocity(this.velocityVector)
@@ -157,7 +159,7 @@ export class JoltCharacterWorld {
         const value = this.character.GetLinearVelocity()
         this.cachedVelocity.x = value.GetX(); this.cachedVelocity.y = value.GetY(); this.cachedVelocity.z = value.GetZ(); return this.cachedVelocity
     }
-    get grounded(): boolean { return this.character.IsSupported() }
+    get grounded(): boolean { return this.character.GetGroundState() === this.Jolt.EGroundState_OnGround }
 
     dispose(): void {
         if (this.disposed) return

@@ -178,7 +178,7 @@ TEST_CASE(security_metrics_classify_unknown_authority_spoof_and_rate_limit) {
     for (std::uint32_t sequence = 1U;
          sequence <= 73U && !rate.first->closing(); ++sequence) {
         const protocol::InputCommand command{
-            sequence, sequence, 0.0F, 0.0F, 0U, 0.0F, 0.0F,
+            sequence, sequence, 0.0F, 0.0F, 0U, 0U, 0U, 0.0F, 0.0F,
             protocol::Weapon::Rifle};
         const auto input = protocol::encode(protocol::InputBatch{{command}});
         rate.first->onMessageAt(packet(input), 3.0);

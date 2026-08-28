@@ -74,7 +74,10 @@ for path in \
     nginx.conf server/game_config.json protocol/schema.json \
     client/public/maps/graybox-arena/manifest.json \
     client/public/maps/graybox-arena/scene.glb \
-    client/public/maps/graybox-arena/collision.bin; do
+    client/public/maps/graybox-arena/collision.bin \
+    client/public/maps/copper-yard/manifest.json \
+    client/public/maps/copper-yard/scene.glb \
+    client/public/maps/copper-yard/collision.bin; do
     require_file "$path"
 done
 
@@ -84,12 +87,12 @@ require_pattern Dockerfile.server '-DSERVER_ENABLE_JOLT=ON' \
     "native server image explicitly enables Jolt"
 require_pattern Dockerfile.server 'COPY --from=builder /build/game_config.json ./game_config.json' \
     "server image includes game_config.json"
-require_pattern Dockerfile.server 'COPY client/public/maps/graybox-arena ./maps/graybox-arena' \
-    "server image includes the authored map package"
+require_pattern Dockerfile.server 'COPY client/public/maps ./maps' \
+    "server image includes all authored map packages"
 require_pattern Dockerfile.server 'GAME_CONFIG_PATH=/app/game_config.json' \
     "server selects /app/game_config.json"
-require_pattern Dockerfile.server 'MAP_PACKAGE_DIR=/app/maps/graybox-arena' \
-    "server selects the packaged map"
+require_pattern Dockerfile.server 'MAP_PACKAGE_ROOT=/app/maps' \
+    "server selects maps from the packaged map root"
 require_pattern Dockerfile.server '^USER gameserver$' \
     "server runtime is non-root"
 require_pattern Dockerfile.server '^HEALTHCHECK ' \
@@ -130,10 +133,12 @@ require_pattern nginx.conf 'proxy_read_timeout 75s;' \
 
 require_pattern docker-compose.yml 'SERVER_BUILD_ID:.*\?SERVER_BUILD_ID is required' \
     "Compose requires a shared server/client build ID"
-require_pattern docker-compose.yml 'SERVER_PROTOCOL_VERSION: "3"' \
-    "Compose supplies protocol v3"
-require_pattern docker-compose.yml 'SERVER_MAP_ID: graybox-arena' \
-    "Compose supplies the production map ID"
+require_pattern docker-compose.yml 'SERVER_PROTOCOL_VERSION: "6"' \
+    "Compose supplies protocol v6"
+require_pattern docker-compose.yml 'JOIN_TICKET_SECRET:.*\?JOIN_TICKET_SECRET is required' \
+    "Compose requires the shared join-ticket signing secret"
+require_pattern docker-compose.yml 'SERVER_MAP_ID:.*\$\{SERVER_MAP_ID:-graybox-arena\}' \
+    "Compose supplies an overridable production map ID"
 require_pattern docker-compose.yml 'SERVER_WEBSOCKET_URL:.*\?Set the complete externally reachable wss URL' \
     "Compose requires the externally supplied WebSocket URL"
 require_pattern docker-compose.yml 'GAME_CONFIG_PATH: /app/game_config.json' \
@@ -164,26 +169,24 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 const root = process.argv[2]
-const manifestPath = path.join(root, 'client/public/maps/graybox-arena/manifest.json')
-const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
 const schema = JSON.parse(fs.readFileSync(path.join(root, 'protocol/schema.json'), 'utf8'))
-const required = [manifest.renderAsset, manifest.collisionAsset, manifest.debugReport]
-if (manifest.mapId !== 'graybox-arena') throw new Error('unexpected mapId')
-if (manifest.format !== 'cpp-server-map' || !Number.isInteger(manifest.formatVersion)) {
-  throw new Error('invalid map format metadata')
-}
-if (!/^sha256:[0-9a-f]{64}$/.test(manifest.contentHash)) {
-  throw new Error('invalid map content hash')
-}
-for (const asset of required) {
-  if (typeof asset !== 'string' || !fs.existsSync(path.join(path.dirname(manifestPath), asset))) {
-    throw new Error(`missing manifest asset: ${asset}`)
+for (const mapId of ['graybox-arena', 'copper-yard']) {
+  const manifestPath = path.join(root, `client/public/maps/${mapId}/manifest.json`)
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+  if (manifest.mapId !== mapId || manifest.format !== 'cpp-server-map' || manifest.formatVersion !== 2) {
+    throw new Error(`invalid ${mapId} format metadata`)
+  }
+  if (!/^sha256:[0-9a-f]{64}$/.test(manifest.contentHash)) throw new Error(`invalid ${mapId} content hash`)
+  const required = Object.values(manifest.assets).filter((asset) => asset !== null)
+  if (Object.keys(manifest.assetHashes).sort().join('\0') !== [...required].sort().join('\0')) throw new Error(`${mapId} asset hash coverage mismatch`)
+  for (const asset of required) {
+    if (typeof asset !== 'string' || !fs.existsSync(path.join(path.dirname(manifestPath), asset))) throw new Error(`missing ${mapId} asset: ${asset}`)
   }
 }
-if (schema.version !== 3) throw new Error(`protocol schema is v${schema.version}, expected v3`)
+if (schema.version !== 6) throw new Error(`protocol schema is v${schema.version}, expected v6`)
 NODE
     then
-        pass "map package paths/hash metadata and protocol v3 agree"
+        pass "map v2 package paths/hash metadata and protocol v6 agree"
     else
         fail "map package paths/hash metadata or protocol version is invalid"
     fi
@@ -216,7 +219,7 @@ if [[ -n "$env_file" ]]; then
         done < <(grep -Ev '^[[:space:]]*(#|$)' "$env_file")
 
         for key in POSTGRES_PASSWORD DATABASE_URL JWT_SECRET \
-            SERVER_SHARED_SECRET CLIENT_ORIGIN SERVER_ID SERVER_HOST \
+            SERVER_SHARED_SECRET JOIN_TICKET_SECRET CLIENT_ORIGIN SERVER_ID SERVER_HOST \
             SERVER_REGION SERVER_BUILD_ID SERVER_WEBSOCKET_URL; do
             value="${production_env[$key]:-}"
             [[ -n "$value" ]] || fail "${key} is required in ${env_file}"

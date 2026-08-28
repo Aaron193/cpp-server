@@ -1,6 +1,6 @@
 {
   "name": "ArenaProtocol",
-  "version": 3,
+  "version": 6,
   "limits": {
     "maxEnvelopeBytes": 61443,
     "maxPayloadBytes": 61440,
@@ -13,7 +13,10 @@
     "maxChatBytes": 512,
     "maxConfigurationBytes": 16384,
     "maxInputCommands": 64,
-    "maxSnapshotEntities": 512
+    "maxSnapshotEntities": 512,
+    "maxSnapshotCreated": 512,
+    "maxSnapshotUpdated": 512,
+    "maxSnapshotRemoved": 512
   },
   "enums": {
     "RejectReason": { "underlying": "u8", "values": { "VersionMismatch": 1, "BuildMismatch": 2, "MapMismatch": 3, "ServerFull": 4, "Unauthorized": 5, "InvalidHello": 6, "InternalError": 7 } },
@@ -24,6 +27,8 @@
     "ImpactMaterial": { "underlying": "u8", "values": { "World": 1, "Player": 2 } },
     "RoundTransitionKind": { "underlying": "u8", "values": { "Started": 1, "Ended": 2, "Intermission": 3, "Reset": 4 } },
     "ChatChannel": { "underlying": "u8", "values": { "Global": 1, "System": 2 } }
+    ,"ActionKind": { "underlying": "u8", "values": { "Fire": 1, "Reload": 2 } }
+    ,"ActionRejectReason": { "underlying": "u8", "values": { "None": 0, "Cadence": 1, "NoAmmo": 2, "Dead": 3, "MatchInactive": 4, "WeaponMismatch": 5, "AlreadyReloading": 6, "MagazineFull": 7, "NoReserve": 8, "Duplicate": 9, "Invalid": 10 } }
   },
   "types": {
     "Vec3": [
@@ -50,8 +55,50 @@
       { "name": "clientTick", "type": "u32", "description": "Server tick domain learned from Snapshot.serverTick; early or out-of-domain values are clamped by the server." },
       { "name": "moveX", "type": "f32" }, { "name": "moveY", "type": "f32" },
       { "name": "buttonFlags", "type": "u16" },
+      { "name": "fireActionId", "type": "u32", "description": "Zero when this command has no fire edge; otherwise a generated action correlation id independent of sequence." },
+      { "name": "reloadActionId", "type": "u32", "description": "Zero when this command has no reload edge; otherwise a generated action correlation id independent of sequence." },
       { "name": "yaw", "type": "f32" }, { "name": "pitch", "type": "f32" },
       { "name": "selectedWeapon", "type": { "enum": "Weapon" } }
+    ],
+    "EntityHandle": [
+      { "name": "slot", "type": "u32", "description": "Stable entity slot/id. Pair with generation; never key a view by slot alone." },
+      { "name": "generation", "type": "u16", "description": "Increments when a slot is reused." }
+    ],
+    "PublicEntityState": [
+      { "name": "handle", "type": { "ref": "EntityHandle" } },
+      { "name": "kind", "type": { "enum": "EntityKind" } },
+      { "name": "position", "type": { "ref": "Vec3" } },
+      { "name": "velocity", "type": { "ref": "Vec3" } },
+      { "name": "bodyYaw", "type": "f32" }, { "name": "aimPitch", "type": "f32" },
+      { "name": "grounded", "type": "bool" }, { "name": "stateFlags", "type": "u16" },
+      { "name": "equippedWeapon", "type": { "enum": "Weapon" } }
+    ],
+    "CreatedEntity": [
+      { "name": "state", "type": { "ref": "PublicEntityState" } }
+    ],
+    "UpdatedEntity": [
+      { "name": "handle", "type": { "ref": "EntityHandle" } },
+      { "name": "changeMask", "type": "u16", "description": "Bits: position=1 velocity=2 bodyYaw=4 aimPitch=8 grounded=16 stateFlags=32 equippedWeapon=64. Presence must exactly match bits." },
+      { "name": "position", "type": { "optional": { "ref": "Vec3" } } },
+      { "name": "velocity", "type": { "optional": { "ref": "Vec3" } } },
+      { "name": "bodyYaw", "type": { "optional": "f32" } },
+      { "name": "aimPitch", "type": { "optional": "f32" } },
+      { "name": "grounded", "type": { "optional": "bool" } },
+      { "name": "stateFlags", "type": { "optional": "u16" } },
+      { "name": "equippedWeapon", "type": { "optional": { "enum": "Weapon" } } }
+    ],
+    "RemovedEntity": [
+      { "name": "handle", "type": { "ref": "EntityHandle" } },
+      { "name": "reason", "type": { "enum": "RemoveReason" } }
+    ],
+    "LocalAuthoritativeState": [
+      { "name": "handle", "type": { "ref": "EntityHandle" } },
+      { "name": "position", "type": { "ref": "Vec3" } },
+      { "name": "velocity", "type": { "ref": "Vec3" } },
+      { "name": "bodyYaw", "type": "f32" }, { "name": "aimPitch", "type": "f32" },
+      { "name": "grounded", "type": "bool" }, { "name": "stateFlags", "type": "u16" },
+      { "name": "health", "type": "u16" },
+      { "name": "weaponState", "type": { "ref": "WeaponState" } }
     ],
     "EntityRecord": [
       { "name": "entityId", "type": "u32" },
@@ -60,9 +107,7 @@
       { "name": "velocity", "type": { "ref": "Vec3" } },
       { "name": "bodyYaw", "type": "f32" }, { "name": "aimPitch", "type": "f32" },
       { "name": "grounded", "type": "bool" }, { "name": "stateFlags", "type": "u16" },
-      { "name": "equippedWeapon", "type": { "enum": "Weapon" } },
-      { "name": "health", "type": { "optional": "u16" } },
-      { "name": "weaponState", "type": { "optional": { "ref": "WeaponState" } } }
+      { "name": "equippedWeapon", "type": { "enum": "Weapon" } }
     ]
   },
   "messages": {
@@ -75,7 +120,9 @@
     "Welcome": { "id": 2, "fields": [
       { "name": "protocolVersion", "type": "u16" },
       { "name": "serverBuildId", "type": "string", "max": "maxBuildIdBytes" },
-      { "name": "playerId", "type": "u32" }, { "name": "tickRate", "type": "u16" }, { "name": "snapshotRate", "type": "u16" },
+      { "name": "playerId", "type": "u32", "description": "Raw EnTT value retained for combat/score event correlation in protocol v6; entity view identity uses playerHandle." },
+      { "name": "playerHandle", "type": { "ref": "EntityHandle" } },
+      { "name": "tickRate", "type": "u16" }, { "name": "snapshotRate", "type": "u16" },
       { "name": "map", "type": { "ref": "MapDescriptor" } },
       { "name": "configurationHash", "type": "string", "max": "maxHashBytes" }
     ] },
@@ -93,9 +140,9 @@
       { "name": "match", "type": { "ref": "MatchState" } },
       { "name": "entities", "type": { "array": { "ref": "EntityRecord" } }, "max": "maxSnapshotEntities" }
     ] },
-    "Spawn": { "id": 6, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "entity", "type": { "ref": "EntityRecord" } }] },
-    "Remove": { "id": 7, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "entityId", "type": "u32" }, { "name": "reason", "type": { "enum": "RemoveReason" } }] },
-    "ShotConfirmed": { "id": 8, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "shooterId", "type": "u32" }, { "name": "inputSequence", "type": "u32" }, { "name": "shotId", "type": "u32" }, { "name": "weapon", "type": { "enum": "Weapon" } }] },
+    "Spawn": { "id": 6, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "entity", "type": { "ref": "PublicEntityState" } }] },
+    "Remove": { "id": 7, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "handle", "type": { "ref": "EntityHandle" } }, { "name": "reason", "type": { "enum": "RemoveReason" } }] },
+    "ShotConfirmed": { "id": 8, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "shooterId", "type": "u32" }, { "name": "inputSequence", "type": "u32" }, { "name": "actionId", "type": "u32" }, { "name": "shotId", "type": "u32" }, { "name": "weapon", "type": { "enum": "Weapon" } }] },
     "Impact": { "id": 9, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "shotId", "type": "u32" }, { "name": "position", "type": { "ref": "Vec3" } }, { "name": "normal", "type": { "ref": "Vec3" } }, { "name": "material", "type": { "enum": "ImpactMaterial" } }] },
     "Damage": { "id": 10, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "sourceId", "type": { "optional": "u32" } }, { "name": "targetId", "type": "u32" }, { "name": "amount", "type": "u16" }, { "name": "remainingHealth", "type": "u16" }] },
     "Death": { "id": 11, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "victimId", "type": "u32" }, { "name": "killerId", "type": { "optional": "u32" } }, { "name": "weapon", "type": { "enum": "Weapon" } }] },
@@ -107,6 +154,38 @@
       { "name": "protocolVersion", "type": "u16" }, { "name": "serverBuildId", "type": "string", "max": "maxBuildIdBytes" },
       { "name": "map", "type": { "ref": "MapDescriptor" } }, { "name": "configurationHash", "type": "string", "max": "maxHashBytes" },
       { "name": "configurationJson", "type": "string", "max": "maxConfigurationBytes" }
+    ] },
+    "Ping": { "id": 17, "fields": [
+      { "name": "pingId", "type": "u32", "description": "Client-generated correlation ID. Values may wrap modulo 2^32." }
+    ] },
+    "Pong": { "id": 18, "fields": [
+      { "name": "pingId", "type": "u32", "description": "Exact echo of Ping.pingId." },
+      { "name": "serverTick", "type": "u32", "description": "Authoritative 60 Hz simulation tick at pong creation; wraps modulo 2^32." },
+      { "name": "serverMonotonicMs", "type": "u32", "description": "Low 32 bits of steady-clock milliseconds at pong creation. It is not wall-clock or Unix time and wraps modulo 2^32." }
+    ] },
+    "SnapshotDelta": { "id": 19, "fields": [
+      { "name": "snapshotSequence", "type": "u32", "description": "Monotonic per-connection sequence." },
+      { "name": "baselineSequence", "type": "u32", "description": "Immediately previous applied ordered SnapshotDelta sequence, or zero on reset." },
+      { "name": "baselineRevision", "type": "u32", "description": "Changes whenever the server resets the per-client baseline." },
+      { "name": "baselineReset", "type": "bool", "description": "Clears all decoder state before applying created records." },
+      { "name": "serverTick", "type": "u32" },
+      { "name": "lastProcessedInputSequence", "type": "u32" },
+      { "name": "matchRevision", "type": "u32" },
+      { "name": "match", "type": { "optional": { "ref": "MatchState" } } },
+      { "name": "local", "type": { "ref": "LocalAuthoritativeState" } },
+      { "name": "created", "type": { "array": { "ref": "CreatedEntity" } }, "max": "maxSnapshotCreated" },
+      { "name": "updated", "type": { "array": { "ref": "UpdatedEntity" } }, "max": "maxSnapshotUpdated" },
+      { "name": "removed", "type": { "array": { "ref": "RemovedEntity" } }, "max": "maxSnapshotRemoved" }
+    ] },
+    "ActionResult": { "id": 20, "fields": [
+      { "name": "serverTick", "type": "u32" },
+      { "name": "actionId", "type": "u32" },
+      { "name": "kind", "type": { "enum": "ActionKind" } },
+      { "name": "accepted", "type": "bool" },
+      { "name": "reason", "type": { "enum": "ActionRejectReason" } },
+      { "name": "weapon", "type": { "enum": "Weapon" } },
+      { "name": "authoritativeMagazineAmmo", "type": "u16" },
+      { "name": "authoritativeReserveAmmo", "type": "u16" }
     ] }
   }
 }

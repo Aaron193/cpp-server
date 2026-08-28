@@ -34,6 +34,25 @@ control plane returns it verbatim. Neither the control plane nor nginx rebuilds
 it from `SERVER_HOST` or `SERVER_PORT`. `SERVER_HOST` remains registry metadata
 only.
 
+## Join-ticket security
+
+Set the same independent `JOIN_TICKET_SECRET` (at least 32 random bytes) and
+`JOIN_TICKET_AUDIENCE` on Fastify and every native server. Do not reuse the
+browser-session `JWT_SECRET` or the server-registration shared secret. The
+authenticated `POST /api/servers/:id/join` endpoint checks the live discovery
+record, exact build/protocol/map/mode tuple, capacity, and authenticated user,
+then returns the discovery-owned complete WebSocket URL and an HS256 ticket
+valid for 20 seconds (`JOIN_TICKET_TTL_SECONDS` may be 15–30).
+
+The native listener validates signature, expiry, audience, target server ID,
+and bounded identity/session/nonce claims. A nonce is accepted once per native
+server process; the replay cache is capped at 4096 entries and expires entries
+with their tickets. This one-time policy means a consumed ticket cannot be
+reused for a reconnect: the browser obtains a fresh join ticket. TLS remains
+mandatory in production—the signed ticket authenticates and scopes the join,
+but does not encrypt it. Keep the public URL on `wss://` and terminate TLS only
+at the documented trusted ingress.
+
 ## Prepare and validate configuration
 
 ```bash
@@ -46,7 +65,7 @@ docker compose --env-file .env config --quiet
 
 The validator is read-only. It checks the deployment file set, pinned vcpkg
 commit and Jolt build flag, runtime config/map paths, non-root images, protocol
-v3 and map metadata, nginx WASM/cache/CSP/Upgrade behavior, private PostgreSQL,
+v6 and map metadata, nginx WASM/cache/CSP/Upgrade behavior, private PostgreSQL,
 Compose health ordering, and production HTTPS/WSS values. Compose treats key
 identity, secret, origin, build, and external WebSocket values as required;
 defaults are limited to bounded non-secret settings.
@@ -75,9 +94,9 @@ release and test restore procedures outside production.
 The game image builds native dependencies from vcpkg commit
 `9e593bb18ea69cc5095e012465dcd675a822ed0d` (Jolt 5.6.0), explicitly enables Jolt, copies
 `server/game_config.json` to `/app/game_config.json`, and copies the committed
-`graybox-arena` map package. It runs as `gameserver`, with
-`GAME_CONFIG_PATH=/app/game_config.json` and
-`MAP_PACKAGE_DIR=/app/maps/graybox-arena`. Invalid inputs stop startup before
+map packages. It runs as `gameserver`, with `GAME_CONFIG_PATH=/app/game_config.json`,
+`MAP_PACKAGE_ROOT=/app/maps`, and `SERVER_MAP_ID` selecting a package (or an
+explicit `MAP_PACKAGE_DIR`). Invalid inputs stop startup before
 the listener becomes healthy.
 
 ## Verify a release
@@ -87,6 +106,7 @@ docker compose --env-file .env ps
 curl --fail --silent https://game.example.com/health
 curl --fail --silent https://game.example.com/api/servers
 curl --fail --silent --head https://game.example.com/maps/graybox-arena/manifest.json
+curl --fail --silent --head https://game.example.com/maps/copper-yard/manifest.json
 ```
 
 Check browser developer tools as well:
@@ -110,9 +130,9 @@ to become healthy before starting its dependent service.
 
 The join path checks this compatibility tuple:
 
-1. generated binary protocol version (`3`),
+1. generated binary protocol version (`6`),
 2. `SERVER_BUILD_ID` embedded in both client and server,
-3. map ID (`graybox-arena`), format version, and content hash,
+3. selected map ID, format version, and content hash,
 4. game mode (`ffa` unless explicitly changed).
 
 Roll forward in this order:

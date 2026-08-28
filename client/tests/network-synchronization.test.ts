@@ -2,8 +2,8 @@ import { EntityKind, Weapon, type EntityRecord, type InputCommand } from '../src
 import { describe, expect, it } from 'vitest'
 import { PredictionHistory, RemoteEntityTimeline, RemoteTimelineSet, isSequenceNewer } from '../src/foundation/networking/Synchronization'
 
-const command = (sequence: number): InputCommand => ({ sequence, clientTick: sequence, moveX: 0, moveY: -1, buttonFlags: 0, yaw: 0, pitch: 0, selectedWeapon: Weapon.Rifle })
-const entity = (x: number, velocityX = 0): EntityRecord => ({ entityId: 8, kind: EntityKind.Player, position: { x, y: 0, z: 0 }, velocity: { x: velocityX, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, equippedWeapon: Weapon.Rifle, health: null, weaponState: null })
+const command = (sequence: number): InputCommand => ({ sequence, clientTick: sequence, moveX: 0, moveY: -1, buttonFlags: 0, fireActionId: 0, reloadActionId: 0, yaw: 0, pitch: 0, selectedWeapon: Weapon.Rifle })
+const entity = (x: number, velocityX = 0): EntityRecord => ({ entityId: 8, kind: EntityKind.Player, position: { x, y: 0, z: 0 }, velocity: { x: velocityX, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, equippedWeapon: Weapon.Rifle })
 
 describe('prediction sequencing and bounded history', () => {
     it('orders uint32 sequences safely across wrap and retains only unacknowledged inputs', () => {
@@ -11,12 +11,21 @@ describe('prediction sequencing and bounded history', () => {
         expect(isSequenceNewer(0xffffffff, 0)).toBe(false)
         const history = new PredictionHistory(4)
         for (const sequence of [0xfffffffe, 0xffffffff, 0, 1]) history.push({ command: command(sequence), position: { x: sequence, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, sentAtMs: sequence })
-        expect(history.acknowledge(0xffffffff).pending.map((entry) => entry.command.sequence)).toEqual([0, 1])
+        const acknowledgement = history.acknowledge(0xffffffff)
+        expect(acknowledgement.status).toBe('acknowledged')
+        expect(acknowledgement.pending.map((entry) => entry.command.sequence)).toEqual([0, 1])
     })
     it('bounds command/state history', () => {
         const history = new PredictionHistory(3)
         for (let sequence = 1; sequence <= 8; sequence++) history.push({ command: command(sequence), position: { x: sequence, y: 0, z: 0 }, velocity: { x: 1, y: 0, z: 0 }, sentAtMs: 0 })
         expect(history.values().map((entry) => entry.command.sequence)).toEqual([6, 7, 8])
+        expect(history.acknowledge(4).status).toBe('history-overflow')
+    })
+    it('rejects acknowledgements beyond commands the client has produced', () => {
+        const history = new PredictionHistory(4)
+        history.push({ command: command(10), position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, sentAtMs: 0 })
+        expect(history.acknowledge(11).status).toBe('impossible')
+        expect(history.values()).toHaveLength(1)
     })
 })
 

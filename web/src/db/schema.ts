@@ -51,6 +51,8 @@ export const gameServers = pgTable(
         buildId: text('build_id').notNull(),
         protocolVersion: integer('protocol_version').notNull(),
         mapId: text('map_id').notNull(),
+        mapFormatVersion: integer('map_format_version').notNull().default(2),
+        mapContentHash: text('map_content_hash').notNull().default(''),
         mode: text('mode').notNull(),
         websocketUrl: text('websocket_url').notNull(),
         maxPlayers: integer('max_players').notNull(),

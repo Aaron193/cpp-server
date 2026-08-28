@@ -92,6 +92,7 @@ export class PhysicsPredictionModule implements ClientModule {
     get grounded(): boolean { return this.world?.grounded ?? false }
     get tuning(): MovementTuning { return this.currentTuning }
     get stepCount(): number { return this.simulatedSteps }
+    get droppedSimulationTimeMs(): number { return this.accumulator.totalDroppedSeconds * 1000 }
     get isWorldReady(): boolean { return this.world !== undefined }
     setProfilingEnabled(enabled: boolean): void { this.profilingEnabled = enabled; if (!enabled) this.stepTimes.clear() }
     get predictionStepP95Ms(): number { return this.stepTimes.snapshot().p95 }

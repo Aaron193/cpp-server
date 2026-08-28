@@ -10,6 +10,8 @@
 #include <vector>
 
 #include "protocol/generated.hpp"
+#include "GameServer.hpp"
+#include "network/ReplicationProtocol.hpp"
 
 namespace {
 
@@ -82,7 +84,8 @@ TEST_CASE(protocol_decodes_shared_vectors_and_reproduces_identical_bytes) {
         } else if (name == "version-mismatch-reject") {
             const auto& reject = std::get<protocol::Reject>(decoded.message);
             EXPECT_EQ(reject.reason, protocol::RejectReason::VersionMismatch);
-            EXPECT_EQ(reject.expectedProtocolVersion, 3U);
+            EXPECT_EQ(reject.expectedProtocolVersion,
+                      SessionConfiguration::ProtocolVersion);
             EXPECT_EQ(reject.expectedMapFormat, 2U);
         } else if (name == "snapshot-entity") {
             const auto& snapshot =
@@ -100,8 +103,44 @@ TEST_CASE(protocol_decodes_shared_vectors_and_reproduces_identical_bytes) {
             const auto& confirmation =
                 std::get<protocol::ShotConfirmed>(decoded.message);
             EXPECT_EQ(confirmation.weapon, protocol::Weapon::Shotgun);
+        } else if (name == "clock-ping-wrap") {
+            EXPECT_EQ(std::get<protocol::Ping>(decoded.message).pingId,
+                      0xFFFFFFFFU);
+        } else if (name == "clock-pong-anchor-wrap") {
+            const auto& pong = std::get<protocol::Pong>(decoded.message);
+            EXPECT_EQ(pong.pingId, 0xFFFFFFFFU);
+            EXPECT_EQ(pong.serverTick, 0xFFFFFFFEU);
+            EXPECT_EQ(pong.serverMonotonicMs, 0xFFFFFFF0U);
+        } else if (name == "snapshot-delta-all-update-bits") {
+            const auto& snapshot = std::get<protocol::SnapshotDelta>(decoded.message);
+            EXPECT_EQ(snapshot.baselineSequence, 1U);
+            EXPECT_EQ(snapshot.updated.at(0).changeMask, replication::All);
+            EXPECT_TRUE(replication::validUpdatedEntity(snapshot.updated.at(0)));
         }
     }
+}
+
+TEST_CASE(snapshot_delta_validates_every_field_mask_combination) {
+    for (std::uint16_t mask = 1U; mask <= replication::All; ++mask) {
+        protocol::UpdatedEntity update{};
+        update.handle = {2U, 1U}; update.changeMask = mask;
+        if (mask & replication::Position) update.position = protocol::Vec3{};
+        if (mask & replication::Velocity) update.velocity = protocol::Vec3{};
+        if (mask & replication::BodyYaw) update.bodyYaw = 0.0F;
+        if (mask & replication::AimPitch) update.aimPitch = 0.0F;
+        if (mask & replication::Grounded) update.grounded = true;
+        if (mask & replication::StateFlags) update.stateFlags = 0U;
+        if (mask & replication::EquippedWeapon)
+            update.equippedWeapon = protocol::Weapon::Rifle;
+        EXPECT_TRUE(replication::validUpdatedEntity(update));
+    }
+    protocol::UpdatedEntity malformed{};
+    malformed.handle = {2U, 1U}; malformed.changeMask = replication::Position;
+    EXPECT_TRUE(!replication::validUpdatedEntity(malformed));
+    malformed.changeMask = 0U;
+    EXPECT_TRUE(!replication::validUpdatedEntity(malformed));
+    malformed.changeMask = 1U << 7U;
+    EXPECT_TRUE(!replication::validUpdatedEntity(malformed));
 }
 
 TEST_CASE(protocol_skips_well_formed_unknown_message_by_length) {
@@ -168,4 +207,9 @@ TEST_CASE(protocol_rejects_malformed_envelopes) {
     hello.accessToken.reset();
     const auto encoded = protocol::encode(hello);
     EXPECT_EQ(encoded.size(), static_cast<std::size_t>(3U + encoded[1]));
+
+    auto truncatedPong = protocol::encode(protocol::Pong{1U, 2U, 3U});
+    truncatedPong.pop_back();
+    expectProtocolError(
+        [&] { (void)protocol::decodeEnvelope(truncatedPong); });
 }

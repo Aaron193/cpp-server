@@ -1,0 +1,41 @@
+{
+  "format": "cpp-server-map-navigation",
+  "formatVersion": 2,
+  "mapId": "copper-yard",
+  "nodes": [
+    {
+      "id": "nav-center",
+      "position": [
+        0,
+        0.1,
+        8
+      ],
+      "links": [
+        "nav-north",
+        "nav-south"
+      ]
+    },
+    {
+      "id": "nav-north",
+      "position": [
+        0,
+        0.1,
+        -25
+      ],
+      "links": [
+        "nav-center"
+      ]
+    },
+    {
+      "id": "nav-south",
+      "position": [
+        8,
+        0.1,
+        26
+      ],
+      "links": [
+        "nav-center"
+      ]
+    }
+  ]
+}

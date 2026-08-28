@@ -43,7 +43,8 @@ export function stepMovementVelocity(
     command: MovementCommand,
     grounded: boolean,
     dt: number,
-    tuning: MovementTuning = DEFAULT_MOVEMENT_TUNING
+    tuning: MovementTuning = DEFAULT_MOVEMENT_TUNING,
+    groundVelocityY = 0
 ): MovementVelocity {
     const inputLength = Math.hypot(command.forward, command.right)
     const scale = inputLength > 1 ? 1 / inputLength : 1
@@ -54,9 +55,13 @@ export function stepMovementVelocity(
     const targetZ = (-cos * forward + sin * right) * tuning.groundSpeed
     const acceleration = grounded ? tuning.groundAcceleration : tuning.airAcceleration * tuning.airControl
     const horizontalDelta = acceleration * dt
-    let y = grounded ? Math.max(velocity.y, -0.1) : velocity.y
-    if (grounded && command.jump) y = tuning.jumpSpeed
-    else y = Math.max(y - tuning.gravity * dt, -tuning.terminalVelocity)
+    let y = velocity.y
+    const movingTowardGround = velocity.y - groundVelocityY < 0.1
+    if (grounded && movingTowardGround) {
+        y = groundVelocityY
+        if (command.jump) y += tuning.jumpSpeed
+    }
+    y = Math.max(y - tuning.gravity * dt, -tuning.terminalVelocity)
     return {
         x: approach(velocity.x, targetX, horizontalDelta),
         y,
@@ -66,19 +71,45 @@ export function stepMovementVelocity(
 
 export class FixedStepAccumulator {
     private accumulator = 0
-    constructor(readonly stepSeconds = 1 / 60, readonly maxFrameSeconds = 0.25) {}
+    private droppedSeconds = 0
+    private lastDropped = 0
+
+    constructor(
+        readonly stepSeconds = 1 / 60,
+        readonly maxFrameSeconds = 0.25,
+        readonly maxStepsPerFrame = 5
+    ) {
+        if (!Number.isFinite(stepSeconds) || stepSeconds <= 0) throw new RangeError('Fixed step must be positive')
+        if (!Number.isFinite(maxFrameSeconds) || maxFrameSeconds <= 0) throw new RangeError('Maximum frame time must be positive')
+        if (!Number.isSafeInteger(maxStepsPerFrame) || maxStepsPerFrame < 1) throw new RangeError('Maximum steps per frame must be positive')
+    }
 
     consume(deltaSeconds: number, step: (dt: number) => void): number {
+        this.lastDropped = 0
         if (!Number.isFinite(deltaSeconds) || deltaSeconds < 0) return 0
-        this.accumulator += Math.min(deltaSeconds, this.maxFrameSeconds)
+        const acceptedSeconds = Math.min(deltaSeconds, this.maxFrameSeconds)
+        this.lastDropped = deltaSeconds - acceptedSeconds
+        this.accumulator += acceptedSeconds
         let count = 0
-        while (this.accumulator >= this.stepSeconds) {
+        while (this.accumulator >= this.stepSeconds && count < this.maxStepsPerFrame) {
             step(this.stepSeconds)
             this.accumulator -= this.stepSeconds
             count++
         }
+        // Keep only the fractional remainder. Whole ticks beyond the per-frame
+        // budget are intentionally discarded rather than leaking a stall into
+        // several later render frames.
+        if (this.accumulator >= this.stepSeconds) {
+            const droppedSteps = Math.floor(this.accumulator / this.stepSeconds)
+            const droppedCatchUp = droppedSteps * this.stepSeconds
+            this.accumulator -= droppedCatchUp
+            this.lastDropped += droppedCatchUp
+        }
+        this.droppedSeconds += this.lastDropped
         return count
     }
 
-    reset(): void { this.accumulator = 0 }
+    reset(): void { this.accumulator = 0; this.lastDropped = 0 }
+    get lastDroppedSeconds(): number { return this.lastDropped }
+    get totalDroppedSeconds(): number { return this.droppedSeconds }
 }

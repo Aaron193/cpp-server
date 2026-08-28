@@ -1,0 +1,58 @@
+{
+  "format": "cpp-server-map",
+  "formatVersion": 2,
+  "mapId": "copper-yard",
+  "coordinateSystem": {
+    "handedness": "right",
+    "upAxis": "Y",
+    "units": "meters"
+  },
+  "worldBounds": {
+    "min": [
+      -21,
+      -1,
+      -33
+    ],
+    "max": [
+      21,
+      12,
+      33
+    ]
+  },
+  "assets": {
+    "render": "scene.glb",
+    "collision": "collision.bin",
+    "gameplay": "gameplay.json",
+    "navigation": "navigation.json",
+    "radar": "radar.svg",
+    "debug": "debug-report.json"
+  },
+  "assetHashes": {
+    "collision.bin": "sha256:b835666ad6e4dff87d9b0c9afaa8b4b38e94a673ad625e3970812f59255364d3",
+    "debug-report.json": "sha256:0d7b570c9a4a5b039bcb51b93e75030fbeffa57708ce3acad70880e052474a70",
+    "gameplay.json": "sha256:2f318e320f713b522688a35ee6e57179eb05639bff2bed48e5d731ab018cbee6",
+    "navigation.json": "sha256:ec104bc008d2ca69cdc40d6c4043bacaffb37d7e0e15e11e8e921ea7d44420a7",
+    "radar.svg": "sha256:5aa34256fd8d0b6511d73676febd08cd262073cb1a92caea88b82a2930e8fcaa",
+    "scene.glb": "sha256:a5e975dd97a24c922195dd8701aad6dd535740318672503af0fed6255c00fbf6"
+  },
+  "environment": {
+    "clearColor": [
+      0.025,
+      0.055,
+      0.06
+    ],
+    "exposure": 1.15,
+    "sunDirection": [
+      -0.2,
+      -1,
+      -0.45
+    ],
+    "shadowDistance": 72
+  },
+  "policy": {
+    "stepSmoothingMax": 0.42,
+    "audioDistanceScale": 0.9,
+    "radarNorthYaw": 0
+  },
+  "contentHash": "sha256:5d0c9977e32841521f84c940f32ea07583b297aa90e8ed20afdf56978b7df42c"
+}

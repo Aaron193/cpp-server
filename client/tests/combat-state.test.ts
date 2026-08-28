@@ -1,35 +1,35 @@
 import { describe, expect, it } from 'vitest'
-import { ChatChannel, EntityKind, ImpactMaterial, MatchPhase, RoundTransitionKind, Weapon, type EntityRecord, type Snapshot } from '../src/protocol/generated'
+import { ChatChannel, ImpactMaterial, MatchPhase, RoundTransitionKind, Weapon, type LocalAuthoritativeState } from '../src/protocol/generated'
 import { CombatPresentationState, alignClientTick } from '../src/foundation/combat/CombatState'
 
-const local = (health: number, ammo = 10): EntityRecord => ({ entityId: 7, kind: EntityKind.Player, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, equippedWeapon: Weapon.Shotgun, health, weaponState: { selected: Weapon.Shotgun, magazineAmmo: ammo, reserveAmmo: 20, stateFlags: 1 } })
-const snapshot = (entity: EntityRecord): Snapshot => ({ serverTick: 100, lastProcessedInputSequence: 1, match: { phase: MatchPhase.Active, roundNumber: 2, phaseEndsAtTick: 700 }, entities: [entity] })
+const local = (health: number, ammo = 10): LocalAuthoritativeState => ({ handle: { slot: 7, generation: 0 }, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, health, weaponState: { selected: Weapon.Shotgun, magazineAmmo: ammo, reserveAmmo: 20, stateFlags: 1 } })
+const match = { phase: MatchPhase.Active, roundNumber: 2, phaseEndsAtTick: 700 }
 
 describe('authoritative combat presentation model', () => {
     it('updates local HUD values only from authoritative snapshots', () => {
-        const state = new CombatPresentationState(); state.setPlayerId(7); state.acceptSnapshot(snapshot(local(83, 4)))
+        const state = new CombatPresentationState(); state.setPlayerId(7); state.acceptAuthoritative(local(83, 4), match)
         expect(state.localPlayer).toMatchObject({ health: 83, weapon: Weapon.Shotgun, magazineAmmo: 4, reserveAmmo: 20, reloading: true })
         state.damage({ serverTick: 101, sourceId: 9, targetId: 7, amount: 50, remainingHealth: 33 })
         expect(state.localPlayer.health).toBe(83)
         state.localFire(2, Weapon.Shotgun)
         expect(state.localPlayer.magazineAmmo).toBe(4)
-        state.acceptSnapshot(snapshot(local(33, 4))); expect(state.localPlayer.health).toBe(33)
+        state.acceptAuthoritative(local(33, 4), match); expect(state.localPlayer.health).toBe(33)
     })
     it('only predicts local shots for the equipped, loaded weapon', () => {
         const state = new CombatPresentationState(); state.setPlayerId(7)
-        state.acceptSnapshot(snapshot(local(83, 0)))
+        state.acceptAuthoritative(local(83, 0), match)
         expect(state.canLocalFire(Weapon.Shotgun)).toBe(false)
-        state.acceptSnapshot(snapshot(local(83, 1)))
+        state.acceptAuthoritative(local(83, 1), match)
         expect(state.canLocalFire(Weapon.Rifle)).toBe(false)
         expect(state.canLocalFire(Weapon.Shotgun)).toBe(false) // Reloading.
-        state.acceptSnapshot({ ...snapshot(local(83, 1)), entities: [{ ...local(83, 1), weaponState: { ...local(83, 1).weaponState!, stateFlags: 0 } }] })
+        state.acceptAuthoritative({ ...local(83, 1), weaponState: { ...local(83, 1).weaponState, stateFlags: 0 } }, match)
         expect(state.canLocalFire(Weapon.Shotgun)).toBe(true)
     })
     it('routes correlations, scores, rounds, feed, chat and clears all bounded state', () => {
         const state = new CombatPresentationState(); state.setPlayerId(7); state.localFire(9, Weapon.Rifle)
-        state.shot({ serverTick: 1, shooterId: 7, inputSequence: 9, shotId: 4, weapon: Weapon.Rifle })
+        state.shot({ serverTick: 1, shooterId: 7, inputSequence: 9, actionId: 9, shotId: 4, weapon: Weapon.Rifle })
         expect(state.eventsAfter(0).find((event) => event.kind === 'shot')).toMatchObject({ correlated: true })
-        state.shot({ serverTick: 2, shooterId: 8, inputSequence: 9, shotId: 5, weapon: Weapon.Rifle })
+        state.shot({ serverTick: 2, shooterId: 8, inputSequence: 9, actionId: 9, shotId: 5, weapon: Weapon.Rifle })
         expect(state.eventsAfter(0).filter((event) => event.kind === 'shot')[1]).toMatchObject({ correlated: false })
         state.damage({ serverTick: 2, sourceId: 8, targetId: 9, amount: 1, remainingHealth: 99 })
         expect(state.eventsAfter(0).find((event) => event.kind === 'damage')).toMatchObject({ localHit: false, localDamage: false })

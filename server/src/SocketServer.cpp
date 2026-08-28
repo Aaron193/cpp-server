@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <deque>
 
 #include "client/Client.hpp"
 #include "network/PeerTransport.hpp"
@@ -21,7 +22,8 @@ struct WebSocketData {
         std::uint16_t code;
         std::string reason;
     };
-    std::vector<std::vector<std::uint8_t>> pendingSends;
+    std::deque<std::vector<std::uint8_t>> pendingSends;
+    std::size_t pendingSendBytes = 0U;
     std::optional<PendingClose> pendingClose;
 };
 using WebSocket = uWS::WebSocket<false, true, WebSocketData>;
@@ -29,10 +31,15 @@ using WebSocket = uWS::WebSocket<false, true, WebSocketData>;
 class UwsPeerTransport final : public PeerTransport {
    public:
     explicit UwsPeerTransport(WebSocket* socket)
-        : data_(socket->getUserData()) {}
+        : socket_(socket), data_(socket->getUserData()) {}
 
     void sendBinary(const std::vector<std::uint8_t>& bytes) override {
         data_->pendingSends.push_back(bytes);
+        data_->pendingSendBytes += bytes.size();
+    }
+
+    std::size_t bufferedBytes() const override {
+        return data_->pendingSendBytes + socket_->getBufferedAmount();
     }
 
     void close(std::uint16_t code, std::string_view reason) override {
@@ -46,6 +53,7 @@ class UwsPeerTransport final : public PeerTransport {
     }
 
    private:
+    WebSocket* socket_;
     WebSocketData* data_;
 };
 
@@ -53,6 +61,7 @@ void flushPending(WebSocket* socket) {
     auto* data = socket->getUserData();
     auto sends = std::move(data->pendingSends);
     data->pendingSends.clear();
+    data->pendingSendBytes = 0U;
     auto close = std::move(data->pendingClose);
     data->pendingClose.reset();
     for (const auto& bytes : sends)

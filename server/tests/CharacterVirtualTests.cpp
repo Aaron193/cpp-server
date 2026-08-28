@@ -1,8 +1,11 @@
 #include "TestHarness.hpp"
 
 #include <algorithm>
+#include <filesystem>
+#include <cmath>
 
 #include "physics/PhysicsWorld.hpp"
+#include "maps/MapPackage.hpp"
 
 namespace {
 void addTriangle(CollisionMesh3D& mesh, glm::vec3 a, glm::vec3 b, glm::vec3 c) {
@@ -183,4 +186,33 @@ TEST_CASE(jolt_runtime_supports_overlapping_world_lifetimes) {
     first.updateCharacter(firstCharacter, 1.0F / 60.0F, {1,0,0});
     first.step(1.0F / 60.0F);
     EXPECT_TRUE(first.characterState(firstCharacter).grounded);
+}
+
+TEST_CASE(authored_map_packages_pass_native_jolt_traversal_and_boundary_smoke) {
+    const auto mapsRoot = std::filesystem::path(SERVER_SOURCE_DIR).parent_path() /
+                          "client/public/maps";
+    for (const char* mapId : {"graybox-arena", "copper-yard"}) {
+        const auto package = MapPackageLoader::load(mapsRoot / mapId);
+        PhysicsWorld world; world.addStaticCollision(package.collision);
+        const auto& spawn = package.manifest.spawnPoints.front();
+        const auto character = world.createCharacter({}, spawn.position);
+        float highest = spawn.position.y;
+        for (int tick = 0; tick < 240; ++tick) {
+            const glm::vec3 desired = tick > 60
+                ? glm::vec3{std::sin(spawn.yaw) * 7.5F, 0.0F,
+                            -std::cos(spawn.yaw) * 7.5F}
+                : glm::vec3{};
+            world.updateCharacter(character, 1.0F / 60.0F, desired,
+                                  tick == 100);
+            world.step(1.0F / 60.0F);
+            highest = std::max(highest, world.characterState(character).position.y);
+        }
+        const auto state = world.characterState(character);
+        EXPECT_TRUE(std::isfinite(state.position.x));
+        EXPECT_TRUE(state.position.x >= package.manifest.boundsMin.x &&
+                    state.position.x <= package.manifest.boundsMax.x);
+        EXPECT_TRUE(state.position.z >= package.manifest.boundsMin.z &&
+                    state.position.z <= package.manifest.boundsMax.z);
+        EXPECT_TRUE(highest > spawn.position.y + 0.5F);
+    }
 }

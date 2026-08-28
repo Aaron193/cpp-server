@@ -2,17 +2,17 @@
   {
     "name": "hello-with-token",
     "message": "Hello",
-    "value": { "protocolVersion": 3, "clientBuildId": "web-3d-a1", "supportedMapFormat": 1, "accessToken": "token-✓" }
+    "value": { "protocolVersion": 6, "clientBuildId": "web-3d-a1", "supportedMapFormat": 1, "accessToken": "token-✓" }
   },
   {
     "name": "version-mismatch-reject",
     "message": "Reject",
-    "value": { "serverBuildId": "server-a1", "reason": 1, "detail": "protocol 65535 is unsupported", "expectedProtocolVersion": 3, "expectedMapFormat": 2 }
+    "value": { "serverBuildId": "server-a1", "reason": 1, "detail": "protocol 65535 is unsupported", "expectedProtocolVersion": 6, "expectedMapFormat": 2 }
   },
   {
     "name": "input-wrap-values",
     "message": "InputBatch",
-    "value": { "commands": [{ "sequence": 4294967295, "clientTick": 4294967294, "moveX": -1, "moveY": 0.5, "buttonFlags": 65535, "yaw": 3.1415927410125732, "pitch": -1.25, "selectedWeapon": 2 }] }
+    "value": { "commands": [{ "sequence": 4294967295, "clientTick": 4294967294, "moveX": -1, "moveY": 0.5, "buttonFlags": 65535, "fireActionId": 4294967293, "reloadActionId": 4294967292, "yaw": 3.1415927410125732, "pitch": -1.25, "selectedWeapon": 2 }] }
   },
   {
     "name": "snapshot-entity",
@@ -26,9 +26,7 @@
         "position": { "x": 1.5, "y": -2.25, "z": 3.75 },
         "velocity": { "x": 0, "y": 4.5, "z": -0.125 },
         "bodyYaw": 1.25, "aimPitch": -0.5, "grounded": true, "stateFlags": 32769,
-        "equippedWeapon": 1,
-        "health": 100,
-        "weaponState": { "selected": 1, "magazineAmmo": 29, "reserveAmmo": 120, "stateFlags": 3 }
+        "equippedWeapon": 1
       }]
     }
   },
@@ -45,6 +43,63 @@
   {
     "name": "shot-confirmed-shotgun",
     "message": "ShotConfirmed",
-    "value": { "serverTick": 88, "shooterId": 42, "inputSequence": 9, "shotId": 123, "weapon": 2 }
+    "value": { "serverTick": 88, "shooterId": 42, "inputSequence": 9, "actionId": 77, "shotId": 123, "weapon": 2 }
+  },
+  {
+    "name": "fire-action-rejected-cadence",
+    "message": "ActionResult",
+    "value": { "serverTick": 91, "actionId": 78, "kind": 1, "accepted": false, "reason": 1, "weapon": 1, "authoritativeMagazineAmmo": 18, "authoritativeReserveAmmo": 80 }
+  },
+  {
+    "name": "clock-ping-wrap",
+    "message": "Ping",
+    "value": { "pingId": 4294967295 }
+  },
+  {
+    "name": "clock-pong-anchor-wrap",
+    "message": "Pong",
+    "value": { "pingId": 4294967295, "serverTick": 4294967294, "serverMonotonicMs": 4294967280 }
+  },
+  {
+    "name": "snapshot-delta-reset-created",
+    "message": "SnapshotDelta",
+    "value": {
+      "snapshotSequence": 1, "baselineSequence": 0, "baselineRevision": 7, "baselineReset": true,
+      "serverTick": 120, "lastProcessedInputSequence": 99, "matchRevision": 3,
+      "match": { "phase": 2, "roundNumber": 1, "phaseEndsAtTick": 3600 },
+      "local": {
+        "handle": { "slot": 42, "generation": 2 },
+        "position": { "x": 1, "y": 2, "z": 3 }, "velocity": { "x": 0, "y": 0, "z": -1 },
+        "bodyYaw": 0.5, "aimPitch": -0.25, "grounded": true, "stateFlags": 0, "health": 87,
+        "weaponState": { "selected": 1, "magazineAmmo": 19, "reserveAmmo": 80, "stateFlags": 0 }
+      },
+      "created": [{ "state": {
+        "handle": { "slot": 9, "generation": 4 }, "kind": 1,
+        "position": { "x": 10, "y": 0, "z": -4 }, "velocity": { "x": 1, "y": 0, "z": 0 },
+        "bodyYaw": 1, "aimPitch": 0, "grounded": true, "stateFlags": 0, "equippedWeapon": 2
+      }}],
+      "updated": [], "removed": []
+    }
+  },
+  {
+    "name": "snapshot-delta-all-update-bits",
+    "message": "SnapshotDelta",
+    "value": {
+      "snapshotSequence": 2, "baselineSequence": 1, "baselineRevision": 7, "baselineReset": false,
+      "serverTick": 123, "lastProcessedInputSequence": 102, "matchRevision": 3, "match": null,
+      "local": {
+        "handle": { "slot": 42, "generation": 2 },
+        "position": { "x": 1, "y": 2, "z": 3 }, "velocity": { "x": 0, "y": 0, "z": 0 },
+        "bodyYaw": 0.5, "aimPitch": 0, "grounded": true, "stateFlags": 0, "health": 86,
+        "weaponState": { "selected": 1, "magazineAmmo": 18, "reserveAmmo": 80, "stateFlags": 0 }
+      },
+      "created": [],
+      "updated": [{
+        "handle": { "slot": 9, "generation": 4 }, "changeMask": 127,
+        "position": { "x": 11, "y": 0, "z": -4 }, "velocity": { "x": 1, "y": 0, "z": 0 },
+        "bodyYaw": 1.25, "aimPitch": 0.1, "grounded": false, "stateFlags": 1, "equippedWeapon": 1
+      }],
+      "removed": [{ "handle": { "slot": 8, "generation": 1 }, "reason": 3 }]
+    }
   }
 ]

@@ -8,6 +8,7 @@
 #include "GameServer.hpp"
 #include "ecs/components.hpp"
 #include "util/Sha256.hpp"
+#include "network/ReplicationProtocol.hpp"
 
 namespace {
 constexpr float kPi = 3.14159265358979323846F;
@@ -21,9 +22,57 @@ constexpr std::size_t kMaxPendingInputs = 128U;
 constexpr std::size_t kInputBatchesPerSecond = 72U;
 constexpr std::size_t kInputCommandsPerSecond = 240U;
 constexpr std::size_t kChatsPerWindow = 5U;
+constexpr std::size_t kPingsPerSecond = 8U;
 constexpr double kChatWindowSeconds = 10.0;
 constexpr std::size_t kMaxOutgoingMessages = 1024U;
 constexpr std::size_t kMaxOutgoingBytes = 256U * 1024U;
+constexpr std::size_t kSoftBufferedBytes = 128U * 1024U;
+constexpr float kSpatialEnterMeters = 50.0F;
+constexpr float kSpatialLeaveMeters = 55.0F;
+
+std::uint64_t handleKey(const protocol::EntityHandle& handle) {
+    return (static_cast<std::uint64_t>(handle.slot) << 16U) |
+           static_cast<std::uint64_t>(handle.generation);
+}
+
+bool sameVec(const protocol::Vec3& first, const protocol::Vec3& second) {
+    return first.x == second.x && first.y == second.y && first.z == second.z;
+}
+
+bool sameMatch(const protocol::MatchState& first,
+               const protocol::MatchState& second) {
+    return first.phase == second.phase &&
+           first.roundNumber == second.roundNumber &&
+           first.phaseEndsAtTick == second.phaseEndsAtTick;
+}
+
+protocol::UpdatedEntity deltaFor(const protocol::PublicEntityState& previous,
+                                 const protocol::PublicEntityState& current) {
+    protocol::UpdatedEntity delta{};
+    delta.handle = current.handle;
+    if (!sameVec(previous.position, current.position)) {
+        delta.changeMask |= 1U; delta.position = current.position;
+    }
+    if (!sameVec(previous.velocity, current.velocity)) {
+        delta.changeMask |= 2U; delta.velocity = current.velocity;
+    }
+    if (previous.bodyYaw != current.bodyYaw) {
+        delta.changeMask |= 4U; delta.bodyYaw = current.bodyYaw;
+    }
+    if (previous.aimPitch != current.aimPitch) {
+        delta.changeMask |= 8U; delta.aimPitch = current.aimPitch;
+    }
+    if (previous.grounded != current.grounded) {
+        delta.changeMask |= 16U; delta.grounded = current.grounded;
+    }
+    if (previous.stateFlags != current.stateFlags) {
+        delta.changeMask |= 32U; delta.stateFlags = current.stateFlags;
+    }
+    if (previous.equippedWeapon != current.equippedWeapon) {
+        delta.changeMask |= 64U; delta.equippedWeapon = current.equippedWeapon;
+    }
+    return delta;
+}
 
 template <typename Queue>
 void prune(Queue& queue, double now, double window) {
@@ -47,11 +96,13 @@ bool Client::isNewer(std::uint32_t value, std::uint32_t previous) {
 
 void Client::queue(std::vector<std::uint8_t> bytes) {
     if (closing_) return;
-    if (outgoing_.size() >= kMaxOutgoingMessages ||
+    if (outgoing_.size() + (latestState_ ? 1U : 0U) >= kMaxOutgoingMessages ||
+        transport_->bufferedBytes() >= kMaxOutgoingBytes ||
         bytes.size() > kMaxOutgoingBytes -
                            std::min(outgoingBytes_, kMaxOutgoingBytes)) {
         closing_ = true;
         outgoing_.clear();
+        latestState_.reset();
         outgoingBytes_ = 0U;
         m_gameServer.recordClientMessageMetric(
             ClientMessageMetric::Backpressure);
@@ -63,13 +114,41 @@ void Client::queue(std::vector<std::uint8_t> bytes) {
     m_gameServer.observeOutboundQueue(outgoing_.size(), outgoingBytes_);
 }
 
+void Client::queueState(std::vector<std::uint8_t> bytes) {
+    if (closing_) return;
+    if (latestState_) {
+        outgoingBytes_ -= latestState_->size();
+        ++coalescedSnapshots_;
+        m_gameServer.recordCoalescedSnapshot();
+    }
+    if (bytes.size() > kMaxOutgoingBytes -
+                           std::min(outgoingBytes_, kMaxOutgoingBytes)) {
+        ++coalescedSnapshots_;
+        m_gameServer.recordCoalescedSnapshot();
+        return;
+    }
+    outgoingBytes_ += bytes.size();
+    latestState_ = std::move(bytes);
+    m_gameServer.observeOutboundQueue(
+        outgoing_.size() + 1U, outgoingBytes_ + transport_->bufferedBytes());
+}
+
 void Client::sendBytes() {
-    for (const auto& bytes : outgoing_) {
+    m_gameServer.observeTransportBuffered(transport_->bufferedBytes());
+    while (!outgoing_.empty()) {
+        auto bytes = std::move(outgoing_.front());
+        outgoing_.pop_front();
+        outgoingBytes_ -= bytes.size();
         transport_->sendBinary(bytes);
         m_gameServer.recordOutboundMessage(bytes.size());
     }
-    outgoing_.clear();
-    outgoingBytes_ = 0U;
+    if (latestState_ && transport_->bufferedBytes() < kSoftBufferedBytes) {
+        auto bytes = std::move(*latestState_);
+        latestState_.reset();
+        outgoingBytes_ -= bytes.size();
+        transport_->sendBinary(bytes);
+        m_gameServer.recordOutboundMessage(bytes.size());
+    }
 }
 
 void Client::reject(protocol::RejectReason reason, std::string detail) {
@@ -94,6 +173,7 @@ void Client::failProtocol(std::string_view reason, std::uint16_t code,
     m_gameServer.recordClientMessageMetric(metric);
     closing_ = true;
     outgoing_.clear();
+    latestState_.reset();
     outgoingBytes_ = 0U;
     transport_->close(code, reason);
 }
@@ -139,6 +219,8 @@ void Client::onMessageAt(std::string_view message, double monotonicSeconds) {
             handleInputBatch(*batch, monotonicSeconds);
         } else if (const auto* chat = std::get_if<protocol::Chat>(&decoded.message)) {
             handleChat(*chat, monotonicSeconds);
+        } else if (const auto* ping = std::get_if<protocol::Ping>(&decoded.message)) {
+            handlePing(*ping, monotonicSeconds);
         } else {
             failProtocol("message is not valid from a welcomed client", 1002U,
                          ClientMessageMetric::Rejected);
@@ -197,7 +279,8 @@ void Client::handleHello(const protocol::Hello& hello) {
         util::sha256Identifier(configurationJson);
     queue(protocol::encode(protocol::Welcome{
         SessionConfiguration::ProtocolVersion, config.buildId,
-        static_cast<std::uint32_t>(m_entity), GameServer::kTicksPerSecond,
+        static_cast<std::uint32_t>(m_entity),
+        m_gameServer.makeEntityHandle(m_entity), GameServer::kTicksPerSecond,
         GameServer::kSnapshotsPerSecond, map, configurationHash}));
     queue(protocol::encode(protocol::Configuration{
         SessionConfiguration::ProtocolVersion, config.buildId, map,
@@ -210,6 +293,23 @@ void Client::handleHello(const protocol::Hello& hello) {
     // mid-round join never needs to infer prior kills or deaths.
     m_gameServer.queueCurrentScoreboard(*this);
     sendBytes();
+}
+
+void Client::handlePing(const protocol::Ping& ping, double now) {
+    prune(pingTimes_, now, 1.0);
+    if (!std::isfinite(now) || now < 0.0 ||
+        pingTimes_.size() >= kPingsPerSecond) {
+        failProtocol("ping rate exceeded", 1008U,
+                     ClientMessageMetric::RateLimited);
+        return;
+    }
+    pingTimes_.push_back(now);
+    const auto monotonicMilliseconds =
+        static_cast<std::uint64_t>(std::floor(now * 1000.0));
+    queue(protocol::encode(protocol::Pong{
+        ping.pingId,
+        static_cast<std::uint32_t>(m_gameServer.m_currentTick),
+        static_cast<std::uint32_t>(monotonicMilliseconds & 0xFFFFFFFFULL)}));
 }
 
 void Client::handleInputBatch(const protocol::InputBatch& batch, double now) {
@@ -225,6 +325,7 @@ void Client::handleInputBatch(const protocol::InputBatch& batch, double now) {
 
     auto previousSequence = lastReceivedSequence_;
     auto previousTick = lastReceivedClientTick_;
+    auto previousAction = lastReceivedActionId_;
     for (const auto& command : batch.commands) {
         const float magnitudeSquared = command.moveX * command.moveX +
                                        command.moveY * command.moveY;
@@ -235,6 +336,21 @@ void Client::handleInputBatch(const protocol::InputBatch& batch, double now) {
             command.yaw > kPi || command.pitch < -kPi / 2.0F ||
             command.pitch > kPi / 2.0F ||
             (command.buttonFlags & ~kKnownButtons) != 0U ||
+            (command.fireActionId != 0U &&
+             (command.buttonFlags & kFire) == 0U) ||
+            (command.reloadActionId != 0U &&
+             (command.buttonFlags & kReload) == 0U) ||
+            ((command.buttonFlags & kFire) != 0U &&
+             command.fireActionId == 0U) ||
+            ((command.buttonFlags & kReload) != 0U &&
+             command.reloadActionId == 0U) ||
+            (command.fireActionId != 0U && previousAction &&
+             !isNewer(command.fireActionId, *previousAction)) ||
+            (command.reloadActionId != 0U &&
+             ((command.fireActionId != 0U &&
+               !isNewer(command.reloadActionId, command.fireActionId)) ||
+              (command.fireActionId == 0U && previousAction &&
+               !isNewer(command.reloadActionId, *previousAction)))) ||
             (previousSequence && !isNewer(command.sequence, *previousSequence)) ||
             (previousTick && !isNewer(command.clientTick, *previousTick))) {
             failProtocol("invalid or non-monotonic input command", 1008U,
@@ -243,6 +359,8 @@ void Client::handleInputBatch(const protocol::InputBatch& batch, double now) {
         }
         previousSequence = command.sequence;
         previousTick = command.clientTick;
+        if (command.fireActionId != 0U) previousAction = command.fireActionId;
+        if (command.reloadActionId != 0U) previousAction = command.reloadActionId;
     }
 
     inputBatchTimes_.push_back(now);
@@ -257,6 +375,8 @@ void Client::handleInputBatch(const protocol::InputBatch& batch, double now) {
         input.mouseIsDown = (command.buttonFlags & kFire) != 0U;
         input.dirtyClick = input.mouseIsDown;
         input.reloadRequested = (command.buttonFlags & kReload) != 0U;
+        input.fireActionId = command.fireActionId;
+        input.reloadActionId = command.reloadActionId;
         input.clientTick = command.clientTick;
         input.inputSequence = command.sequence;
         if (command.selectedWeapon == protocol::Weapon::Rifle) input.switchSlot = 0;
@@ -267,6 +387,7 @@ void Client::handleInputBatch(const protocol::InputBatch& batch, double now) {
     }
     lastReceivedSequence_ = previousSequence;
     lastReceivedClientTick_ = previousTick;
+    lastReceivedActionId_ = previousAction;
 }
 
 void Client::handleChat(const protocol::Chat& chat, double now) {
@@ -290,10 +411,33 @@ void Client::handleChat(const protocol::Chat& chat, double now) {
 void Client::writeGameState() {
     if (!m_active || closing_) return;
     const auto started = std::chrono::steady_clock::now();
-    protocol::Snapshot snapshot{};
+    // If an unsent state is being replaced, its baseline was never applied by
+    // the peer. Encode the replacement as a reset/full create set. Likewise,
+    // under socket backpressure retain only a latest independently decodable
+    // state while reliable ordered events continue to drain first.
+    if (latestState_ || transport_->bufferedBytes() >= kSoftBufferedBytes)
+        resetReplicationBaseline();
+    protocol::SnapshotDelta snapshot{};
+    snapshot.snapshotSequence = ++snapshotSequence_;
+    snapshot.baselineReset = !baselineInitialized_;
+    if (snapshot.baselineReset) {
+        ++baselineRevision_;
+        if (baselineRevision_ == 0U) ++baselineRevision_;
+    }
+    snapshot.baselineSequence = snapshot.baselineReset
+        ? 0U : snapshot.snapshotSequence - 1U;
+    snapshot.baselineRevision = baselineRevision_;
     snapshot.serverTick = static_cast<std::uint32_t>(m_gameServer.m_currentTick);
     snapshot.lastProcessedInputSequence = lastProcessedInputSequence_.value_or(0U);
-    snapshot.match = m_gameServer.matchState();
+    const auto match = m_gameServer.matchState();
+    if (!baselineMatch_ || !sameMatch(*baselineMatch_, match)) {
+        ++matchRevision_;
+        if (matchRevision_ == 0U) ++matchRevision_;
+        snapshot.match = match;
+        baselineMatch_ = match;
+    }
+    snapshot.matchRevision = matchRevision_;
+    snapshot.local = m_gameServer.makeLocalAuthoritativeState(m_entity);
     const auto& registry = m_gameServer.m_entityManager.getRegistry();
     const auto players = registry.view<Components::EntityBase,
                                        Components::Transform3D,
@@ -301,19 +445,64 @@ void Client::writeGameState() {
                                        Components::CharacterController,
                                        Components::PlayerInput,
                                        Components::PlayerLife>();
-    snapshot.entities.reserve(players.size_hint());
+    std::unordered_map<std::uint64_t, protocol::PublicEntityState> nextBaseline;
+    nextBaseline.reserve(players.size_hint());
     for (const auto entity : players) {
-        if (players.get<Components::EntityBase>(entity).type != PLAYER) continue;
-        snapshot.entities.push_back(
-            m_gameServer.makeEntityRecord(entity, m_entity));
+        if (entity == m_entity ||
+            players.get<Components::EntityBase>(entity).type != PLAYER) continue;
+        auto state = m_gameServer.makePublicEntityState(entity);
+        const auto key = handleKey(state.handle);
+        nextBaseline.emplace(key, state);
+        const auto previous = baseline_.find(key);
+        if (snapshot.baselineReset || previous == baseline_.end()) {
+            snapshot.created.push_back({state});
+            continue;
+        }
+        auto update = deltaFor(previous->second, state);
+        if (update.changeMask != 0U) snapshot.updated.push_back(std::move(update));
     }
+    for (const auto& previous : baseline_) {
+        if (nextBaseline.count(previous.first) != 0U) continue;
+        snapshot.removed.push_back(
+            {previous.second.handle,
+             previous.second.kind == protocol::EntityKind::Player
+                 ? protocol::RemoveReason::Destroyed
+                 : protocol::RemoveReason::OutOfScope});
+    }
+    baseline_ = std::move(nextBaseline);
+    baselineInitialized_ = true;
+    replication::validateSnapshotDelta(snapshot);
     auto encoded = protocol::encode(snapshot);
     m_gameServer.observeSnapshot(
         std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - started)
             .count(),
         encoded.size());
-    queue(std::move(encoded));
+    queueState(std::move(encoded));
+}
+
+void Client::resetReplicationBaseline() {
+    baseline_.clear();
+    baselineInitialized_ = false;
+    baselineMatch_.reset();
+}
+
+bool Client::spatiallyRelevant(protocol::EntityKind kind,
+                               float distanceSquared,
+                               bool previouslyRelevant) {
+    // Players remain global for the current bounded twelve-player mode. The
+    // same contract supports spatial props/spectators with leave hysteresis.
+    if (kind == protocol::EntityKind::Player) return true;
+    const float radius = previouslyRelevant ? kSpatialLeaveMeters
+                                            : kSpatialEnterMeters;
+    return std::isfinite(distanceSquared) && distanceSquared <= radius * radius;
+}
+
+bool Client::relevanceRefreshDue(std::uint32_t clientId,
+                                 std::uint32_t snapshotSequence,
+                                 std::uint32_t period) {
+    if (period == 0U) return true;
+    return (snapshotSequence + clientId) % period == 0U;
 }
 
 void Client::queueSpawn(const protocol::Spawn& message) {
@@ -346,6 +535,9 @@ void Client::queueScoreChange(const protocol::ScoreChange& message) {
 void Client::queueRoundTransition(const protocol::RoundTransition& message) {
     if (m_active && !closing_) queue(protocol::encode(message));
 }
+void Client::queueActionResult(const protocol::ActionResult& message) {
+    if (m_active && !closing_) queue(protocol::encode(message));
+}
 
 void Client::markInputProcessed(std::uint32_t sequence) {
     lastProcessedInputSequence_ = sequence;
@@ -360,13 +552,16 @@ void Client::onClose() {
     if (m_active && m_entity != entt::null) {
         m_gameServer.broadcastRemove(protocol::Remove{
             static_cast<std::uint32_t>(m_gameServer.m_currentTick),
-            static_cast<std::uint32_t>(m_entity),
+            m_gameServer.makeEntityHandle(m_entity),
             protocol::RemoveReason::Disconnected});
         m_gameServer.m_entityManager.scheduleForRemoval(m_entity);
     }
     m_active = false;
     closing_ = true;
     outgoing_.clear();
+    latestState_.reset();
+    baseline_.clear();
+    baselineInitialized_ = false;
     outgoingBytes_ = 0U;
 }
 

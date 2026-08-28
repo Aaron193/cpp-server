@@ -33,7 +33,7 @@ class Sha256 {
         update(reinterpret_cast<const std::uint8_t*>(input.data()), input.size());
     }
 
-    std::string finishHex() {
+    std::array<std::uint8_t, 32> finish() {
         const std::uint64_t bitLength = static_cast<std::uint64_t>(total_) * 8U;
         block_[used_++] = 0x80U;
         if (used_ > 56U) {
@@ -47,9 +47,20 @@ class Sha256 {
                 static_cast<std::uint8_t>(bitLength >> (i * 8U));
         transform(block_.data());
 
+        std::array<std::uint8_t, 32> output{};
+        for (std::size_t word = 0; word < state_.size(); ++word)
+            for (std::size_t byte = 0; byte < 4U; ++byte)
+                output[word * 4U + byte] = static_cast<std::uint8_t>(
+                    state_[word] >> ((3U - byte) * 8U));
+        return output;
+    }
+
+    std::string finishHex() {
+        const auto digest = finish();
         std::ostringstream output;
         output << std::hex << std::setfill('0');
-        for (const auto word : state_) output << std::setw(8) << word;
+        for (const auto byte : digest)
+            output << std::setw(2) << static_cast<unsigned>(byte);
         return output.str();
     }
 

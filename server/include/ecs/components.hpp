@@ -69,6 +69,8 @@ struct PlayerInput {
     int8_t switchSlot = -1;
     std::uint32_t clientTick = 0;
     std::uint32_t inputSequence = 0;
+    std::uint32_t fireActionId = 0;
+    std::uint32_t reloadActionId = 0;
 };
 
 struct State {

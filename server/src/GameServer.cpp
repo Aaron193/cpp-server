@@ -52,6 +52,11 @@ protocol::ScoreChange scoreRow(std::uint64_t tick, entt::entity player,
 
 std::filesystem::path mapDirectory() {
     if (const char* configured = std::getenv("MAP_PACKAGE_DIR")) return configured;
+    if (const char* root = std::getenv("MAP_PACKAGE_ROOT")) {
+        const char* id = std::getenv("SERVER_MAP_ID");
+        if (!id || id[0] == '\0') throw std::runtime_error("SERVER_MAP_ID is required with MAP_PACKAGE_ROOT");
+        return std::filesystem::path(root) / id;
+    }
     return SERVER_MAP_DIR;
 }
 }
@@ -70,8 +75,9 @@ GameServer::GameServer(const std::string& gameConfigPath)
     metricsSink_ = [](const std::string& line) { std::cout << line << '\n'; };
     m_gameConfig = GameConfig::loadFromFile(gameConfigPath);
     m_mapPackage = MapPackageLoader::load(mapDirectory());
-    if (m_mapPackage.manifest.mapId != "graybox-arena")
-        throw std::runtime_error("server requires the graybox-arena map package");
+    if (const char* expected = std::getenv("SERVER_MAP_ID"))
+        if (expected[0] != '\0' && m_mapPackage.manifest.mapId != expected)
+            throw std::runtime_error("configured SERVER_MAP_ID does not match loaded package");
     mapBody_ = m_physicsWorld.addStaticCollision(m_mapPackage.collision);
     phaseEndsAtTick_ = secondsToTicks(m_gameConfig.combat.roundSeconds);
     std::cout << "Loaded map " << m_mapPackage.manifest.mapId << " ("
@@ -163,42 +169,43 @@ void GameServer::consumeQueuedValidatedInput() {
     std::unordered_set<std::uint32_t> consumedClients;
     std::unordered_set<std::uint32_t> consumedPlayers;
 
-    for (auto queued = queuedInputs_.begin(); queued != queuedInputs_.end();) {
+    const auto queuedAtStart = queuedInputs_.size();
+    for (std::size_t index = 0; index < queuedAtStart; ++index) {
+        auto queued = std::move(queuedInputs_.front());
+        queuedInputs_.pop_front();
         Client* client = nullptr;
-        if (queued->clientId) {
-            const auto found = m_clients.find(*queued->clientId);
+        if (queued.clientId) {
+            const auto found = m_clients.find(*queued.clientId);
             if (found != m_clients.end()) client = found->second;
         }
 
         const bool validEntity =
-            registry.valid(queued->player) &&
-            registry.all_of<Components::PlayerInput>(queued->player);
+            registry.valid(queued.player) &&
+            registry.all_of<Components::PlayerInput>(queued.player);
         const bool validOwner =
-            !queued->clientId ||
-            (client && client->welcomed() && client->m_entity == queued->player);
+            !queued.clientId ||
+            (client && client->welcomed() && client->m_entity == queued.player);
         if (!validEntity || !validOwner) {
             if (client) client->markInputDequeued();
-            queued = queuedInputs_.erase(queued);
             continue;
         }
 
-        const auto playerKey = static_cast<std::uint32_t>(queued->player);
+        const auto playerKey = static_cast<std::uint32_t>(queued.player);
         if (consumedPlayers.count(playerKey) != 0U ||
-            (queued->clientId &&
-             consumedClients.count(*queued->clientId) != 0U)) {
-            ++queued;
+            (queued.clientId &&
+             consumedClients.count(*queued.clientId) != 0U)) {
+            queuedInputs_.push_back(std::move(queued));
             continue;
         }
 
-        registry.replace<Components::PlayerInput>(queued->player,
-                                                   queued->input);
+        registry.replace<Components::PlayerInput>(queued.player,
+                                                   queued.input);
         consumedPlayers.insert(playerKey);
-        if (queued->clientId) {
-            consumedClients.insert(*queued->clientId);
+        if (queued.clientId) {
+            consumedClients.insert(*queued.clientId);
             client->markInputDequeued();
-            if (queued->sequence) client->markInputProcessed(*queued->sequence);
+            if (queued.sequence) client->markInputProcessed(*queued.sequence);
         }
-        queued = queuedInputs_.erase(queued);
     }
 }
 
@@ -319,15 +326,20 @@ const GameServer::HistoryFrame* GameServer::findHistoryFrame(
     return &history_.front();
 }
 
-void GameServer::startReload(Components::Gun& gun, Components::Ammo& ammo) {
-    if (gun.reloadEndTick != 0 || gun.ammoInMag >= gun.magazineSize ||
-        ammo.get(gun.ammoType) <= 0)
-        return;
+protocol::ActionRejectReason GameServer::startReload(Components::Gun& gun,
+                                                      Components::Ammo& ammo) {
+    if (gun.reloadEndTick != 0)
+        return protocol::ActionRejectReason::AlreadyReloading;
+    if (gun.ammoInMag >= gun.magazineSize)
+        return protocol::ActionRejectReason::MagazineFull;
+    if (ammo.get(gun.ammoType) <= 0)
+        return protocol::ActionRejectReason::NoReserve;
     const auto ticks = std::max<std::uint64_t>(1U,
                                                secondsToTicks(gun.reloadTime));
     gun.reloadEndTick = m_currentTick + ticks;
     gun.reloadRemaining = static_cast<float>(ticks) /
                           static_cast<float>(kTicksPerSecond);
+    return protocol::ActionRejectReason::None;
 }
 
 void GameServer::completeReloads(entt::entity player) {
@@ -367,8 +379,15 @@ void GameServer::fireWeapon(entt::entity shooter, Components::Gun& gun,
 
     emitReliable(std::nullopt, protocol::ShotConfirmed{
         static_cast<std::uint32_t>(m_currentTick),
-        static_cast<std::uint32_t>(shooter), input.inputSequence, shotId,
+        static_cast<std::uint32_t>(shooter), input.inputSequence,
+        input.fireActionId, shotId,
         protocolWeapon(gun)});
+    if (input.fireActionId != 0U)
+        emitReliable(shooter, protocol::ActionResult{
+            static_cast<std::uint32_t>(m_currentTick), input.fireActionId,
+            protocol::ActionKind::Fire, true, protocol::ActionRejectReason::None,
+            protocolWeapon(gun), static_cast<std::uint16_t>(gun.ammoInMag),
+            static_cast<std::uint16_t>(registry.get<Components::Ammo>(shooter).get(gun.ammoType))});
 
     std::uint32_t acceptedTick = 0;
     const HistoryFrame* history = findHistoryFrame(input.clientTick, acceptedTick);
@@ -457,21 +476,50 @@ void GameServer::updateWeaponsAndFire() {
         auto& inventory = players.get<Components::WeaponInventory>(player);
         auto& gun = inventory.getActive().gun;
         auto& ammo = players.get<Components::Ammo>(player);
+        const auto actionResult = [&](std::uint32_t actionId,
+                                      protocol::ActionKind kind,
+                                      protocol::ActionRejectReason reason) {
+            if (actionId == 0U) actionId = input.inputSequence;
+            emitReliable(player, protocol::ActionResult{
+                static_cast<std::uint32_t>(m_currentTick), actionId, kind,
+                reason == protocol::ActionRejectReason::None, reason,
+                protocolWeapon(gun), static_cast<std::uint16_t>(gun.ammoInMag),
+                static_cast<std::uint16_t>(ammo.get(gun.ammoType))});
+        };
+        if (input.reloadRequested) {
+            const auto reason = matchPhase_ != protocol::MatchPhase::Active
+                                    ? protocol::ActionRejectReason::MatchInactive
+                                : life.dead
+                                    ? protocol::ActionRejectReason::Dead
+                                    : startReload(gun, ammo);
+            if (input.reloadActionId != 0U)
+                actionResult(input.reloadActionId, protocol::ActionKind::Reload,
+                             reason);
+        }
         if (matchPhase_ == protocol::MatchPhase::Active && !life.dead) {
-            if (input.reloadRequested) startReload(gun, ammo);
-            const bool wantsFire = gun.automatic
-                                       ? input.mouseIsDown
-                                       : input.mouseIsDown && !combat.triggerWasDown;
+            const bool wantsFire = input.mouseIsDown &&
+                                   (gun.automatic || !combat.triggerWasDown);
             if (wantsFire) {
-                if (gun.reloadEndTick == 0 &&
-                    m_currentTick >= gun.nextFireTick &&
-                    gun.ammoInMag >= gun.ammoPerShot) {
+                protocol::ActionRejectReason reason = protocol::ActionRejectReason::None;
+                if (gun.reloadEndTick != 0) reason = protocol::ActionRejectReason::AlreadyReloading;
+                else if (m_currentTick < gun.nextFireTick) reason = protocol::ActionRejectReason::Cadence;
+                else if (gun.ammoInMag < gun.ammoPerShot) reason = protocol::ActionRejectReason::NoAmmo;
+                if (reason == protocol::ActionRejectReason::None) {
                     fireWeapon(player, gun, input);
                     inventory.dirty = true;
                 } else {
                     ++combatMetrics_.rejectedFireAttempts;
+                    if (input.fireActionId != 0U)
+                        actionResult(input.fireActionId, protocol::ActionKind::Fire,
+                                     reason);
                 }
             }
+        } else if (input.mouseIsDown) {
+            ++combatMetrics_.rejectedFireAttempts;
+            if (input.fireActionId != 0U)
+                actionResult(input.fireActionId, protocol::ActionKind::Fire,
+                             life.dead ? protocol::ActionRejectReason::Dead
+                                       : protocol::ActionRejectReason::MatchInactive);
         }
         combat.triggerWasDown = input.mouseIsDown;
         input.reloadRequested = false;
@@ -652,6 +700,8 @@ void GameServer::emitReliable(std::optional<entt::entity> recipient,
                     client->queueScoreChange(message);
                 else if constexpr (std::is_same_v<Message, protocol::RoundTransition>)
                     client->queueRoundTransition(message);
+                else if constexpr (std::is_same_v<Message, protocol::ActionResult>)
+                    client->queueActionResult(message);
             },
             event);
     }
@@ -858,6 +908,7 @@ std::size_t GameServer::welcomedClientCount() const {
 
 protocol::EntityRecord GameServer::makeEntityRecord(
     entt::entity entity, entt::entity recipient) const {
+    (void)recipient;
     const auto& registry = m_entityManager.getRegistry();
     if (!registry.valid(entity) ||
         !registry.all_of<Components::EntityBase, Components::Transform3D,
@@ -888,25 +939,49 @@ protocol::EntityRecord GameServer::makeEntityRecord(
 
     const auto* inventory =
         registry.try_get<Components::WeaponInventory>(entity);
-    if (inventory)
+    if (inventory) {
         record.equippedWeapon = protocolWeapon(inventory->getActive().gun);
-
-    if (entity != recipient) return record;
-    if (const auto* health = registry.try_get<Components::Health>(entity))
-        record.health = static_cast<std::uint16_t>(std::clamp(
-            std::lround(health->current), 0L, 65535L));
-    const auto* ammo = registry.try_get<Components::Ammo>(entity);
-    if (inventory && ammo) {
-        const auto& gun = inventory->getActive().gun;
-        record.weaponState = protocol::WeaponState{
-            protocolWeapon(gun),
-            static_cast<std::uint16_t>(
-                std::clamp(gun.ammoInMag, 0, 65535)),
-            static_cast<std::uint16_t>(
-                std::clamp(ammo->get(gun.ammoType), 0, 65535)),
-            static_cast<std::uint8_t>(gun.isReloading() ? 1U : 0U)};
+        if (inventory->getActive().gun.reloadEndTick != 0U)
+            record.stateFlags |= 4U;
     }
+
     return record;
+}
+
+protocol::EntityHandle GameServer::makeEntityHandle(entt::entity entity) const {
+    return {static_cast<std::uint32_t>(entt::to_entity(entity)),
+            static_cast<std::uint16_t>(entt::to_version(entity))};
+}
+
+protocol::PublicEntityState GameServer::makePublicEntityState(
+    entt::entity entity) const {
+    const auto legacy = makeEntityRecord(entity, entt::null);
+    return {makeEntityHandle(entity), legacy.kind, legacy.position,
+            legacy.velocity, legacy.bodyYaw, legacy.aimPitch,
+            legacy.grounded, legacy.stateFlags, legacy.equippedWeapon};
+}
+
+protocol::LocalAuthoritativeState GameServer::makeLocalAuthoritativeState(
+    entt::entity entity) const {
+    const auto owner = makeEntityRecord(entity, entity);
+    const auto& registry = m_entityManager.getRegistry();
+    const auto* health = registry.try_get<Components::Health>(entity);
+    const auto* inventory =
+        registry.try_get<Components::WeaponInventory>(entity);
+    const auto* ammo = registry.try_get<Components::Ammo>(entity);
+    if (!health || !inventory || !ammo)
+        throw std::logic_error("local authoritative state is incomplete");
+    const auto& gun = inventory->getActive().gun;
+    const protocol::WeaponState weaponState{
+        protocolWeapon(gun),
+        static_cast<std::uint16_t>(std::clamp(gun.ammoInMag, 0, 65535)),
+        static_cast<std::uint16_t>(
+            std::clamp(ammo->get(gun.ammoType), 0, 65535)),
+        static_cast<std::uint8_t>(gun.isReloading() ? 1U : 0U)};
+    return {makeEntityHandle(entity), owner.position, owner.velocity,
+            owner.bodyYaw, owner.aimPitch, owner.grounded, owner.stateFlags,
+            static_cast<std::uint16_t>(std::clamp(
+                std::lround(health->current), 0L, 65535L)), weaponState};
 }
 
 void GameServer::broadcastPlayerSpawn(entt::entity entity) {
@@ -916,7 +991,7 @@ void GameServer::broadcastPlayerSpawn(entt::entity entity) {
             continue;
         recipient->queueSpawn(protocol::Spawn{
             static_cast<std::uint32_t>(m_currentTick),
-            makeEntityRecord(entity, recipient->m_entity)});
+            makePublicEntityState(entity)});
     }
 }
 
@@ -1022,6 +1097,9 @@ std::string GameServer::observabilityJson() const {
          metrics.outboundQueueBytesHighWater},
         {"outboundQueueMessagesHighWater",
          metrics.outboundQueueMessagesHighWater},
+        {"transportBufferedBytesHighWater",
+         metrics.transportBufferedBytesHighWater},
+        {"coalescedSnapshots", metrics.coalescedSnapshots},
         {"snapshots", metrics.snapshots},
         {"reliableEvents", metrics.reliableEvents},
         {"inboundMessages", metrics.inboundMessages},
@@ -1088,6 +1166,14 @@ void GameServer::observeOutboundQueue(std::size_t messages,
 
 void GameServer::observeSnapshot(double milliseconds, std::size_t bytes) {
     observability_.observeSnapshot(milliseconds, bytes);
+}
+
+void GameServer::observeTransportBuffered(std::size_t bytes) {
+    observability_.observeTransportBuffered(bytes);
+}
+
+void GameServer::recordCoalescedSnapshot() {
+    ++observability_.coalescedSnapshots;
 }
 
 void GameServer::setServerRegistration(ServerRegistration* registration) {

@@ -36,7 +36,11 @@ async function main() {
 
         // Start server
         const port = parseInt(env.PORT, 10)
-        await server.listen({ port, host: '0.0.0.0' })
+        // The optional guest-ticket route is intentionally local-only. Keep
+        // development listeners on loopback so it is never reachable from the
+        // LAN; production containers still bind their internal interface.
+        const host = env.NODE_ENV === 'development' ? '127.0.0.1' : '0.0.0.0'
+        await server.listen({ port, host })
 
         console.log(`Server listening on port ${port}`)
     } catch (err) {

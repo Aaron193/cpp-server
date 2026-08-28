@@ -1,10 +1,16 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
+import { issueJoinTicket } from '../../web/src/servers/join-ticket'
+import { PROTOCOL_VERSION } from '../src/protocol/generated'
+
+const ticketSecret = 'playwright-join-ticket-secret-32-bytes-minimum'
 
 const descriptor = {
     id: 'playwright', host: '127.0.0.1', port: 9002,
     region: 'Playwright', maxPlayers: 12, currentPlayers: 0,
     lastHeartbeat: new Date().toISOString(), isOnline: true,
-    buildId: 'dev', protocolVersion: 3, mapId: 'graybox-arena', mode: 'ffa',
+    buildId: 'dev', protocolVersion: PROTOCOL_VERSION, mapId: 'graybox-arena',
+    mapFormatVersion: 2,
+    mapContentHash: 'sha256:3984a02b8a6ce8abaebddacb010273285fbb666cb4f973f5eb7e251e3fb9b477', mode: 'ffa',
     websocketUrl: 'ws://127.0.0.1:9002',
 }
 
@@ -14,6 +20,10 @@ async function openPlayer(context: BrowserContext): Promise<Page> {
         route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ servers: [descriptor] }) }))
     await page.route('http://localhost:3000/auth/me', (route) =>
         route.fulfill({ status: 401, contentType: 'application/json', body: '{}' }))
+    await page.route('http://localhost:3000/servers/playwright/join', (route) => {
+        const { ticket } = issueJoinTicket('playwright-user', 'playwright', ticketSecret, 'arena-game-server', 20)
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ websocketUrl: descriptor.websocketUrl, ticket }) })
+    })
     await page.goto('/')
     const quickPlay = page.getByRole('button', { name: 'Quick Play' })
     await quickPlay.click()
@@ -46,9 +56,9 @@ test('renders outward map faces, both players, weapons, and shot feedback', asyn
         const debug = await page.evaluate(() => window.__gameDebug?.())
         expect(debug?.networkStatus).toBe('connected')
         expect(debug?.localWeapon).toBe(1)
-        expect(debug?.meshes.some((mesh) => mesh.name.startsWith('viewmodel/rifle/') && mesh.enabled && mesh.inFrustum)).toBe(true)
-        expect(debug?.meshes.some((mesh) => /^remote-player\/\d+$/.test(mesh.name) && mesh.enabled && mesh.inFrustum)).toBe(true)
-        expect(debug?.meshes.some((mesh) => /^remote-weapon\/\d+$/.test(mesh.name) && mesh.enabled && mesh.inFrustum)).toBe(true)
+        expect(debug?.meshes.some((mesh) => mesh.name.startsWith('viewmodel/rifle-rig/') && mesh.enabled && mesh.inFrustum)).toBe(true)
+        expect(debug?.meshes.some((mesh) => /^remote-actor\/\d+\/(chest|helmet|pelvis)$/.test(mesh.name) && mesh.enabled && mesh.inFrustum)).toBe(true)
+        expect(debug?.meshes.some((mesh) => /^remote-actor\/\d+\/weapon-receiver$/.test(mesh.name) && mesh.enabled && mesh.inFrustum)).toBe(true)
     }
 
     await first.bringToFront()

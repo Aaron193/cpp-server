@@ -29,7 +29,7 @@ class Client;
 using ReliableGameEvent = std::variant<
     protocol::ShotConfirmed, protocol::Impact, protocol::Damage,
     protocol::Death, protocol::Respawn, protocol::ScoreChange,
-    protocol::RoundTransition>;
+    protocol::RoundTransition, protocol::ActionResult>;
 
 struct CombatMetrics {
     std::uint64_t shotsFired = 0;
@@ -39,7 +39,7 @@ struct CombatMetrics {
 };
 
 struct SessionConfiguration {
-    static constexpr std::uint16_t ProtocolVersion = 3;
+    static constexpr std::uint16_t ProtocolVersion = 6;
     std::string buildId = "dev";
     std::string mode = "ffa";
     std::size_t maxPlayers = 12;
@@ -87,6 +87,10 @@ class GameServer {
     std::size_t welcomedClientCount() const;
     protocol::EntityRecord makeEntityRecord(
         entt::entity entity, entt::entity recipient) const;
+    protocol::EntityHandle makeEntityHandle(entt::entity entity) const;
+    protocol::PublicEntityState makePublicEntityState(entt::entity entity) const;
+    protocol::LocalAuthoritativeState makeLocalAuthoritativeState(
+        entt::entity entity) const;
     void broadcastPlayerSpawn(entt::entity entity);
     void broadcastSpawn(const protocol::Spawn& message);
     void broadcastRemove(const protocol::Remove& message);
@@ -115,6 +119,8 @@ class GameServer {
     void observePendingClientInputs(std::size_t count);
     void observeOutboundQueue(std::size_t messages, std::size_t bytes);
     void observeSnapshot(double milliseconds, std::size_t bytes);
+    void observeTransportBuffered(std::size_t bytes);
+    void recordCoalescedSnapshot();
 
    private:
     PhysicsWorld::BodyId mapBody_ = 0;
@@ -125,7 +131,7 @@ class GameServer {
         Components::PlayerInput input;
         std::optional<std::uint32_t> sequence;
     };
-    std::vector<QueuedInput> queuedInputs_;
+    std::deque<QueuedInput> queuedInputs_;
     std::function<void(std::uint64_t)> snapshotHook_;
     std::function<void()> networkFlushHook_;
     std::function<void(std::optional<entt::entity>,
@@ -166,7 +172,8 @@ class GameServer {
     void advanceRespawns(float delta);
     void publishEventsAndSnapshots();
     void updateHeartbeat(double delta);
-    void startReload(Components::Gun& gun, Components::Ammo& ammo);
+    protocol::ActionRejectReason startReload(Components::Gun& gun,
+                                             Components::Ammo& ammo);
     void completeReloads(entt::entity player);
     void fireWeapon(entt::entity shooter, Components::Gun& gun,
                     const Components::PlayerInput& input);

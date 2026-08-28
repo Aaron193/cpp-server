@@ -62,6 +62,34 @@ TEST_CASE(rifle_automatic_fire_obeys_tick_cadence_and_magazine_ammo) {
     EXPECT_EQ(server.combatMetrics().shotsFired, 11U);
 }
 
+TEST_CASE(action_ids_echo_authoritative_accept_and_cadence_rejection) {
+    GameServer server;
+    const auto shooter = server.m_entityManager.createPlayer();
+    std::vector<EventDelivery> events;
+    server.setReliableEventHook([&](auto recipient, const auto& event) {
+        events.emplace_back(recipient, event);
+    });
+    auto accepted = fireInput(1U, 1U);
+    accepted.fireActionId = 1001U;
+    server.queueValidatedInput(shooter, accepted);
+    server.simulateOneTick();
+    auto rejected = fireInput(2U, 2U);
+    rejected.fireActionId = 1002U;
+    server.queueValidatedInput(shooter, rejected);
+    server.simulateOneTick();
+    std::vector<protocol::ActionResult> results;
+    for (const auto& delivery : events)
+        if (const auto* result = std::get_if<protocol::ActionResult>(&delivery.second))
+            results.push_back(*result);
+    EXPECT_EQ(results.size(), 2U);
+    EXPECT_EQ(results[0].actionId, 1001U);
+    EXPECT_TRUE(results[0].accepted);
+    EXPECT_EQ(results[0].reason, protocol::ActionRejectReason::None);
+    EXPECT_EQ(results[1].actionId, 1002U);
+    EXPECT_TRUE(!results[1].accepted);
+    EXPECT_EQ(results[1].reason, protocol::ActionRejectReason::Cadence);
+}
+
 TEST_CASE(shotgun_requires_trigger_edges_and_switching_selects_slots) {
     GameServer server;
     const auto shooter = server.m_entityManager.createPlayer();

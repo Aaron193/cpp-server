@@ -9,6 +9,7 @@ class ServerRegistration {
                        int port, const std::string& region, int maxPlayers,
                        const std::string& buildId, int protocolVersion,
                        const std::string& mapId, const std::string& mode,
+                       int mapFormatVersion, const std::string& mapContentHash,
                        const std::string& websocketUrl,
                        const std::string& sharedSecret);
 
@@ -33,6 +34,8 @@ class ServerRegistration {
     std::string m_buildId;
     int m_protocolVersion;
     std::string m_mapId;
+    int m_mapFormatVersion;
+    std::string m_mapContentHash;
     std::string m_mode;
     std::string m_websocketUrl;
     std::string m_sharedSecret;

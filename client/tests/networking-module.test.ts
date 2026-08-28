@@ -20,6 +20,8 @@ class FakeTransport implements NetworkTransport {
 
 describe('NetworkingModule integration lifecycle', () => {
     it('handshakes, applies configuration, and cleans state before reconnect', async () => {
+        let now = 1000
+        const nowSpy = vi.spyOn(performance, 'now').mockImplementation(() => now)
         const transport = new FakeTransport(), services = new ServiceRegistry()
         const manifest = manifestJson as any
         const physics = { setExternalDrive: vi.fn(), applyAuthoritativeTuning: vi.fn(async () => {}), stepCommand: vi.fn(), setAuthoritativeState: vi.fn(), position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 } }
@@ -30,7 +32,9 @@ describe('NetworkingModule integration lifecycle', () => {
         services.provide(INPUT, { snapshot: () => ({ forward: 0, right: 0, jump: false, fire: true, reload: true, selectedWeapon: 2, scoreboard: false }), consumeChatMessages: () => [], angles } as any)
         services.provide(ENTITY_VIEWS, views as any)
         const fullUrl = 'wss://edge.example/game/socket?ticket=do-not-rewrite'
-        const module = new NetworkingModule({ transport, clientBuildId: 'dev', server: { websocketUrl: fullUrl, buildId: 'dev', protocolVersion: PROTOCOL_VERSION, mapId: manifest.mapId, mode: 'ffa' } })
+        const refreshedUrl = 'wss://edge.example/game/socket?fresh=1'
+        const joinTicketProvider = vi.fn(async () => ({ websocketUrl: refreshedUrl, ticket: 'fresh-ticket' }))
+        const module = new NetworkingModule({ transport, clientBuildId: 'dev', accessToken: 'initial-ticket', joinTicketProvider, server: { websocketUrl: fullUrl, buildId: 'dev', protocolVersion: PROTOCOL_VERSION, mapId: manifest.mapId, mode: 'ffa' } })
         module.initialize({ canvas: {} as HTMLCanvasElement, hudRoot: {} as HTMLElement, services })
         module.start(); expect(transport.urls).toEqual([fullUrl])
         transport.callbacks!.open()
@@ -40,16 +44,41 @@ describe('NetworkingModule integration lifecycle', () => {
         const configurationJson = JSON.stringify({ movement: { capsuleRadius: .42, capsuleHalfHeight: .48, eyeHeight: 1.62, groundSpeed: 7.5, groundAcceleration: 42, airAcceleration: 12, airControl: .45, jumpSpeed: 6.4, gravity: 20, terminalVelocity: 35, maxSlopeRadians: .78, stepUpHeight: .42, stickToFloorDistance: .5 } })
         const configurationHash = await sha256Identifier(configurationJson)
         const map = { mapId: manifest.mapId, formatVersion: manifest.formatVersion, contentHash: manifest.contentHash }
-        transport.callbacks!.message(encodeMessage({ type: MessageType.Welcome, payload: { protocolVersion: PROTOCOL_VERSION, serverBuildId: 'dev', playerId: 7, tickRate: 60, snapshotRate: 20, map, configurationHash } }))
+        transport.callbacks!.message(encodeMessage({ type: MessageType.Welcome, payload: { protocolVersion: PROTOCOL_VERSION, serverBuildId: 'dev', playerId: 7, playerHandle: { slot: 7, generation: 0 }, tickRate: 60, snapshotRate: 20, map, configurationHash } }))
         transport.callbacks!.message(encodeMessage({ type: MessageType.Configuration, payload: { protocolVersion: PROTOCOL_VERSION, serverBuildId: 'dev', map, configurationHash, configurationJson } }))
         await vi.waitFor(() => expect(module.status).toBe('connected'))
         expect(physics.applyAuthoritativeTuning).toHaveBeenCalledOnce()
         module.update({ deltaSeconds: 1 / 60, elapsedSeconds: 0, frame: 0 })
         expect(transport.sent.some((bytes) => { const value = decodeEnvelope(bytes); return value.known && value.message.type === MessageType.InputBatch })).toBe(false)
+        expect(transport.sent.filter((bytes) => { const value = decodeEnvelope(bytes); return value.known && value.message.type === MessageType.Ping })).toHaveLength(1)
+        now = 1499; module.update({ deltaSeconds: 0, elapsedSeconds: 0, frame: 0 })
+        expect(transport.sent.filter((bytes) => { const value = decodeEnvelope(bytes); return value.known && value.message.type === MessageType.Ping })).toHaveLength(1)
+        now = 1500; module.update({ deltaSeconds: 0, elapsedSeconds: 0, frame: 0 })
+        const pings = transport.sent.map((bytes) => decodeEnvelope(bytes)).filter((value) => value.known && value.message.type === MessageType.Ping)
+        expect(pings).toHaveLength(2)
+        const latestPing = pings[1]
+        if (!latestPing?.known || latestPing.message.type !== MessageType.Ping) throw new Error('missing clock ping')
+        now = 1550
+        transport.callbacks!.message(encodeMessage({ type: MessageType.Pong, payload: { pingId: latestPing.message.payload.pingId, serverTick: 100, serverMonotonicMs: 5000 } }))
+        await vi.waitFor(() => expect(module.metrics.clockConfidence).toBeGreaterThan(0))
+        expect(module.serverTickNow).toBe(101)
+        expect(module.matchCountdownSeconds(160)).toBe(1)
 
         const remote = { entityId: 9, kind: EntityKind.Player, position: { x: 1, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, equippedWeapon: Weapon.Rifle, health: null, weaponState: null }
         const local = { ...remote, entityId: 7, health: 90, equippedWeapon: Weapon.Shotgun, weaponState: { selected: Weapon.Shotgun, magazineAmmo: 0, reserveAmmo: 20, stateFlags: 0 } }
-        transport.callbacks!.message(encodeMessage({ type: MessageType.Snapshot, payload: { serverTick: 100, lastProcessedInputSequence: 0, match: { phase: MatchPhase.Active, roundNumber: 1, phaseEndsAtTick: 600 }, entities: [local, remote] } }))
+        transport.callbacks!.message(encodeMessage({ type: MessageType.SnapshotDelta, payload: {
+            snapshotSequence: 1, baselineSequence: 0, baselineRevision: 1, baselineReset: true,
+            serverTick: 100, lastProcessedInputSequence: 0, matchRevision: 1,
+            match: { phase: MatchPhase.Active, roundNumber: 1, phaseEndsAtTick: 600 },
+            local: { handle: { slot: 7, generation: 0 }, position: local.position, velocity: local.velocity,
+                bodyYaw: local.bodyYaw, aimPitch: local.aimPitch, grounded: local.grounded,
+                stateFlags: local.stateFlags, health: 90,
+                weaponState: { selected: Weapon.Shotgun, magazineAmmo: 0, reserveAmmo: 20, stateFlags: 0 } },
+            created: [{ state: { handle: { slot: 9, generation: 0 }, kind: remote.kind,
+                position: remote.position, velocity: remote.velocity, bodyYaw: remote.bodyYaw,
+                aimPitch: remote.aimPitch, grounded: remote.grounded, stateFlags: remote.stateFlags,
+                equippedWeapon: remote.equippedWeapon } }], updated: [], removed: [],
+        } }))
         await vi.waitFor(() => expect(module.metrics.remotePlayers).toBe(1))
         expect(angles.set).toHaveBeenCalledWith(local.bodyYaw, local.aimPitch)
         expect(module.combat.localPlayer).toMatchObject({ health: 90, magazineAmmo: 0, weapon: Weapon.Shotgun })
@@ -61,24 +90,37 @@ describe('NetworkingModule integration lifecycle', () => {
         expect(module.combat.chatMessages[0]?.text).toBe('gg'); expect(module.combat.match.phase).toBe(MatchPhase.Intermission)
         module.update({ deltaSeconds: 1 / 60, elapsedSeconds: 1, frame: 1 })
         const batch = transport.sent.map((bytes) => decodeEnvelope(bytes)).reverse().find((value) => value.known && value.message.type === MessageType.InputBatch)
-        expect(batch?.known && batch.message.type === MessageType.InputBatch && batch.message.payload.commands[0]).toMatchObject({ clientTick: 101, buttonFlags: 6, selectedWeapon: Weapon.Shotgun })
+        expect(batch?.known && batch.message.type === MessageType.InputBatch && batch.message.payload.commands[0]).toMatchObject({ clientTick: 101, buttonFlags: 4, fireActionId: 0, selectedWeapon: Weapon.Shotgun })
         expect(module.combat.eventsAfter(0).some((event) => event.kind === 'local-fire')).toBe(false)
         module.reconnect()
         expect(module.status).toBe('reconnecting')
         expect(module.metrics.remotePlayers).toBe(0)
+        expect(module.metrics.clockConfidence).toBe(0)
         expect(views.clearAndDispose).toHaveBeenCalled()
         module.update({ deltaSeconds: 0, elapsedSeconds: 0, frame: 0 })
-        expect(transport.urls).toEqual([fullUrl, fullUrl])
+        await vi.waitFor(() => expect(transport.urls).toEqual([fullUrl, refreshedUrl]))
+        expect(joinTicketProvider).toHaveBeenCalledOnce()
         transport.callbacks!.open()
-        transport.callbacks!.message(encodeMessage({ type: MessageType.Welcome, payload: { protocolVersion: PROTOCOL_VERSION, serverBuildId: 'dev', playerId: 8, tickRate: 60, snapshotRate: 20, map, configurationHash } }))
+        const refreshedHello = decodeEnvelope(transport.sent.at(-1)!)
+        expect(refreshedHello.known && refreshedHello.message.type === MessageType.Hello && refreshedHello.message.payload.accessToken).toBe('fresh-ticket')
+        transport.callbacks!.message(encodeMessage({ type: MessageType.Welcome, payload: { protocolVersion: PROTOCOL_VERSION, serverBuildId: 'dev', playerId: 8, playerHandle: { slot: 8, generation: 0 }, tickRate: 60, snapshotRate: 20, map, configurationHash } }))
         transport.callbacks!.message(encodeMessage({ type: MessageType.Configuration, payload: { protocolVersion: PROTOCOL_VERSION, serverBuildId: 'dev', map, configurationHash, configurationJson } }))
         await vi.waitFor(() => expect(module.status).toBe('connected'))
-        const restartedLocal = { ...local, entityId: 8 }
-        transport.callbacks!.message(encodeMessage({ type: MessageType.Snapshot, payload: { serverTick: 5, lastProcessedInputSequence: 0, match: { phase: MatchPhase.Active, roundNumber: 1, phaseEndsAtTick: 600 }, entities: [restartedLocal] } }))
+        transport.callbacks!.message(encodeMessage({ type: MessageType.SnapshotDelta, payload: {
+            snapshotSequence: 1, baselineSequence: 0, baselineRevision: 1, baselineReset: true,
+            serverTick: 5, lastProcessedInputSequence: 0, matchRevision: 1,
+            match: { phase: MatchPhase.Active, roundNumber: 1, phaseEndsAtTick: 600 },
+            local: { handle: { slot: 8, generation: 0 }, position: local.position, velocity: local.velocity,
+                bodyYaw: local.bodyYaw, aimPitch: local.aimPitch, grounded: local.grounded,
+                stateFlags: local.stateFlags, health: 100,
+                weaponState: { selected: Weapon.Rifle, magazineAmmo: 30, reserveAmmo: 90, stateFlags: 0 } },
+            created: [], updated: [], removed: [],
+        } }))
         await vi.waitFor(() => expect(module.combat.localPlayer.playerId).toBe(8))
         module.update({ deltaSeconds: 1 / 60, elapsedSeconds: 2, frame: 2 })
         const restartedBatch = transport.sent.map((bytes) => decodeEnvelope(bytes)).reverse().find((value) => value.known && value.message.type === MessageType.InputBatch)
         expect(restartedBatch?.known && restartedBatch.message.type === MessageType.InputBatch && restartedBatch.message.payload.commands[0]).toMatchObject({ sequence: 1, clientTick: 6 })
         module.dispose()
+        nowSpy.mockRestore()
     })
 })

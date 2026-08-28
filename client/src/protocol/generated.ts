@@ -1,5 +1,5 @@
 // Generated from protocol/schema.json by protocol/generate.mjs. DO NOT EDIT.
-export const PROTOCOL_VERSION = 3 as const
+export const PROTOCOL_VERSION = 6 as const
 
 export const LIMITS = {
     "maxEnvelopeBytes": 61443,
@@ -13,7 +13,10 @@ export const LIMITS = {
     "maxChatBytes": 512,
     "maxConfigurationBytes": 16384,
     "maxInputCommands": 64,
-    "maxSnapshotEntities": 512
+    "maxSnapshotEntities": 512,
+    "maxSnapshotCreated": 512,
+    "maxSnapshotUpdated": 512,
+    "maxSnapshotRemoved": 512
 } as const
 
 export enum MessageType {
@@ -33,6 +36,10 @@ export enum MessageType {
     RoundTransition = 14,
     Chat = 15,
     Configuration = 16,
+    Ping = 17,
+    Pong = 18,
+    SnapshotDelta = 19,
+    ActionResult = 20,
 }
 
 export enum RejectReason {
@@ -87,6 +94,25 @@ export enum ChatChannel {
     System = 2,
 }
 
+export enum ActionKind {
+    Fire = 1,
+    Reload = 2,
+}
+
+export enum ActionRejectReason {
+    None = 0,
+    Cadence = 1,
+    NoAmmo = 2,
+    Dead = 3,
+    MatchInactive = 4,
+    WeaponMismatch = 5,
+    AlreadyReloading = 6,
+    MagazineFull = 7,
+    NoReserve = 8,
+    Duplicate = 9,
+    Invalid = 10,
+}
+
 export interface Vec3 {
     readonly x: number
     readonly y: number
@@ -118,9 +144,61 @@ export interface InputCommand {
     readonly moveX: number
     readonly moveY: number
     readonly buttonFlags: number
+    readonly fireActionId: number
+    readonly reloadActionId: number
     readonly yaw: number
     readonly pitch: number
     readonly selectedWeapon: Weapon
+}
+
+export interface EntityHandle {
+    readonly slot: number
+    readonly generation: number
+}
+
+export interface PublicEntityState {
+    readonly handle: EntityHandle
+    readonly kind: EntityKind
+    readonly position: Vec3
+    readonly velocity: Vec3
+    readonly bodyYaw: number
+    readonly aimPitch: number
+    readonly grounded: boolean
+    readonly stateFlags: number
+    readonly equippedWeapon: Weapon
+}
+
+export interface CreatedEntity {
+    readonly state: PublicEntityState
+}
+
+export interface UpdatedEntity {
+    readonly handle: EntityHandle
+    readonly changeMask: number
+    readonly position: Vec3 | null
+    readonly velocity: Vec3 | null
+    readonly bodyYaw: number | null
+    readonly aimPitch: number | null
+    readonly grounded: boolean | null
+    readonly stateFlags: number | null
+    readonly equippedWeapon: Weapon | null
+}
+
+export interface RemovedEntity {
+    readonly handle: EntityHandle
+    readonly reason: RemoveReason
+}
+
+export interface LocalAuthoritativeState {
+    readonly handle: EntityHandle
+    readonly position: Vec3
+    readonly velocity: Vec3
+    readonly bodyYaw: number
+    readonly aimPitch: number
+    readonly grounded: boolean
+    readonly stateFlags: number
+    readonly health: number
+    readonly weaponState: WeaponState
 }
 
 export interface EntityRecord {
@@ -133,8 +211,6 @@ export interface EntityRecord {
     readonly grounded: boolean
     readonly stateFlags: number
     readonly equippedWeapon: Weapon
-    readonly health: number | null
-    readonly weaponState: WeaponState | null
 }
 
 export interface Hello {
@@ -148,6 +224,7 @@ export interface Welcome {
     readonly protocolVersion: number
     readonly serverBuildId: string
     readonly playerId: number
+    readonly playerHandle: EntityHandle
     readonly tickRate: number
     readonly snapshotRate: number
     readonly map: MapDescriptor
@@ -175,12 +252,12 @@ export interface Snapshot {
 
 export interface Spawn {
     readonly serverTick: number
-    readonly entity: EntityRecord
+    readonly entity: PublicEntityState
 }
 
 export interface Remove {
     readonly serverTick: number
-    readonly entityId: number
+    readonly handle: EntityHandle
     readonly reason: RemoveReason
 }
 
@@ -188,6 +265,7 @@ export interface ShotConfirmed {
     readonly serverTick: number
     readonly shooterId: number
     readonly inputSequence: number
+    readonly actionId: number
     readonly shotId: number
     readonly weapon: Weapon
 }
@@ -251,6 +329,42 @@ export interface Configuration {
     readonly configurationJson: string
 }
 
+export interface Ping {
+    readonly pingId: number
+}
+
+export interface Pong {
+    readonly pingId: number
+    readonly serverTick: number
+    readonly serverMonotonicMs: number
+}
+
+export interface SnapshotDelta {
+    readonly snapshotSequence: number
+    readonly baselineSequence: number
+    readonly baselineRevision: number
+    readonly baselineReset: boolean
+    readonly serverTick: number
+    readonly lastProcessedInputSequence: number
+    readonly matchRevision: number
+    readonly match: MatchState | null
+    readonly local: LocalAuthoritativeState
+    readonly created: ReadonlyArray<CreatedEntity>
+    readonly updated: ReadonlyArray<UpdatedEntity>
+    readonly removed: ReadonlyArray<RemovedEntity>
+}
+
+export interface ActionResult {
+    readonly serverTick: number
+    readonly actionId: number
+    readonly kind: ActionKind
+    readonly accepted: boolean
+    readonly reason: ActionRejectReason
+    readonly weapon: Weapon
+    readonly authoritativeMagazineAmmo: number
+    readonly authoritativeReserveAmmo: number
+}
+
 export type Message =
     | { readonly type: MessageType.Hello; readonly payload: Hello }
     | { readonly type: MessageType.Welcome; readonly payload: Welcome }
@@ -268,6 +382,10 @@ export type Message =
     | { readonly type: MessageType.RoundTransition; readonly payload: RoundTransition }
     | { readonly type: MessageType.Chat; readonly payload: Chat }
     | { readonly type: MessageType.Configuration; readonly payload: Configuration }
+    | { readonly type: MessageType.Ping; readonly payload: Ping }
+    | { readonly type: MessageType.Pong; readonly payload: Pong }
+    | { readonly type: MessageType.SnapshotDelta; readonly payload: SnapshotDelta }
+    | { readonly type: MessageType.ActionResult; readonly payload: ActionResult }
 
 export type DecodedEnvelope =
     | { readonly known: true; readonly messageType: MessageType; readonly payloadLength: number; readonly message: Message; readonly nextOffset: number }
@@ -359,6 +477,12 @@ function readRoundTransitionKind(reader: Reader): RoundTransitionKind { const va
 function writeChatChannel(writer: Writer, value: ChatChannel): void { if (!(value === 1 || value === 2)) throw new ProtocolError('invalid ChatChannel'); writer.u8(value) }
 function readChatChannel(reader: Reader): ChatChannel { const value = reader.u8(); if (!(value === 1 || value === 2)) throw new ProtocolError('invalid ChatChannel'); return value as ChatChannel }
 
+function writeActionKind(writer: Writer, value: ActionKind): void { if (!(value === 1 || value === 2)) throw new ProtocolError('invalid ActionKind'); writer.u8(value) }
+function readActionKind(reader: Reader): ActionKind { const value = reader.u8(); if (!(value === 1 || value === 2)) throw new ProtocolError('invalid ActionKind'); return value as ActionKind }
+
+function writeActionRejectReason(writer: Writer, value: ActionRejectReason): void { if (!(value === 0 || value === 1 || value === 2 || value === 3 || value === 4 || value === 5 || value === 6 || value === 7 || value === 8 || value === 9 || value === 10)) throw new ProtocolError('invalid ActionRejectReason'); writer.u8(value) }
+function readActionRejectReason(reader: Reader): ActionRejectReason { const value = reader.u8(); if (!(value === 0 || value === 1 || value === 2 || value === 3 || value === 4 || value === 5 || value === 6 || value === 7 || value === 8 || value === 9 || value === 10)) throw new ProtocolError('invalid ActionRejectReason'); return value as ActionRejectReason }
+
 function writeVec3(writer: Writer, value: Vec3): void {
     writer.f32(value.x)
     writer.f32(value.y)
@@ -419,6 +543,8 @@ function writeInputCommand(writer: Writer, value: InputCommand): void {
     writer.f32(value.moveX)
     writer.f32(value.moveY)
     writer.u16(value.buttonFlags)
+    writer.u32(value.fireActionId)
+    writer.u32(value.reloadActionId)
     writer.f32(value.yaw)
     writer.f32(value.pitch)
     writeWeapon(writer, value.selectedWeapon)
@@ -430,9 +556,138 @@ function readInputCommand(reader: Reader): InputCommand {
         moveX: reader.f32(),
         moveY: reader.f32(),
         buttonFlags: reader.u16(),
+        fireActionId: reader.u32(),
+        reloadActionId: reader.u32(),
         yaw: reader.f32(),
         pitch: reader.f32(),
         selectedWeapon: readWeapon(reader),
+    }
+}
+
+function writeEntityHandle(writer: Writer, value: EntityHandle): void {
+    writer.u32(value.slot)
+    writer.u16(value.generation)
+}
+function readEntityHandle(reader: Reader): EntityHandle {
+    return {
+        slot: reader.u32(),
+        generation: reader.u16(),
+    }
+}
+
+function writePublicEntityState(writer: Writer, value: PublicEntityState): void {
+    writeEntityHandle(writer, value.handle)
+    writeEntityKind(writer, value.kind)
+    writeVec3(writer, value.position)
+    writeVec3(writer, value.velocity)
+    writer.f32(value.bodyYaw)
+    writer.f32(value.aimPitch)
+    writer.bool(value.grounded)
+    writer.u16(value.stateFlags)
+    writeWeapon(writer, value.equippedWeapon)
+}
+function readPublicEntityState(reader: Reader): PublicEntityState {
+    return {
+        handle: readEntityHandle(reader),
+        kind: readEntityKind(reader),
+        position: readVec3(reader),
+        velocity: readVec3(reader),
+        bodyYaw: reader.f32(),
+        aimPitch: reader.f32(),
+        grounded: reader.bool(),
+        stateFlags: reader.u16(),
+        equippedWeapon: readWeapon(reader),
+    }
+}
+
+function writeCreatedEntity(writer: Writer, value: CreatedEntity): void {
+    writePublicEntityState(writer, value.state)
+}
+function readCreatedEntity(reader: Reader): CreatedEntity {
+    return {
+        state: readPublicEntityState(reader),
+    }
+}
+
+function writeUpdatedEntity(writer: Writer, value: UpdatedEntity): void {
+    writeEntityHandle(writer, value.handle)
+    writer.u16(value.changeMask)
+    writer.bool(value.position !== null)
+    if (value.position !== null) {
+        writeVec3(writer, value.position)
+    }
+    writer.bool(value.velocity !== null)
+    if (value.velocity !== null) {
+        writeVec3(writer, value.velocity)
+    }
+    writer.bool(value.bodyYaw !== null)
+    if (value.bodyYaw !== null) {
+        writer.f32(value.bodyYaw)
+    }
+    writer.bool(value.aimPitch !== null)
+    if (value.aimPitch !== null) {
+        writer.f32(value.aimPitch)
+    }
+    writer.bool(value.grounded !== null)
+    if (value.grounded !== null) {
+        writer.bool(value.grounded)
+    }
+    writer.bool(value.stateFlags !== null)
+    if (value.stateFlags !== null) {
+        writer.u16(value.stateFlags)
+    }
+    writer.bool(value.equippedWeapon !== null)
+    if (value.equippedWeapon !== null) {
+        writeWeapon(writer, value.equippedWeapon)
+    }
+}
+function readUpdatedEntity(reader: Reader): UpdatedEntity {
+    return {
+        handle: readEntityHandle(reader),
+        changeMask: reader.u16(),
+        position: reader.bool() ? readVec3(reader) : null,
+        velocity: reader.bool() ? readVec3(reader) : null,
+        bodyYaw: reader.bool() ? reader.f32() : null,
+        aimPitch: reader.bool() ? reader.f32() : null,
+        grounded: reader.bool() ? reader.bool() : null,
+        stateFlags: reader.bool() ? reader.u16() : null,
+        equippedWeapon: reader.bool() ? readWeapon(reader) : null,
+    }
+}
+
+function writeRemovedEntity(writer: Writer, value: RemovedEntity): void {
+    writeEntityHandle(writer, value.handle)
+    writeRemoveReason(writer, value.reason)
+}
+function readRemovedEntity(reader: Reader): RemovedEntity {
+    return {
+        handle: readEntityHandle(reader),
+        reason: readRemoveReason(reader),
+    }
+}
+
+function writeLocalAuthoritativeState(writer: Writer, value: LocalAuthoritativeState): void {
+    writeEntityHandle(writer, value.handle)
+    writeVec3(writer, value.position)
+    writeVec3(writer, value.velocity)
+    writer.f32(value.bodyYaw)
+    writer.f32(value.aimPitch)
+    writer.bool(value.grounded)
+    writer.u16(value.stateFlags)
+    writer.u16(value.health)
+    writeWeaponState(writer, value.weaponState)
+}
+function readLocalAuthoritativeState(reader: Reader): LocalAuthoritativeState {
+    return {
+        handle: readEntityHandle(reader),
+        position: readVec3(reader),
+        velocity: readVec3(reader),
+        bodyYaw: reader.f32(),
+        aimPitch: reader.f32(),
+        grounded: reader.bool(),
+        stateFlags: reader.u16(),
+        health: reader.u16(),
+        weaponState: readWeaponState(reader),
     }
 }
 
@@ -446,14 +701,6 @@ function writeEntityRecord(writer: Writer, value: EntityRecord): void {
     writer.bool(value.grounded)
     writer.u16(value.stateFlags)
     writeWeapon(writer, value.equippedWeapon)
-    writer.bool(value.health !== null)
-    if (value.health !== null) {
-        writer.u16(value.health)
-    }
-    writer.bool(value.weaponState !== null)
-    if (value.weaponState !== null) {
-        writeWeaponState(writer, value.weaponState)
-    }
 }
 function readEntityRecord(reader: Reader): EntityRecord {
     return {
@@ -466,8 +713,6 @@ function readEntityRecord(reader: Reader): EntityRecord {
         grounded: reader.bool(),
         stateFlags: reader.u16(),
         equippedWeapon: readWeapon(reader),
-        health: reader.bool() ? reader.u16() : null,
-        weaponState: reader.bool() ? readWeaponState(reader) : null,
     }
 }
 
@@ -493,6 +738,7 @@ function writeWelcome(writer: Writer, value: Welcome): void {
     writer.u16(value.protocolVersion)
     writer.string(value.serverBuildId, LIMITS.maxBuildIdBytes)
     writer.u32(value.playerId)
+    writeEntityHandle(writer, value.playerHandle)
     writer.u16(value.tickRate)
     writer.u16(value.snapshotRate)
     writeMapDescriptor(writer, value.map)
@@ -503,6 +749,7 @@ function readWelcome(reader: Reader): Welcome {
         protocolVersion: reader.u16(),
         serverBuildId: reader.string(LIMITS.maxBuildIdBytes),
         playerId: reader.u32(),
+        playerHandle: readEntityHandle(reader),
         tickRate: reader.u16(),
         snapshotRate: reader.u16(),
         map: readMapDescriptor(reader),
@@ -559,24 +806,24 @@ function readSnapshot(reader: Reader): Snapshot {
 
 function writeSpawn(writer: Writer, value: Spawn): void {
     writer.u32(value.serverTick)
-    writeEntityRecord(writer, value.entity)
+    writePublicEntityState(writer, value.entity)
 }
 function readSpawn(reader: Reader): Spawn {
     return {
         serverTick: reader.u32(),
-        entity: readEntityRecord(reader),
+        entity: readPublicEntityState(reader),
     }
 }
 
 function writeRemove(writer: Writer, value: Remove): void {
     writer.u32(value.serverTick)
-    writer.u32(value.entityId)
+    writeEntityHandle(writer, value.handle)
     writeRemoveReason(writer, value.reason)
 }
 function readRemove(reader: Reader): Remove {
     return {
         serverTick: reader.u32(),
-        entityId: reader.u32(),
+        handle: readEntityHandle(reader),
         reason: readRemoveReason(reader),
     }
 }
@@ -585,6 +832,7 @@ function writeShotConfirmed(writer: Writer, value: ShotConfirmed): void {
     writer.u32(value.serverTick)
     writer.u32(value.shooterId)
     writer.u32(value.inputSequence)
+    writer.u32(value.actionId)
     writer.u32(value.shotId)
     writeWeapon(writer, value.weapon)
 }
@@ -593,6 +841,7 @@ function readShotConfirmed(reader: Reader): ShotConfirmed {
         serverTick: reader.u32(),
         shooterId: reader.u32(),
         inputSequence: reader.u32(),
+        actionId: reader.u32(),
         shotId: reader.u32(),
         weapon: readWeapon(reader),
     }
@@ -733,6 +982,94 @@ function readConfiguration(reader: Reader): Configuration {
     }
 }
 
+function writePing(writer: Writer, value: Ping): void {
+    writer.u32(value.pingId)
+}
+function readPing(reader: Reader): Ping {
+    return {
+        pingId: reader.u32(),
+    }
+}
+
+function writePong(writer: Writer, value: Pong): void {
+    writer.u32(value.pingId)
+    writer.u32(value.serverTick)
+    writer.u32(value.serverMonotonicMs)
+}
+function readPong(reader: Reader): Pong {
+    return {
+        pingId: reader.u32(),
+        serverTick: reader.u32(),
+        serverMonotonicMs: reader.u32(),
+    }
+}
+
+function writeSnapshotDelta(writer: Writer, value: SnapshotDelta): void {
+    writer.u32(value.snapshotSequence)
+    writer.u32(value.baselineSequence)
+    writer.u32(value.baselineRevision)
+    writer.bool(value.baselineReset)
+    writer.u32(value.serverTick)
+    writer.u32(value.lastProcessedInputSequence)
+    writer.u32(value.matchRevision)
+    writer.bool(value.match !== null)
+    if (value.match !== null) {
+        writeMatchState(writer, value.match)
+    }
+    writeLocalAuthoritativeState(writer, value.local)
+    writer.length(value.created.length, 0, LIMITS.maxSnapshotCreated)
+    for (const item of value.created) {
+        writeCreatedEntity(writer, item)
+    }
+    writer.length(value.updated.length, 0, LIMITS.maxSnapshotUpdated)
+    for (const item of value.updated) {
+        writeUpdatedEntity(writer, item)
+    }
+    writer.length(value.removed.length, 0, LIMITS.maxSnapshotRemoved)
+    for (const item of value.removed) {
+        writeRemovedEntity(writer, item)
+    }
+}
+function readSnapshotDelta(reader: Reader): SnapshotDelta {
+    return {
+        snapshotSequence: reader.u32(),
+        baselineSequence: reader.u32(),
+        baselineRevision: reader.u32(),
+        baselineReset: reader.bool(),
+        serverTick: reader.u32(),
+        lastProcessedInputSequence: reader.u32(),
+        matchRevision: reader.u32(),
+        match: reader.bool() ? readMatchState(reader) : null,
+        local: readLocalAuthoritativeState(reader),
+        created: Array.from({ length: reader.length(0, LIMITS.maxSnapshotCreated) }, () => readCreatedEntity(reader)),
+        updated: Array.from({ length: reader.length(0, LIMITS.maxSnapshotUpdated) }, () => readUpdatedEntity(reader)),
+        removed: Array.from({ length: reader.length(0, LIMITS.maxSnapshotRemoved) }, () => readRemovedEntity(reader)),
+    }
+}
+
+function writeActionResult(writer: Writer, value: ActionResult): void {
+    writer.u32(value.serverTick)
+    writer.u32(value.actionId)
+    writeActionKind(writer, value.kind)
+    writer.bool(value.accepted)
+    writeActionRejectReason(writer, value.reason)
+    writeWeapon(writer, value.weapon)
+    writer.u16(value.authoritativeMagazineAmmo)
+    writer.u16(value.authoritativeReserveAmmo)
+}
+function readActionResult(reader: Reader): ActionResult {
+    return {
+        serverTick: reader.u32(),
+        actionId: reader.u32(),
+        kind: readActionKind(reader),
+        accepted: reader.bool(),
+        reason: readActionRejectReason(reader),
+        weapon: readWeapon(reader),
+        authoritativeMagazineAmmo: reader.u16(),
+        authoritativeReserveAmmo: reader.u16(),
+    }
+}
+
 export function encodeMessage(message: Message): Uint8Array {
     const payloadWriter = new Writer()
     switch (message.type) {
@@ -752,6 +1089,10 @@ export function encodeMessage(message: Message): Uint8Array {
         case MessageType.RoundTransition: writeRoundTransition(payloadWriter, message.payload); break
         case MessageType.Chat: writeChat(payloadWriter, message.payload); break
         case MessageType.Configuration: writeConfiguration(payloadWriter, message.payload); break
+        case MessageType.Ping: writePing(payloadWriter, message.payload); break
+        case MessageType.Pong: writePong(payloadWriter, message.payload); break
+        case MessageType.SnapshotDelta: writeSnapshotDelta(payloadWriter, message.payload); break
+        case MessageType.ActionResult: writeActionResult(payloadWriter, message.payload); break
         default: throw new ProtocolError('unknown message type')
     }
     const payload = payloadWriter.bytes()
@@ -786,6 +1127,10 @@ export function decodeEnvelope(data: Uint8Array, offset = 0): DecodedEnvelope {
         case MessageType.RoundTransition: message = { type: MessageType.RoundTransition, payload: readRoundTransition(reader) }; break
         case MessageType.Chat: message = { type: MessageType.Chat, payload: readChat(reader) }; break
         case MessageType.Configuration: message = { type: MessageType.Configuration, payload: readConfiguration(reader) }; break
+        case MessageType.Ping: message = { type: MessageType.Ping, payload: readPing(reader) }; break
+        case MessageType.Pong: message = { type: MessageType.Pong, payload: readPong(reader) }; break
+        case MessageType.SnapshotDelta: message = { type: MessageType.SnapshotDelta, payload: readSnapshotDelta(reader) }; break
+        case MessageType.ActionResult: message = { type: MessageType.ActionResult, payload: readActionResult(reader) }; break
         default: return { known: false, messageType, payloadLength, nextOffset }
     }
     if (reader.remaining() !== 0) throw new ProtocolError('payload has trailing bytes')

@@ -28,6 +28,9 @@ struct Limits {
     static constexpr std::size_t MaxConfigurationBytes = 16384U;
     static constexpr std::size_t MaxInputCommands = 64U;
     static constexpr std::size_t MaxSnapshotEntities = 512U;
+    static constexpr std::size_t MaxSnapshotCreated = 512U;
+    static constexpr std::size_t MaxSnapshotUpdated = 512U;
+    static constexpr std::size_t MaxSnapshotRemoved = 512U;
 };
 
 class ProtocolError : public std::runtime_error {
@@ -52,6 +55,10 @@ enum class MessageType : std::uint8_t {
     RoundTransition = 14,
     Chat = 15,
     Configuration = 16,
+    Ping = 17,
+    Pong = 18,
+    SnapshotDelta = 19,
+    ActionResult = 20,
 };
 
 enum class RejectReason : std::uint8_t {
@@ -106,6 +113,25 @@ enum class ChatChannel : std::uint8_t {
     System = 2,
 };
 
+enum class ActionKind : std::uint8_t {
+    Fire = 1,
+    Reload = 2,
+};
+
+enum class ActionRejectReason : std::uint8_t {
+    None = 0,
+    Cadence = 1,
+    NoAmmo = 2,
+    Dead = 3,
+    MatchInactive = 4,
+    WeaponMismatch = 5,
+    AlreadyReloading = 6,
+    MagazineFull = 7,
+    NoReserve = 8,
+    Duplicate = 9,
+    Invalid = 10,
+};
+
 struct Vec3 {
     float x{};
     float y{};
@@ -137,9 +163,61 @@ struct InputCommand {
     float moveX{};
     float moveY{};
     std::uint16_t buttonFlags{};
+    std::uint32_t fireActionId{};
+    std::uint32_t reloadActionId{};
     float yaw{};
     float pitch{};
     Weapon selectedWeapon{};
+};
+
+struct EntityHandle {
+    std::uint32_t slot{};
+    std::uint16_t generation{};
+};
+
+struct PublicEntityState {
+    EntityHandle handle{};
+    EntityKind kind{};
+    Vec3 position{};
+    Vec3 velocity{};
+    float bodyYaw{};
+    float aimPitch{};
+    bool grounded{};
+    std::uint16_t stateFlags{};
+    Weapon equippedWeapon{};
+};
+
+struct CreatedEntity {
+    PublicEntityState state{};
+};
+
+struct UpdatedEntity {
+    EntityHandle handle{};
+    std::uint16_t changeMask{};
+    std::optional<Vec3> position{};
+    std::optional<Vec3> velocity{};
+    std::optional<float> bodyYaw{};
+    std::optional<float> aimPitch{};
+    std::optional<bool> grounded{};
+    std::optional<std::uint16_t> stateFlags{};
+    std::optional<Weapon> equippedWeapon{};
+};
+
+struct RemovedEntity {
+    EntityHandle handle{};
+    RemoveReason reason{};
+};
+
+struct LocalAuthoritativeState {
+    EntityHandle handle{};
+    Vec3 position{};
+    Vec3 velocity{};
+    float bodyYaw{};
+    float aimPitch{};
+    bool grounded{};
+    std::uint16_t stateFlags{};
+    std::uint16_t health{};
+    WeaponState weaponState{};
 };
 
 struct EntityRecord {
@@ -152,8 +230,6 @@ struct EntityRecord {
     bool grounded{};
     std::uint16_t stateFlags{};
     Weapon equippedWeapon{};
-    std::optional<std::uint16_t> health{};
-    std::optional<WeaponState> weaponState{};
 };
 
 struct Hello {
@@ -167,6 +243,7 @@ struct Welcome {
     std::uint16_t protocolVersion{};
     std::string serverBuildId{};
     std::uint32_t playerId{};
+    EntityHandle playerHandle{};
     std::uint16_t tickRate{};
     std::uint16_t snapshotRate{};
     MapDescriptor map{};
@@ -194,12 +271,12 @@ struct Snapshot {
 
 struct Spawn {
     std::uint32_t serverTick{};
-    EntityRecord entity{};
+    PublicEntityState entity{};
 };
 
 struct Remove {
     std::uint32_t serverTick{};
-    std::uint32_t entityId{};
+    EntityHandle handle{};
     RemoveReason reason{};
 };
 
@@ -207,6 +284,7 @@ struct ShotConfirmed {
     std::uint32_t serverTick{};
     std::uint32_t shooterId{};
     std::uint32_t inputSequence{};
+    std::uint32_t actionId{};
     std::uint32_t shotId{};
     Weapon weapon{};
 };
@@ -268,6 +346,42 @@ struct Configuration {
     MapDescriptor map{};
     std::string configurationHash{};
     std::string configurationJson{};
+};
+
+struct Ping {
+    std::uint32_t pingId{};
+};
+
+struct Pong {
+    std::uint32_t pingId{};
+    std::uint32_t serverTick{};
+    std::uint32_t serverMonotonicMs{};
+};
+
+struct SnapshotDelta {
+    std::uint32_t snapshotSequence{};
+    std::uint32_t baselineSequence{};
+    std::uint32_t baselineRevision{};
+    bool baselineReset{};
+    std::uint32_t serverTick{};
+    std::uint32_t lastProcessedInputSequence{};
+    std::uint32_t matchRevision{};
+    std::optional<MatchState> match{};
+    LocalAuthoritativeState local{};
+    std::vector<CreatedEntity> created{};
+    std::vector<UpdatedEntity> updated{};
+    std::vector<RemovedEntity> removed{};
+};
+
+struct ActionResult {
+    std::uint32_t serverTick{};
+    std::uint32_t actionId{};
+    ActionKind kind{};
+    bool accepted{};
+    ActionRejectReason reason{};
+    Weapon weapon{};
+    std::uint16_t authoritativeMagazineAmmo{};
+    std::uint16_t authoritativeReserveAmmo{};
 };
 
 namespace detail {
@@ -436,6 +550,28 @@ inline ChatChannel readChatChannel(Reader& reader) {
     return static_cast<ChatChannel>(raw);
 }
 
+inline void writeActionKind(Writer& writer, ActionKind value) {
+    const auto raw = static_cast<std::uint8_t>(value);
+    if (!(raw == 1U || raw == 2U)) throw ProtocolError("invalid ActionKind");
+    writer.writeU8(raw);
+}
+inline ActionKind readActionKind(Reader& reader) {
+    const auto raw = reader.readU8();
+    if (!(raw == 1U || raw == 2U)) throw ProtocolError("invalid ActionKind");
+    return static_cast<ActionKind>(raw);
+}
+
+inline void writeActionRejectReason(Writer& writer, ActionRejectReason value) {
+    const auto raw = static_cast<std::uint8_t>(value);
+    if (!(raw == 0U || raw == 1U || raw == 2U || raw == 3U || raw == 4U || raw == 5U || raw == 6U || raw == 7U || raw == 8U || raw == 9U || raw == 10U)) throw ProtocolError("invalid ActionRejectReason");
+    writer.writeU8(raw);
+}
+inline ActionRejectReason readActionRejectReason(Reader& reader) {
+    const auto raw = reader.readU8();
+    if (!(raw == 0U || raw == 1U || raw == 2U || raw == 3U || raw == 4U || raw == 5U || raw == 6U || raw == 7U || raw == 8U || raw == 9U || raw == 10U)) throw ProtocolError("invalid ActionRejectReason");
+    return static_cast<ActionRejectReason>(raw);
+}
+
 inline void writeVec3(Writer& writer, const Vec3& value) {
     writer.writeF32(value.x);
     writer.writeF32(value.y);
@@ -496,6 +632,8 @@ inline void writeInputCommand(Writer& writer, const InputCommand& value) {
     writer.writeF32(value.moveX);
     writer.writeF32(value.moveY);
     writer.writeU16(value.buttonFlags);
+    writer.writeU32(value.fireActionId);
+    writer.writeU32(value.reloadActionId);
     writer.writeF32(value.yaw);
     writer.writeF32(value.pitch);
     writeWeapon(writer, value.selectedWeapon);
@@ -507,9 +645,180 @@ inline InputCommand readInputCommand(Reader& reader) {
     value.moveX = reader.readF32();
     value.moveY = reader.readF32();
     value.buttonFlags = reader.readU16();
+    value.fireActionId = reader.readU32();
+    value.reloadActionId = reader.readU32();
     value.yaw = reader.readF32();
     value.pitch = reader.readF32();
     value.selectedWeapon = readWeapon(reader);
+    return value;
+}
+
+inline void writeEntityHandle(Writer& writer, const EntityHandle& value) {
+    writer.writeU32(value.slot);
+    writer.writeU16(value.generation);
+}
+inline EntityHandle readEntityHandle(Reader& reader) {
+    EntityHandle value{};
+    value.slot = reader.readU32();
+    value.generation = reader.readU16();
+    return value;
+}
+
+inline void writePublicEntityState(Writer& writer, const PublicEntityState& value) {
+    writeEntityHandle(writer, value.handle);
+    writeEntityKind(writer, value.kind);
+    writeVec3(writer, value.position);
+    writeVec3(writer, value.velocity);
+    writer.writeF32(value.bodyYaw);
+    writer.writeF32(value.aimPitch);
+    writer.writeBool(value.grounded);
+    writer.writeU16(value.stateFlags);
+    writeWeapon(writer, value.equippedWeapon);
+}
+inline PublicEntityState readPublicEntityState(Reader& reader) {
+    PublicEntityState value{};
+    value.handle = readEntityHandle(reader);
+    value.kind = readEntityKind(reader);
+    value.position = readVec3(reader);
+    value.velocity = readVec3(reader);
+    value.bodyYaw = reader.readF32();
+    value.aimPitch = reader.readF32();
+    value.grounded = reader.readBool();
+    value.stateFlags = reader.readU16();
+    value.equippedWeapon = readWeapon(reader);
+    return value;
+}
+
+inline void writeCreatedEntity(Writer& writer, const CreatedEntity& value) {
+    writePublicEntityState(writer, value.state);
+}
+inline CreatedEntity readCreatedEntity(Reader& reader) {
+    CreatedEntity value{};
+    value.state = readPublicEntityState(reader);
+    return value;
+}
+
+inline void writeUpdatedEntity(Writer& writer, const UpdatedEntity& value) {
+    writeEntityHandle(writer, value.handle);
+    writer.writeU16(value.changeMask);
+    writer.writeBool(value.position.has_value());
+    if (value.position.has_value()) {
+        writeVec3(writer, *value.position);
+    }
+    writer.writeBool(value.velocity.has_value());
+    if (value.velocity.has_value()) {
+        writeVec3(writer, *value.velocity);
+    }
+    writer.writeBool(value.bodyYaw.has_value());
+    if (value.bodyYaw.has_value()) {
+        writer.writeF32(*value.bodyYaw);
+    }
+    writer.writeBool(value.aimPitch.has_value());
+    if (value.aimPitch.has_value()) {
+        writer.writeF32(*value.aimPitch);
+    }
+    writer.writeBool(value.grounded.has_value());
+    if (value.grounded.has_value()) {
+        writer.writeBool(*value.grounded);
+    }
+    writer.writeBool(value.stateFlags.has_value());
+    if (value.stateFlags.has_value()) {
+        writer.writeU16(*value.stateFlags);
+    }
+    writer.writeBool(value.equippedWeapon.has_value());
+    if (value.equippedWeapon.has_value()) {
+        writeWeapon(writer, *value.equippedWeapon);
+    }
+}
+inline UpdatedEntity readUpdatedEntity(Reader& reader) {
+    UpdatedEntity value{};
+    value.handle = readEntityHandle(reader);
+    value.changeMask = reader.readU16();
+    if (reader.readBool()) {
+        Vec3 decodedValue{};
+        decodedValue = readVec3(reader);
+        value.position = std::move(decodedValue);
+    } else {
+        value.position.reset();
+    }
+    if (reader.readBool()) {
+        Vec3 decodedValue{};
+        decodedValue = readVec3(reader);
+        value.velocity = std::move(decodedValue);
+    } else {
+        value.velocity.reset();
+    }
+    if (reader.readBool()) {
+        float decodedValue{};
+        decodedValue = reader.readF32();
+        value.bodyYaw = std::move(decodedValue);
+    } else {
+        value.bodyYaw.reset();
+    }
+    if (reader.readBool()) {
+        float decodedValue{};
+        decodedValue = reader.readF32();
+        value.aimPitch = std::move(decodedValue);
+    } else {
+        value.aimPitch.reset();
+    }
+    if (reader.readBool()) {
+        bool decodedValue{};
+        decodedValue = reader.readBool();
+        value.grounded = std::move(decodedValue);
+    } else {
+        value.grounded.reset();
+    }
+    if (reader.readBool()) {
+        std::uint16_t decodedValue{};
+        decodedValue = reader.readU16();
+        value.stateFlags = std::move(decodedValue);
+    } else {
+        value.stateFlags.reset();
+    }
+    if (reader.readBool()) {
+        Weapon decodedValue{};
+        decodedValue = readWeapon(reader);
+        value.equippedWeapon = std::move(decodedValue);
+    } else {
+        value.equippedWeapon.reset();
+    }
+    return value;
+}
+
+inline void writeRemovedEntity(Writer& writer, const RemovedEntity& value) {
+    writeEntityHandle(writer, value.handle);
+    writeRemoveReason(writer, value.reason);
+}
+inline RemovedEntity readRemovedEntity(Reader& reader) {
+    RemovedEntity value{};
+    value.handle = readEntityHandle(reader);
+    value.reason = readRemoveReason(reader);
+    return value;
+}
+
+inline void writeLocalAuthoritativeState(Writer& writer, const LocalAuthoritativeState& value) {
+    writeEntityHandle(writer, value.handle);
+    writeVec3(writer, value.position);
+    writeVec3(writer, value.velocity);
+    writer.writeF32(value.bodyYaw);
+    writer.writeF32(value.aimPitch);
+    writer.writeBool(value.grounded);
+    writer.writeU16(value.stateFlags);
+    writer.writeU16(value.health);
+    writeWeaponState(writer, value.weaponState);
+}
+inline LocalAuthoritativeState readLocalAuthoritativeState(Reader& reader) {
+    LocalAuthoritativeState value{};
+    value.handle = readEntityHandle(reader);
+    value.position = readVec3(reader);
+    value.velocity = readVec3(reader);
+    value.bodyYaw = reader.readF32();
+    value.aimPitch = reader.readF32();
+    value.grounded = reader.readBool();
+    value.stateFlags = reader.readU16();
+    value.health = reader.readU16();
+    value.weaponState = readWeaponState(reader);
     return value;
 }
 
@@ -523,14 +832,6 @@ inline void writeEntityRecord(Writer& writer, const EntityRecord& value) {
     writer.writeBool(value.grounded);
     writer.writeU16(value.stateFlags);
     writeWeapon(writer, value.equippedWeapon);
-    writer.writeBool(value.health.has_value());
-    if (value.health.has_value()) {
-        writer.writeU16(*value.health);
-    }
-    writer.writeBool(value.weaponState.has_value());
-    if (value.weaponState.has_value()) {
-        writeWeaponState(writer, *value.weaponState);
-    }
 }
 inline EntityRecord readEntityRecord(Reader& reader) {
     EntityRecord value{};
@@ -543,20 +844,6 @@ inline EntityRecord readEntityRecord(Reader& reader) {
     value.grounded = reader.readBool();
     value.stateFlags = reader.readU16();
     value.equippedWeapon = readWeapon(reader);
-    if (reader.readBool()) {
-        std::uint16_t decodedValue{};
-        decodedValue = reader.readU16();
-        value.health = std::move(decodedValue);
-    } else {
-        value.health.reset();
-    }
-    if (reader.readBool()) {
-        WeaponState decodedValue{};
-        decodedValue = readWeaponState(reader);
-        value.weaponState = std::move(decodedValue);
-    } else {
-        value.weaponState.reset();
-    }
     return value;
 }
 
@@ -588,6 +875,7 @@ inline void writeWelcome(Writer& writer, const Welcome& value) {
     writer.writeU16(value.protocolVersion);
     writer.writeString(value.serverBuildId, Limits::MaxBuildIdBytes);
     writer.writeU32(value.playerId);
+    writeEntityHandle(writer, value.playerHandle);
     writer.writeU16(value.tickRate);
     writer.writeU16(value.snapshotRate);
     writeMapDescriptor(writer, value.map);
@@ -598,6 +886,7 @@ inline Welcome readWelcome(Reader& reader) {
     value.protocolVersion = reader.readU16();
     value.serverBuildId = reader.readString(Limits::MaxBuildIdBytes);
     value.playerId = reader.readU32();
+    value.playerHandle = readEntityHandle(reader);
     value.tickRate = reader.readU16();
     value.snapshotRate = reader.readU16();
     value.map = readMapDescriptor(reader);
@@ -672,24 +961,24 @@ inline Snapshot readSnapshot(Reader& reader) {
 
 inline void writeSpawn(Writer& writer, const Spawn& value) {
     writer.writeU32(value.serverTick);
-    writeEntityRecord(writer, value.entity);
+    writePublicEntityState(writer, value.entity);
 }
 inline Spawn readSpawn(Reader& reader) {
     Spawn value{};
     value.serverTick = reader.readU32();
-    value.entity = readEntityRecord(reader);
+    value.entity = readPublicEntityState(reader);
     return value;
 }
 
 inline void writeRemove(Writer& writer, const Remove& value) {
     writer.writeU32(value.serverTick);
-    writer.writeU32(value.entityId);
+    writeEntityHandle(writer, value.handle);
     writeRemoveReason(writer, value.reason);
 }
 inline Remove readRemove(Reader& reader) {
     Remove value{};
     value.serverTick = reader.readU32();
-    value.entityId = reader.readU32();
+    value.handle = readEntityHandle(reader);
     value.reason = readRemoveReason(reader);
     return value;
 }
@@ -698,6 +987,7 @@ inline void writeShotConfirmed(Writer& writer, const ShotConfirmed& value) {
     writer.writeU32(value.serverTick);
     writer.writeU32(value.shooterId);
     writer.writeU32(value.inputSequence);
+    writer.writeU32(value.actionId);
     writer.writeU32(value.shotId);
     writeWeapon(writer, value.weapon);
 }
@@ -706,6 +996,7 @@ inline ShotConfirmed readShotConfirmed(Reader& reader) {
     value.serverTick = reader.readU32();
     value.shooterId = reader.readU32();
     value.inputSequence = reader.readU32();
+    value.actionId = reader.readU32();
     value.shotId = reader.readU32();
     value.weapon = readWeapon(reader);
     return value;
@@ -864,9 +1155,130 @@ inline Configuration readConfiguration(Reader& reader) {
     return value;
 }
 
+inline void writePing(Writer& writer, const Ping& value) {
+    writer.writeU32(value.pingId);
+}
+inline Ping readPing(Reader& reader) {
+    Ping value{};
+    value.pingId = reader.readU32();
+    return value;
+}
+
+inline void writePong(Writer& writer, const Pong& value) {
+    writer.writeU32(value.pingId);
+    writer.writeU32(value.serverTick);
+    writer.writeU32(value.serverMonotonicMs);
+}
+inline Pong readPong(Reader& reader) {
+    Pong value{};
+    value.pingId = reader.readU32();
+    value.serverTick = reader.readU32();
+    value.serverMonotonicMs = reader.readU32();
+    return value;
+}
+
+inline void writeSnapshotDelta(Writer& writer, const SnapshotDelta& value) {
+    writer.writeU32(value.snapshotSequence);
+    writer.writeU32(value.baselineSequence);
+    writer.writeU32(value.baselineRevision);
+    writer.writeBool(value.baselineReset);
+    writer.writeU32(value.serverTick);
+    writer.writeU32(value.lastProcessedInputSequence);
+    writer.writeU32(value.matchRevision);
+    writer.writeBool(value.match.has_value());
+    if (value.match.has_value()) {
+        writeMatchState(writer, *value.match);
+    }
+    writeLocalAuthoritativeState(writer, value.local);
+    writer.writeLength(value.created.size(), 0, Limits::MaxSnapshotCreated);
+    for (const auto& item : value.created) {
+        writeCreatedEntity(writer, item);
+    }
+    writer.writeLength(value.updated.size(), 0, Limits::MaxSnapshotUpdated);
+    for (const auto& item : value.updated) {
+        writeUpdatedEntity(writer, item);
+    }
+    writer.writeLength(value.removed.size(), 0, Limits::MaxSnapshotRemoved);
+    for (const auto& item : value.removed) {
+        writeRemovedEntity(writer, item);
+    }
+}
+inline SnapshotDelta readSnapshotDelta(Reader& reader) {
+    SnapshotDelta value{};
+    value.snapshotSequence = reader.readU32();
+    value.baselineSequence = reader.readU32();
+    value.baselineRevision = reader.readU32();
+    value.baselineReset = reader.readBool();
+    value.serverTick = reader.readU32();
+    value.lastProcessedInputSequence = reader.readU32();
+    value.matchRevision = reader.readU32();
+    if (reader.readBool()) {
+        MatchState decodedValue{};
+        decodedValue = readMatchState(reader);
+        value.match = std::move(decodedValue);
+    } else {
+        value.match.reset();
+    }
+    value.local = readLocalAuthoritativeState(reader);
+    {
+        const auto count = reader.readLength(0, Limits::MaxSnapshotCreated);
+        value.created.clear();
+        value.created.reserve(count);
+        for (std::size_t index = 0; index < count; ++index) {
+            CreatedEntity decodedValue{};
+            decodedValue = readCreatedEntity(reader);
+            value.created.push_back(std::move(decodedValue));
+        }
+    }
+    {
+        const auto count = reader.readLength(0, Limits::MaxSnapshotUpdated);
+        value.updated.clear();
+        value.updated.reserve(count);
+        for (std::size_t index = 0; index < count; ++index) {
+            UpdatedEntity decodedValue{};
+            decodedValue = readUpdatedEntity(reader);
+            value.updated.push_back(std::move(decodedValue));
+        }
+    }
+    {
+        const auto count = reader.readLength(0, Limits::MaxSnapshotRemoved);
+        value.removed.clear();
+        value.removed.reserve(count);
+        for (std::size_t index = 0; index < count; ++index) {
+            RemovedEntity decodedValue{};
+            decodedValue = readRemovedEntity(reader);
+            value.removed.push_back(std::move(decodedValue));
+        }
+    }
+    return value;
+}
+
+inline void writeActionResult(Writer& writer, const ActionResult& value) {
+    writer.writeU32(value.serverTick);
+    writer.writeU32(value.actionId);
+    writeActionKind(writer, value.kind);
+    writer.writeBool(value.accepted);
+    writeActionRejectReason(writer, value.reason);
+    writeWeapon(writer, value.weapon);
+    writer.writeU16(value.authoritativeMagazineAmmo);
+    writer.writeU16(value.authoritativeReserveAmmo);
+}
+inline ActionResult readActionResult(Reader& reader) {
+    ActionResult value{};
+    value.serverTick = reader.readU32();
+    value.actionId = reader.readU32();
+    value.kind = readActionKind(reader);
+    value.accepted = reader.readBool();
+    value.reason = readActionRejectReason(reader);
+    value.weapon = readWeapon(reader);
+    value.authoritativeMagazineAmmo = reader.readU16();
+    value.authoritativeReserveAmmo = reader.readU16();
+    return value;
+}
+
 }  // namespace detail
 
-using MessagePayload = std::variant<std::monostate, Hello, Welcome, Reject, InputBatch, Snapshot, Spawn, Remove, ShotConfirmed, Impact, Damage, Death, Respawn, ScoreChange, RoundTransition, Chat, Configuration>;
+using MessagePayload = std::variant<std::monostate, Hello, Welcome, Reject, InputBatch, Snapshot, Spawn, Remove, ShotConfirmed, Impact, Damage, Death, Respawn, ScoreChange, RoundTransition, Chat, Configuration, Ping, Pong, SnapshotDelta, ActionResult>;
 
 struct DecodedEnvelope {
     std::uint8_t messageType{};
@@ -972,6 +1384,30 @@ inline std::vector<std::uint8_t> encode(const Configuration& message) {
     detail::Writer envelope; envelope.writeU8(static_cast<std::uint8_t>(MessageType::Configuration)); envelope.writeU16(static_cast<std::uint16_t>(payload.bytes().size()));
     std::vector<std::uint8_t> result = envelope.bytes(); result.insert(result.end(), payload.bytes().begin(), payload.bytes().end()); return result;
 }
+inline std::vector<std::uint8_t> encode(const Ping& message) {
+    detail::Writer payload; detail::writePing(payload, message);
+    if (payload.bytes().size() > Limits::MaxPayloadBytes) throw ProtocolError("payload exceeds maximum");
+    detail::Writer envelope; envelope.writeU8(static_cast<std::uint8_t>(MessageType::Ping)); envelope.writeU16(static_cast<std::uint16_t>(payload.bytes().size()));
+    std::vector<std::uint8_t> result = envelope.bytes(); result.insert(result.end(), payload.bytes().begin(), payload.bytes().end()); return result;
+}
+inline std::vector<std::uint8_t> encode(const Pong& message) {
+    detail::Writer payload; detail::writePong(payload, message);
+    if (payload.bytes().size() > Limits::MaxPayloadBytes) throw ProtocolError("payload exceeds maximum");
+    detail::Writer envelope; envelope.writeU8(static_cast<std::uint8_t>(MessageType::Pong)); envelope.writeU16(static_cast<std::uint16_t>(payload.bytes().size()));
+    std::vector<std::uint8_t> result = envelope.bytes(); result.insert(result.end(), payload.bytes().begin(), payload.bytes().end()); return result;
+}
+inline std::vector<std::uint8_t> encode(const SnapshotDelta& message) {
+    detail::Writer payload; detail::writeSnapshotDelta(payload, message);
+    if (payload.bytes().size() > Limits::MaxPayloadBytes) throw ProtocolError("payload exceeds maximum");
+    detail::Writer envelope; envelope.writeU8(static_cast<std::uint8_t>(MessageType::SnapshotDelta)); envelope.writeU16(static_cast<std::uint16_t>(payload.bytes().size()));
+    std::vector<std::uint8_t> result = envelope.bytes(); result.insert(result.end(), payload.bytes().begin(), payload.bytes().end()); return result;
+}
+inline std::vector<std::uint8_t> encode(const ActionResult& message) {
+    detail::Writer payload; detail::writeActionResult(payload, message);
+    if (payload.bytes().size() > Limits::MaxPayloadBytes) throw ProtocolError("payload exceeds maximum");
+    detail::Writer envelope; envelope.writeU8(static_cast<std::uint8_t>(MessageType::ActionResult)); envelope.writeU16(static_cast<std::uint16_t>(payload.bytes().size()));
+    std::vector<std::uint8_t> result = envelope.bytes(); result.insert(result.end(), payload.bytes().begin(), payload.bytes().end()); return result;
+}
 
 inline DecodedEnvelope decodeEnvelope(const std::uint8_t* data, std::size_t size, std::size_t offset = 0) {
     if (offset > size || size - offset < 3U) throw ProtocolError("truncated envelope");
@@ -1001,6 +1437,10 @@ inline DecodedEnvelope decodeEnvelope(const std::uint8_t* data, std::size_t size
         case 14: payload = detail::readRoundTransition(reader); break;
         case 15: payload = detail::readChat(reader); break;
         case 16: payload = detail::readConfiguration(reader); break;
+        case 17: payload = detail::readPing(reader); break;
+        case 18: payload = detail::readPong(reader); break;
+        case 19: payload = detail::readSnapshotDelta(reader); break;
+        case 20: payload = detail::readActionResult(reader); break;
         default: known = false; break;
     }
     if (known && reader.remaining() != 0U) throw ProtocolError("payload has trailing bytes");

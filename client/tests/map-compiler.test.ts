@@ -64,11 +64,15 @@ describe('offline map compiler', () => {
         source.bufferViews = [{ buffer: 0, byteOffset: 0, byteLength: 36 }, { buffer: 0, byteOffset: 36, byteLength: 6 }]
         source.accessors = [{ bufferView: 0, componentType: 5126, count: 3, type: 'VEC3' }, { bufferView: 1, componentType: 5123, count: 3, type: 'SCALAR' }]
         source.meshes = [{ primitives: [{ attributes: { POSITION: 0 }, indices: 1 }] }]
+        source.materials = [{ name: 'AuthoredPBR', pbrMetallicRoughness: { baseColorFactor: [0.2, 0.4, 0.8, 1], metallicFactor: 0.7, roughnessFactor: 0.25 } }]
+        source.meshes[0].primitives[0].material = 0
         delete source.nodes[0].extras.geometry
         source.nodes[0].mesh = 0
         delete source.nodes[1].extras.geometry
         source.nodes[1].mesh = 0
-        expect(() => compileMapGltf(source)).not.toThrow()
+        const compiled = compileMapGltf(source)
+        expect(new TextDecoder().decode(compiled.files.get('scene.glb'))).toContain('AuthoredPBR')
+        expect(new TextDecoder().decode(compiled.files.get('scene.glb'))).not.toContain('Graybox')
     })
 
     it('inherits roles from named Blender collection nodes', () => {
@@ -109,18 +113,41 @@ describe('offline map compiler', () => {
         expect(() => compileMapGltf(nonFinite)).toThrow(MapCompileError)
     })
 
+    it('rejects invalid metadata for every non-mesh role', () => {
+        const marker = validSource(); marker.nodes.push({ name: 'bad-marker', translation: [0, 0, 0], extras: { collection: 'Markers', markerType: 'teleporter' } }); marker.scenes[0].nodes.push(marker.nodes.length - 1)
+        expect(() => compileMapGltf(marker)).toThrow(/supported markerType/)
+        const zone = validSource(); zone.nodes.push({ name: 'bad-zone', translation: [19, 0, 0], extras: { collection: 'Zones', zoneType: 'playable', size: [4, 2, 4] } }); zone.scenes[0].nodes.push(zone.nodes.length - 1)
+        expect(() => compileMapGltf(zone)).toThrow(/outside world bounds/)
+        const navigation = validSource(); navigation.nodes.push({ name: 'nav-a', translation: [0, 0, 0], extras: { collection: 'Navigation', links: ['missing-node'] } }); navigation.scenes[0].nodes.push(navigation.nodes.length - 1)
+        expect(() => compileMapGltf(navigation)).toThrow(/links to missing node|navigation graph is disconnected/)
+        const radar = validSource(); radar.nodes.push({ name: 'radar', extras: { collection: 'Radar', typo: true } }); radar.scenes[0].nodes.push(radar.nodes.length - 1)
+        expect(() => compileMapGltf(radar)).toThrow(/unsupported property "typo"/)
+    })
+
+    it('rejects scene cycles, duplicate identities, invalid roles and transforms', () => {
+        const duplicate = validSource(); duplicate.nodes[1].name = duplicate.nodes[0].name
+        expect(() => compileMapGltf(duplicate)).toThrow(/duplicate node name/)
+        const cycle = validSource(); cycle.nodes[0].children = [0]
+        expect(() => compileMapGltf(cycle)).toThrow(/appears more than once or forms a cycle/)
+        const role = validSource(); role.nodes[0].extras.mapRole = 'portal'
+        expect(() => compileMapGltf(role)).toThrow(/unsupported mapRole/)
+        const rotation = validSource(); rotation.nodes[0].rotation = [0, 2, 0, 0]
+        expect(() => compileMapGltf(rotation)).toThrow(/normalized quaternion/)
+    })
+
     it('compiles the committed arena with routes, vertical spawns, and collision diagnostics', async () => {
         const path = new URL('../maps/graybox-arena.gltf', import.meta.url)
         const compiled = compileMapGltf(JSON.parse(await readFile(path, 'utf8')))
-        expect(compiled.manifest.spawnPoints).toHaveLength(16)
-        expect(compiled.manifest.spawnPoints.some((spawn) => spawn.position[1] > 3)).toBe(true)
-        for (const spawn of compiled.manifest.spawnPoints) {
+        const gameplay = JSON.parse(new TextDecoder().decode(compiled.files.get('gameplay.json')))
+        expect(gameplay.spawnPoints).toHaveLength(16)
+        expect(gameplay.spawnPoints.some((spawn: any) => spawn.position[1] > 3)).toBe(true)
+        for (const spawn of gameplay.spawnPoints) {
             const [x, , z] = spawn.position
             const inwardX = -x, inwardZ = -z
             const forwardX = Math.sin(spawn.yaw), forwardZ = -Math.cos(spawn.yaw)
             expect(forwardX * inwardX + forwardZ * inwardZ).toBeGreaterThan(0)
         }
-        expect(compiled.manifest.markers.length).toBeGreaterThanOrEqual(4)
+        expect(gameplay.markers.length).toBeGreaterThanOrEqual(4)
         expect(new TextDecoder().decode(compiled.files.get('debug-report.json'))).toContain('triangleCount')
         expect(compiled.files.get('collision.bin')?.slice(0, 4)).toEqual(Uint8Array.from([0x4d, 0x33, 0x43, 0x4c]))
         const scene = compiled.files.get('scene.glb')!
@@ -129,5 +156,18 @@ describe('offline map compiler', () => {
         const sceneJson = new TextDecoder().decode(scene.slice(20, 20 + jsonLength))
         expect(sceneJson).toContain('Render_Floor')
         expect(sceneJson).not.toContain('Collision_Floor')
+    })
+
+    it('builds two distinct v2 maps with gameplay, radar, navigation and authored PBR materials', async () => {
+        const gray = compileMapGltf(JSON.parse(await readFile(new URL('../maps/graybox-arena.gltf', import.meta.url), 'utf8')))
+        const copper = compileMapGltf(JSON.parse(await readFile(new URL('../maps/copper-yard.gltf', import.meta.url), 'utf8')))
+        expect(gray.manifest.formatVersion).toBe(2)
+        expect(copper.manifest.mapId).toBe('copper-yard')
+        expect(copper.manifest.contentHash).not.toBe(gray.manifest.contentHash)
+        expect(copper.files.has('gameplay.json')).toBe(true)
+        expect(copper.files.has('navigation.json')).toBe(true)
+        expect(copper.files.has('radar.svg')).toBe(true)
+        expect(new TextDecoder().decode(copper.files.get('scene.glb'))).toContain('OxidizedCopper')
+        expect(Object.keys(copper.manifest.assetHashes).sort()).toEqual([...copper.files.keys()].filter((name) => name !== 'manifest.json').sort())
     })
 })

@@ -37,6 +37,9 @@ services:
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
       JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-30d}
       SERVER_SHARED_SECRET: ${SERVER_SHARED_SECRET:?SERVER_SHARED_SECRET is required}
+      JOIN_TICKET_SECRET: ${JOIN_TICKET_SECRET:?JOIN_TICKET_SECRET is required}
+      JOIN_TICKET_AUDIENCE: ${JOIN_TICKET_AUDIENCE:-arena-game-server}
+      JOIN_TICKET_TTL_SECONDS: ${JOIN_TICKET_TTL_SECONDS:-20}
       CLIENT_ORIGIN: ${CLIENT_ORIGIN:?CLIENT_ORIGIN is required}
     networks:
       - game-network
@@ -63,13 +66,15 @@ services:
       MAX_PLAYERS: ${MAX_PLAYERS:-12}
       SERVER_MODE: ${SERVER_MODE:-ffa}
       SERVER_BUILD_ID: ${SERVER_BUILD_ID:?SERVER_BUILD_ID is required}
-      SERVER_PROTOCOL_VERSION: "3"
-      SERVER_MAP_ID: graybox-arena
+      SERVER_PROTOCOL_VERSION: "6"
+      SERVER_MAP_ID: ${SERVER_MAP_ID:-graybox-arena}
       SERVER_WEBSOCKET_URL: ${SERVER_WEBSOCKET_URL:?Set the complete externally reachable wss URL}
       GAME_CONFIG_PATH: /app/game_config.json
-      MAP_PACKAGE_DIR: /app/maps/graybox-arena
+      MAP_PACKAGE_ROOT: /app/maps
       WEB_API_URL: http://web:3000
       SERVER_SHARED_SECRET: ${SERVER_SHARED_SECRET:?SERVER_SHARED_SECRET is required}
+      JOIN_TICKET_SECRET: ${JOIN_TICKET_SECRET:?JOIN_TICKET_SECRET is required}
+      JOIN_TICKET_AUDIENCE: ${JOIN_TICKET_AUDIENCE:-arena-game-server}
     networks:
       - game-network
     expose:

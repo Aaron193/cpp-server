@@ -14,6 +14,7 @@ export {
     yawToQuaternion,
 } from './coordinates'
 export { EngineFactory } from './rendering/EngineFactory'
+export * from './rendering/RenderQualityModule'
 export * from './networking/Handshake'
 export * from './networking/NetworkingModule'
 export * from './networking/Synchronization'

@@ -17,6 +17,8 @@ export async function registerGameServer(
     buildId: string,
     protocolVersion: number,
     mapId: string,
+    mapFormatVersion: number,
+    mapContentHash: string,
     mode: string,
     websocketUrl: string
 ): Promise<void> {
@@ -30,6 +32,8 @@ export async function registerGameServer(
         buildId,
         protocolVersion,
         mapId,
+        mapFormatVersion,
+        mapContentHash,
         mode,
         websocketUrl,
         maxPlayers,
@@ -51,6 +55,8 @@ export async function registerGameServer(
                 buildId: serverData.buildId,
                 protocolVersion: serverData.protocolVersion,
                 mapId: serverData.mapId,
+                mapFormatVersion: serverData.mapFormatVersion,
+                mapContentHash: serverData.mapContentHash,
                 mode: serverData.mode,
                 websocketUrl: serverData.websocketUrl,
                 maxPlayers: serverData.maxPlayers,
@@ -97,6 +103,8 @@ export async function getOnlineServers(): Promise<GameServerInfo[]> {
             buildId: gameServers.buildId,
             protocolVersion: gameServers.protocolVersion,
             mapId: gameServers.mapId,
+            mapFormatVersion: gameServers.mapFormatVersion,
+            mapContentHash: gameServers.mapContentHash,
             mode: gameServers.mode,
             websocketUrl: gameServers.websocketUrl,
             currentPlayers: gameServers.currentPlayers,
@@ -114,6 +122,22 @@ export async function getOnlineServers(): Promise<GameServerInfo[]> {
         .orderBy(gameServers.region, gameServers.currentPlayers)
 
     return servers.map(toGameServerInfo)
+}
+
+/** Fetches discovery-owned metadata for an authenticated join decision. */
+export async function getServerForJoin(id: string) {
+    const db = getDb()
+    const [server] = await db.select({
+        id: gameServers.id, buildId: gameServers.buildId,
+        protocolVersion: gameServers.protocolVersion, mapId: gameServers.mapId,
+        mapFormatVersion: gameServers.mapFormatVersion,
+        mapContentHash: gameServers.mapContentHash,
+        mode: gameServers.mode, websocketUrl: gameServers.websocketUrl,
+        currentPlayers: gameServers.currentPlayers,
+        maxPlayers: gameServers.maxPlayers, isOnline: gameServers.isOnline,
+        lastHeartbeat: gameServers.lastHeartbeat,
+    }).from(gameServers).where(eq(gameServers.id, id)).limit(1)
+    return server ?? null
 }
 
 /**

@@ -76,8 +76,10 @@ if(BUILD_TESTING)
         tests/CollisionLayersTests.cpp
         tests/MapPackageTests.cpp
         tests/ProtocolTests.cpp
+        tests/JoinTicketValidatorTests.cpp
         tests/CombatGeometryTests.cpp
         src/maps/MapPackage.cpp
+        src/security/JoinTicketValidator.cpp
     )
 
     target_include_directories(server_tests PRIVATE
@@ -100,6 +102,8 @@ if(BUILD_TESTING)
         add_executable(server_physics_tests
             tests/test_main.cpp
             tests/CharacterVirtualTests.cpp
+            tests/MovementCommandTraceTests.cpp
+            src/maps/MapPackage.cpp
             src/physics/PhysicsWorld.cpp
         )
         target_include_directories(server_physics_tests PRIVATE
@@ -109,6 +113,10 @@ if(BUILD_TESTING)
         target_link_libraries(server_physics_tests PRIVATE
             ${SERVER_JOLT_TARGET}
             glm::glm
+            nlohmann_json::nlohmann_json
+        )
+        target_compile_definitions(server_physics_tests PRIVATE
+            SERVER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
         )
         add_test(NAME server_physics_tests COMMAND server_physics_tests)
 
@@ -121,6 +129,7 @@ if(BUILD_TESTING)
             tests/ObservabilitySecurityTests.cpp
             src/GameServer.cpp
             src/ServerRegistration.cpp
+            src/security/JoinTicketValidator.cpp
             src/client/Client.cpp
             src/ecs/EntityManager.cpp
             src/maps/MapPackage.cpp
@@ -147,6 +156,7 @@ if(BUILD_TESTING)
             tests/ServerLoadBenchmark.cpp
             src/GameServer.cpp
             src/ServerRegistration.cpp
+            src/security/JoinTicketValidator.cpp
             src/client/Client.cpp
             src/ecs/EntityManager.cpp
             src/maps/MapPackage.cpp

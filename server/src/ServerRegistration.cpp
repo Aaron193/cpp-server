@@ -16,6 +16,8 @@ ServerRegistration::ServerRegistration(const std::string& webApiUrl,
                                        int protocolVersion,
                                        const std::string& mapId,
                                        const std::string& mode,
+                                       int mapFormatVersion,
+                                       const std::string& mapContentHash,
                                        const std::string& websocketUrl,
                                        const std::string& sharedSecret)
     : m_webApiUrl(webApiUrl),
@@ -27,6 +29,8 @@ ServerRegistration::ServerRegistration(const std::string& webApiUrl,
       m_buildId(buildId),
       m_protocolVersion(protocolVersion),
       m_mapId(mapId),
+      m_mapFormatVersion(mapFormatVersion),
+      m_mapContentHash(mapContentHash),
       m_mode(mode),
       m_websocketUrl(websocketUrl),
       m_sharedSecret(sharedSecret) {}
@@ -39,7 +43,8 @@ void ServerRegistration::registerServerAsync() {
         {"id", m_serverId}, {"host", m_host}, {"port", m_port},
         {"region", m_region}, {"maxPlayers", m_maxPlayers},
         {"buildId", m_buildId}, {"protocolVersion", m_protocolVersion},
-        {"mapId", m_mapId}, {"mode", m_mode},
+        {"mapId", m_mapId}, {"mapFormatVersion", m_mapFormatVersion},
+        {"mapContentHash", m_mapContentHash}, {"mode", m_mode},
         {"websocketUrl", m_websocketUrl}}.dump();
     std::cout << "[ServerRegistration] Registration payload: " << body
               << std::endl;

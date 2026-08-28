@@ -1,0 +1,522 @@
+{
+  "format": "cpp-server-map-debug",
+  "formatVersion": 2,
+  "mapId": "copper-yard",
+  "sourceNodes": {
+    "render": [
+      "Render_Bridge",
+      "Render_EastRamp",
+      "Render_EastWall",
+      "Render_Floor",
+      "Render_NorthWall",
+      "Render_SouthTower",
+      "Render_SouthWall",
+      "Render_TunnelEast",
+      "Render_TunnelRoof",
+      "Render_TunnelWest",
+      "Render_WestRamp",
+      "Render_WestWall"
+    ],
+    "collision": [
+      "Collision_Bridge",
+      "Collision_EastRamp",
+      "Collision_EastWall",
+      "Collision_Floor",
+      "Collision_NorthWall",
+      "Collision_SouthTower",
+      "Collision_SouthWall",
+      "Collision_TunnelEast",
+      "Collision_TunnelRoof",
+      "Collision_TunnelWest",
+      "Collision_WestRamp",
+      "Collision_WestWall"
+    ],
+    "spawns": [
+      "spawn-bridge-nw",
+      "spawn-bridge-se",
+      "spawn-ec",
+      "spawn-en",
+      "spawn-es",
+      "spawn-ne",
+      "spawn-nw",
+      "spawn-south-center",
+      "spawn-tunnel-n",
+      "spawn-wc",
+      "spawn-wn",
+      "spawn-ws"
+    ],
+    "markers": [
+      "marker-copper-bridge",
+      "marker-north-tunnel",
+      "marker-south-tower"
+    ],
+    "zones": [
+      "playable-yard",
+      "projectile-perimeter"
+    ],
+    "navigation": [
+      "nav-center",
+      "nav-north",
+      "nav-south"
+    ]
+  },
+  "render": {
+    "meshCount": 12,
+    "vertexCount": 92,
+    "triangleCount": 136,
+    "meshes": [
+      {
+        "name": "Render_Bridge",
+        "material": "CopperBridge",
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            -6.5,
+            3.5,
+            -4
+          ],
+          "max": [
+            6.5,
+            4.5,
+            4
+          ]
+        }
+      },
+      {
+        "name": "Render_EastRamp",
+        "material": "CopperBridge",
+        "vertices": 6,
+        "triangles": 8,
+        "bounds": {
+          "min": [
+            3.9999999999999982,
+            -4.440892098500626e-16,
+            -2.5000000000000004
+          ],
+          "max": [
+            16,
+            4,
+            2.5000000000000004
+          ]
+        }
+      },
+      {
+        "name": "Render_EastWall",
+        "material": "DarkBrick",
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            20,
+            0,
+            -33
+          ],
+          "max": [
+            21,
+            6,
+            33
+          ]
+        }
+      },
+      {
+        "name": "Render_Floor",
+        "material": "Sandstone",
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            -20,
+            -1,
+            -32
+          ],
+          "max": [
+            20,
+            0,
+            32
+          ]
+        }
+      },
+      {
+        "name": "Render_NorthWall",
+        "material": "OxidizedCopper",
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            -21,
+            0,
+            -33
+          ],
+          "max": [
+            21,
+            6,
+            -32
+          ]
+        }
+      },
+      {
+        "name": "Render_SouthTower",
+        "material": "OxidizedCopper",
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            -4,
+            0,
+            17
+          ],
+          "max": [
+            4,
+            5,
+            25
+          ]
+        }
+      },
+      {
+        "name": "Render_SouthWall",
+        "material": "OxidizedCopper",
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            -21,
+            0,
+            32
+          ],
+          "max": [
+            21,
+            6,
+            33
+          ]
+        }
+      },
+      {
+        "name": "Render_TunnelEast",
+        "material": "DarkBrick",
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            6,
+            0,
+            -26
+          ],
+          "max": [
+            7,
+            3,
+            -14
+          ]
+        }
+      },
+      {
+        "name": "Render_TunnelRoof",
+        "material": "DarkBrick",
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            -7,
+            2.5,
+            -26
+          ],
+          "max": [
+            7,
+            3.5,
+            -14
+          ]
+        }
+      },
+      {
+        "name": "Render_TunnelWest",
+        "material": "DarkBrick",
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            -7,
+            0,
+            -26
+          ],
+          "max": [
+            -6,
+            3,
+            -14
+          ]
+        }
+      },
+      {
+        "name": "Render_WestRamp",
+        "material": "CopperBridge",
+        "vertices": 6,
+        "triangles": 8,
+        "bounds": {
+          "min": [
+            -16,
+            -4.440892098500626e-16,
+            -2.5000000000000004
+          ],
+          "max": [
+            -3.9999999999999982,
+            4,
+            2.5000000000000004
+          ]
+        }
+      },
+      {
+        "name": "Render_WestWall",
+        "material": "DarkBrick",
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            -21,
+            0,
+            -33
+          ],
+          "max": [
+            -20,
+            6,
+            33
+          ]
+        }
+      }
+    ]
+  },
+  "collision": {
+    "meshCount": 12,
+    "vertexCount": 92,
+    "triangleCount": 136,
+    "meshes": [
+      {
+        "name": "Collision_Bridge",
+        "material": null,
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            -6.5,
+            3.5,
+            -4
+          ],
+          "max": [
+            6.5,
+            4.5,
+            4
+          ]
+        }
+      },
+      {
+        "name": "Collision_EastRamp",
+        "material": null,
+        "vertices": 6,
+        "triangles": 8,
+        "bounds": {
+          "min": [
+            3.9999999999999982,
+            -4.440892098500626e-16,
+            -2.5000000000000004
+          ],
+          "max": [
+            16,
+            4,
+            2.5000000000000004
+          ]
+        }
+      },
+      {
+        "name": "Collision_EastWall",
+        "material": null,
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            20,
+            0,
+            -33
+          ],
+          "max": [
+            21,
+            6,
+            33
+          ]
+        }
+      },
+      {
+        "name": "Collision_Floor",
+        "material": null,
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            -20,
+            -1,
+            -32
+          ],
+          "max": [
+            20,
+            0,
+            32
+          ]
+        }
+      },
+      {
+        "name": "Collision_NorthWall",
+        "material": null,
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            -21,
+            0,
+            -33
+          ],
+          "max": [
+            21,
+            6,
+            -32
+          ]
+        }
+      },
+      {
+        "name": "Collision_SouthTower",
+        "material": null,
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            -4,
+            0,
+            17
+          ],
+          "max": [
+            4,
+            5,
+            25
+          ]
+        }
+      },
+      {
+        "name": "Collision_SouthWall",
+        "material": null,
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            -21,
+            0,
+            32
+          ],
+          "max": [
+            21,
+            6,
+            33
+          ]
+        }
+      },
+      {
+        "name": "Collision_TunnelEast",
+        "material": null,
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            6,
+            0,
+            -26
+          ],
+          "max": [
+            7,
+            3,
+            -14
+          ]
+        }
+      },
+      {
+        "name": "Collision_TunnelRoof",
+        "material": null,
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            -7,
+            2.5,
+            -26
+          ],
+          "max": [
+            7,
+            3.5,
+            -14
+          ]
+        }
+      },
+      {
+        "name": "Collision_TunnelWest",
+        "material": null,
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            -7,
+            0,
+            -26
+          ],
+          "max": [
+            -6,
+            3,
+            -14
+          ]
+        }
+      },
+      {
+        "name": "Collision_WestRamp",
+        "material": null,
+        "vertices": 6,
+        "triangles": 8,
+        "bounds": {
+          "min": [
+            -16,
+            -4.440892098500626e-16,
+            -2.5000000000000004
+          ],
+          "max": [
+            -3.9999999999999982,
+            4,
+            2.5000000000000004
+          ]
+        }
+      },
+      {
+        "name": "Collision_WestWall",
+        "material": null,
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            -21,
+            0,
+            -33
+          ],
+          "max": [
+            -20,
+            6,
+            33
+          ]
+        }
+      }
+    ]
+  },
+  "audits": {
+    "boundsToleranceMeters": 0.01,
+    "finiteAndDegenerateTriangles": "pass",
+    "collisionTriangleBudget": "pass",
+    "spawnBoundsYawAndModeCoverage": "pass",
+    "navigationConnectivity": "pass",
+    "radarAspectAndLandmarks": "pass",
+    "renderCollisionBounds": "pass"
+  },
+  "validation": {
+    "errors": [],
+    "warnings": []
+  }
+}

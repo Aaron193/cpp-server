@@ -25,6 +25,8 @@ export interface GameServerInfo {
     buildId: string
     protocolVersion: number
     mapId: string
+    mapFormatVersion: number
+    mapContentHash: string
     mode: string
     websocketUrl: string
     currentPlayers: number

@@ -9,6 +9,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <unordered_map>
 
 #include "network/PeerTransport.hpp"
 #include "observability/ServerMetrics.hpp"
@@ -48,6 +49,7 @@ class Client {
     void queueRespawn(const protocol::Respawn& message);
     void queueScoreChange(const protocol::ScoreChange& message);
     void queueRoundTransition(const protocol::RoundTransition& message);
+    void queueActionResult(const protocol::ActionResult& message);
     void markInputProcessed(std::uint32_t sequence);
     void markInputDequeued();
 
@@ -56,7 +58,18 @@ class Client {
     bool closeHandled() const { return closeHandled_; }
     std::size_t pendingInputCount() const { return pendingInputs_; }
     std::size_t outgoingBytes() const { return outgoingBytes_; }
-    std::size_t outgoingMessageCount() const { return outgoing_.size(); }
+    std::size_t outgoingMessageCount() const {
+        return outgoing_.size() + (latestState_ ? 1U : 0U);
+    }
+    std::size_t transportBufferedBytes() const { return transport_->bufferedBytes(); }
+    std::uint64_t coalescedSnapshotCount() const { return coalescedSnapshots_; }
+    void resetReplicationBaseline();
+    static bool spatiallyRelevant(protocol::EntityKind kind,
+                                  float distanceSquared,
+                                  bool previouslyRelevant);
+    static bool relevanceRefreshDue(std::uint32_t clientId,
+                                    std::uint32_t snapshotSequence,
+                                    std::uint32_t period = 10U);
     std::optional<std::uint32_t> lastProcessedInputSequence() const {
         return lastProcessedInputSequence_;
     }
@@ -64,26 +77,38 @@ class Client {
    private:
     GameServer& m_gameServer;
     std::unique_ptr<PeerTransport> transport_;
-    std::vector<std::vector<std::uint8_t>> outgoing_;
+    std::deque<std::vector<std::uint8_t>> outgoing_;
+    std::optional<std::vector<std::uint8_t>> latestState_;
     std::size_t outgoingBytes_ = 0U;
     bool closing_ = false;
     bool closeHandled_ = false;
     std::optional<std::uint32_t> lastReceivedSequence_;
     std::optional<std::uint32_t> lastReceivedClientTick_;
+    std::optional<std::uint32_t> lastReceivedActionId_;
     std::optional<std::uint32_t> lastProcessedInputSequence_;
     std::size_t pendingInputs_ = 0;
     std::deque<double> inputBatchTimes_;
     std::deque<double> inputCommandTimes_;
     std::deque<double> chatTimes_;
+    std::deque<double> pingTimes_;
+    std::unordered_map<std::uint64_t, protocol::PublicEntityState> baseline_;
+    bool baselineInitialized_ = false;
+    std::uint32_t snapshotSequence_ = 0U;
+    std::uint32_t baselineRevision_ = 0U;
+    std::uint32_t matchRevision_ = 0U;
+    std::optional<protocol::MatchState> baselineMatch_;
+    std::uint64_t coalescedSnapshots_ = 0U;
 
     void handleHello(const protocol::Hello& hello);
     void handleInputBatch(const protocol::InputBatch& batch,
                           double monotonicSeconds);
     void handleChat(const protocol::Chat& chat, double monotonicSeconds);
+    void handlePing(const protocol::Ping& ping, double monotonicSeconds);
     void reject(protocol::RejectReason reason, std::string detail);
     void failProtocol(
         std::string_view reason, std::uint16_t code = 1002U,
         ClientMessageMetric metric = ClientMessageMetric::Rejected);
     void queue(std::vector<std::uint8_t> bytes);
+    void queueState(std::vector<std::uint8_t> bytes);
     static bool isNewer(std::uint32_t value, std::uint32_t previous);
 };

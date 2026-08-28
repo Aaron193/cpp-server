@@ -1,0 +1,28 @@
+{
+  "format": "cpp-server-phase0-fixture-lock",
+  "formatVersion": 1,
+  "policy": "Intentional protocol or map changes require regeneration, cross-language tests, review, then explicit lock update.",
+  "files": {
+    "protocol/schema.json": "7ac776dcd8493145b9c64596cf61e7177bd49b662333fd3043e9c6d873f9360b",
+    "protocol/fixtures/golden-fixtures.json": "6800117b42e18a64fd7b93c4c0ca638793e42ea56a93496942ac64b978872fe6",
+    "protocol/fixtures/golden-vectors.json": "ba127809addb1ea665ec6e243827947af38833037b645816e4914ad2c4b3900e",
+    "client/src/protocol/generated.ts": "f06ba730ea4e7f0bb72a92bbcec88aebda059539a385e386a722b28b66789c46",
+    "server/include/protocol/generated.hpp": "7159ee73e6751246393473aa4bd756d7f6e1319bb4dbbdd33d02fc172e613651",
+    "client/maps/graybox-arena.gltf": "ef10537bbf508a66e313829d06acff31660b628379786978678abda2dd0da845",
+    "client/public/maps/graybox-arena/manifest.json": "61f3fb5e4ede4bb7db03b3c06806c725e5b95a93a4e322049336fe40d54affaa",
+    "client/public/maps/graybox-arena/collision.bin": "2ced9dce30bae362af23b250de2bca6a6a1c135802f97a9f59fecd405ac7e374",
+    "client/public/maps/graybox-arena/scene.glb": "d80ebfba2713d5e6c83fc61ee42e12eac6af443cbc6954644fc69038aa61b3a3",
+    "client/public/maps/graybox-arena/debug-report.json": "28b972d327ab27c9733c8ca997a0055e2c002329e207d56e20cff97580a826c4",
+    "client/public/maps/graybox-arena/gameplay.json": "de9749ebcd1fa5d0026de97572381c09088b5788f83a2f82cf29685d0e4f127d",
+    "client/public/maps/graybox-arena/radar.svg": "89dae18f5d9b640ff09d4fe60a1e57372dbee62cf753692cf3d4c57700ad1cd0",
+    "client/maps/copper-yard.gltf": "45a24f9fc11b173139004872d07e3ebe835d26f44d4c2a8641de6089ac487f64",
+    "client/public/maps/copper-yard/manifest.json": "1e4df4bc8cb7ef74de0a52e9edd79d53385d466005d86da0e6ea6b9787eec100",
+    "client/public/maps/copper-yard/scene.glb": "a5e975dd97a24c922195dd8701aad6dd535740318672503af0fed6255c00fbf6",
+    "client/public/maps/copper-yard/collision.bin": "b835666ad6e4dff87d9b0c9afaa8b4b38e94a673ad625e3970812f59255364d3",
+    "client/public/maps/copper-yard/gameplay.json": "2f318e320f713b522688a35ee6e57179eb05639bff2bed48e5d731ab018cbee6",
+    "client/public/maps/copper-yard/navigation.json": "ec104bc008d2ca69cdc40d6c4043bacaffb37d7e0e15e11e8e921ea7d44420a7",
+    "client/public/maps/copper-yard/radar.svg": "5aa34256fd8d0b6511d73676febd08cd262073cb1a92caea88b82a2930e8fcaa",
+    "client/public/maps/copper-yard/debug-report.json": "0d7b570c9a4a5b039bcb51b93e75030fbeffa57708ce3acad70880e052474a70",
+    "fixtures/movement/phase0-command-trace.json": "35c5db310630e5c78973c02f6a86313dfbf6a083adf2b6ac794a61d77111e346"
+  }
+}

@@ -18,6 +18,7 @@ struct FakeState {
     bool closed = false;
     std::uint16_t closeCode = 0;
     std::size_t closeCount = 0U;
+    std::size_t bufferedBytes = 0U;
 };
 
 class FakeTransport final : public PeerTransport {
@@ -32,6 +33,7 @@ class FakeTransport final : public PeerTransport {
         state_->closeCode = code;
         ++state_->closeCount;
     }
+    std::size_t bufferedBytes() const override { return state_->bufferedBytes; }
    private:
     std::shared_ptr<FakeState> state_;
 };
@@ -55,6 +57,70 @@ std::string bytes(const std::vector<std::uint8_t>& value) {
     return {reinterpret_cast<const char*>(value.data()), value.size()};
 }
 
+protocol::DecodedEnvelope decoded(const std::vector<std::uint8_t>& value);
+void welcome(Session& session);
+
+TEST_CASE(relevance_uses_spatial_hysteresis_for_props_and_global_players) {
+    EXPECT_TRUE(Client::spatiallyRelevant(protocol::EntityKind::Player,
+                                          1000000.0F, false));
+    EXPECT_TRUE(Client::spatiallyRelevant(protocol::EntityKind::Prop,
+                                          49.0F * 49.0F, false));
+    EXPECT_TRUE(!Client::spatiallyRelevant(protocol::EntityKind::Prop,
+                                           51.0F * 51.0F, false));
+    EXPECT_TRUE(Client::spatiallyRelevant(protocol::EntityKind::Prop,
+                                          54.0F * 54.0F, true));
+    EXPECT_TRUE(!Client::spatiallyRelevant(protocol::EntityKind::Prop,
+                                           56.0F * 56.0F, true));
+    EXPECT_TRUE(Client::relevanceRefreshDue(3U, 7U));
+    EXPECT_TRUE(!Client::relevanceRefreshDue(4U, 7U));
+}
+
+TEST_CASE(unchanged_entities_emit_no_delta_updates) {
+    GameServer server;
+    Session first(server, 1U); welcome(first);
+    Session second(server, 2U); welcome(second);
+    first.client->sendBytes(); first.wire->sent.clear();
+    first.client->writeGameState();
+    first.client->sendBytes();
+    const auto& initial = std::get<protocol::SnapshotDelta>(
+        decoded(first.wire->sent.back()).message);
+    EXPECT_TRUE(initial.baselineReset);
+    EXPECT_EQ(initial.created.size(), 1U);
+    first.wire->sent.clear();
+    first.client->writeGameState();
+    first.client->sendBytes();
+    const auto& unchanged = std::get<protocol::SnapshotDelta>(
+        decoded(first.wire->sent.back()).message);
+    EXPECT_TRUE(!unchanged.baselineReset);
+    EXPECT_TRUE(unchanged.created.empty());
+    EXPECT_TRUE(unchanged.updated.empty());
+    EXPECT_TRUE(unchanged.removed.empty());
+}
+
+TEST_CASE(slow_client_coalesces_state_but_preserves_reliable_order_and_bounds) {
+    GameServer server;
+    Session session(server, 1U); welcome(session);
+    session.wire->sent.clear();
+    session.wire->bufferedBytes = 200U * 1024U;
+    session.client->queueChat({std::nullopt, protocol::ChatChannel::System, "one"});
+    session.client->queueChat({std::nullopt, protocol::ChatChannel::System, "two"});
+    for (int tick = 0; tick < 30; ++tick) server.simulateOneTick();
+    session.client->sendBytes();
+    EXPECT_EQ(session.wire->sent.size(), 2U);
+    EXPECT_EQ(std::get<protocol::Chat>(decoded(session.wire->sent[0]).message).text,
+              std::string("one"));
+    EXPECT_EQ(std::get<protocol::Chat>(decoded(session.wire->sent[1]).message).text,
+              std::string("two"));
+    EXPECT_TRUE(session.client->coalescedSnapshotCount() > 0U);
+    EXPECT_TRUE(session.client->outgoingBytes() < 256U * 1024U);
+    session.wire->bufferedBytes = 0U;
+    session.client->sendBytes();
+    EXPECT_EQ(session.wire->sent.size(), 3U);
+    const auto& latest = std::get<protocol::SnapshotDelta>(
+        decoded(session.wire->sent.back()).message);
+    EXPECT_TRUE(latest.baselineReset);
+}
+
 protocol::Hello validHello(const GameServer& server) {
     return {SessionConfiguration::ProtocolVersion,
             server.m_sessionConfiguration.buildId,
@@ -73,7 +139,7 @@ void welcome(Session& session) {
 
 protocol::InputCommand command(std::uint32_t sequence, std::uint32_t tick,
                                float x = 0.0F, float y = 0.0F) {
-    return {sequence, tick, x, y, 0U, 0.0F, 0.0F,
+    return {sequence, tick, x, y, 0U, 0U, 0U, 0.0F, 0.0F,
             protocol::Weapon::Rifle};
 }
 }  // namespace
@@ -105,10 +171,8 @@ TEST_CASE(session_welcomes_valid_hello_with_configuration) {
     EXPECT_EQ(spawnMessage.messageType,
               static_cast<std::uint8_t>(protocol::MessageType::Spawn));
     const auto& spawn = std::get<protocol::Spawn>(spawnMessage.message);
-    EXPECT_EQ(spawn.entity.entityId,
-              static_cast<std::uint32_t>(session.client->m_entity));
-    EXPECT_TRUE(spawn.entity.health.has_value());
-    EXPECT_TRUE(spawn.entity.weaponState.has_value());
+    EXPECT_EQ(spawn.entity.handle.slot,
+              server.makeEntityHandle(session.client->m_entity).slot);
     EXPECT_EQ(spawn.entity.equippedWeapon, protocol::Weapon::Rifle);
     const auto& score = std::get<protocol::ScoreChange>(
         decoded(session.wire->sent[3]).message);
@@ -117,6 +181,38 @@ TEST_CASE(session_welcomes_valid_hello_with_configuration) {
     EXPECT_EQ(score.score, 0);
     EXPECT_EQ(score.kills, 0U);
     EXPECT_EQ(score.deaths, 0U);
+}
+
+TEST_CASE(welcomed_idle_client_receives_correlated_monotonic_pong) {
+    GameServer server;
+    Session session(server, 7U);
+    welcome(session);
+    session.wire->sent.clear();
+    server.m_currentTick = 0xFFFFFFFEULL;
+    const auto packet = protocol::encode(protocol::Ping{0xFFFFFFFFU});
+    session.client->onMessageAt(bytes(packet), 4294967.280);
+    session.client->sendBytes();
+    EXPECT_EQ(session.wire->sent.size(), 1U);
+    const auto envelope = decoded(session.wire->sent.front());
+    EXPECT_EQ(envelope.messageType,
+              static_cast<std::uint8_t>(protocol::MessageType::Pong));
+    const auto& pong = std::get<protocol::Pong>(envelope.message);
+    EXPECT_EQ(pong.pingId, 0xFFFFFFFFU);
+    EXPECT_EQ(pong.serverTick, 0xFFFFFFFEU);
+    EXPECT_EQ(pong.serverMonotonicMs, 0xFFFFFFF0U);
+    EXPECT_EQ(session.client->pendingInputCount(), 0U);
+}
+
+TEST_CASE(client_ping_rate_is_bounded) {
+    GameServer server;
+    Session session(server, 7U);
+    welcome(session);
+    for (std::uint32_t id = 1U; id <= 9U; ++id) {
+        const auto packet = protocol::encode(protocol::Ping{id});
+        session.client->onMessageAt(bytes(packet), 2.0 + id * 0.01);
+    }
+    EXPECT_TRUE(session.wire->closed);
+    EXPECT_EQ(session.wire->closeCode, 1008U);
 }
 
 TEST_CASE(spawn_is_ordered_and_matches_snapshot_with_per_recipient_privacy) {
@@ -132,17 +228,15 @@ TEST_CASE(spawn_is_ordered_and_matches_snapshot_with_per_recipient_privacy) {
               static_cast<std::uint8_t>(protocol::MessageType::Configuration));
     const auto ownerEnvelope = decoded(second.wire->sent[2]);
     const auto& ownerSpawn = std::get<protocol::Spawn>(ownerEnvelope.message);
-    EXPECT_TRUE(ownerSpawn.entity.health.has_value());
-    EXPECT_TRUE(ownerSpawn.entity.weaponState.has_value());
     EXPECT_EQ(ownerSpawn.entity.equippedWeapon, protocol::Weapon::Rifle);
 
     first.client->sendBytes();
     EXPECT_EQ(first.wire->sent.size(), 1U);
     const auto publicEnvelope = decoded(first.wire->sent[0]);
     const auto& publicSpawn = std::get<protocol::Spawn>(publicEnvelope.message);
-    EXPECT_EQ(publicSpawn.entity.entityId, ownerSpawn.entity.entityId);
-    EXPECT_TRUE(!publicSpawn.entity.health.has_value());
-    EXPECT_TRUE(!publicSpawn.entity.weaponState.has_value());
+    EXPECT_EQ(publicSpawn.entity.handle.slot, ownerSpawn.entity.handle.slot);
+    EXPECT_EQ(publicSpawn.entity.handle.generation,
+              ownerSpawn.entity.handle.generation);
     EXPECT_EQ(publicSpawn.entity.equippedWeapon, protocol::Weapon::Rifle);
     const auto firstRecord = server.makeEntityRecord(
         first.client->m_entity, first.client->m_entity);
@@ -183,20 +277,21 @@ TEST_CASE(spawn_is_ordered_and_matches_snapshot_with_per_recipient_privacy) {
     first.client->sendBytes();
     const auto snapshotEnvelope = decoded(first.wire->sent.back());
     const auto& snapshot =
-        std::get<protocol::Snapshot>(snapshotEnvelope.message);
+        std::get<protocol::SnapshotDelta>(snapshotEnvelope.message);
     const auto currentAuthoritative = server.makeEntityRecord(
         second.client->m_entity, first.client->m_entity);
     bool matched = false;
-    for (const auto& record : snapshot.entities) {
-        if (record.entityId != publicSpawn.entity.entityId) continue;
+    for (const auto& created : snapshot.created) {
+        const auto& record = created.state;
+        if (record.handle.slot != publicSpawn.entity.handle.slot ||
+            record.handle.generation != publicSpawn.entity.handle.generation)
+            continue;
         matched = true;
         EXPECT_NEAR(record.position.x, currentAuthoritative.position.x, 0.0001F);
         EXPECT_NEAR(record.position.y, currentAuthoritative.position.y, 0.0001F);
         EXPECT_NEAR(record.position.z, currentAuthoritative.position.z, 0.0001F);
         EXPECT_EQ(record.kind, publicSpawn.entity.kind);
         EXPECT_EQ(record.equippedWeapon, publicSpawn.entity.equippedWeapon);
-        EXPECT_TRUE(!record.health.has_value());
-        EXPECT_TRUE(!record.weaponState.has_value());
     }
     EXPECT_TRUE(matched);
 }
@@ -394,7 +489,7 @@ TEST_CASE(client_tick_uses_first_snapshot_server_tick_domain_and_clamps_safely) 
     session.wire->sent.clear();
     for (int tick = 0; tick < 3; ++tick) server.simulateOneTick();
     session.client->sendBytes();
-    const auto& snapshot = std::get<protocol::Snapshot>(
+    const auto& snapshot = std::get<protocol::SnapshotDelta>(
         decoded(session.wire->sent.back()).message);
     EXPECT_EQ(snapshot.serverTick, 3U);
     EXPECT_EQ(server.acceptedHistoryTick(snapshot.serverTick), 3U);
@@ -441,7 +536,28 @@ TEST_CASE(session_rejects_invalid_axes_angles_buttons_and_nonmonotonic_input) {
     EXPECT_EQ(session.wire->closeCode, 1008U);
 }
 
-TEST_CASE(session_rejects_client_authored_damage_messages) {
+TEST_CASE(session_requires_monotonic_action_ids_bound_to_action_buttons) {
+    GameServer server;
+    Session missing(server, 1U); welcome(missing);
+    auto noId = command(1U, 1U);
+    noId.buttonFlags = 1U << 1U;
+    missing.client->onMessageAt(bytes(protocol::encode(protocol::InputBatch{{noId}})), 2.0);
+    EXPECT_TRUE(missing.wire->closed);
+
+    Session duplicate(server, 2U); welcome(duplicate);
+    auto first = command(1U, 1U);
+    first.buttonFlags = 1U << 1U;
+    first.fireActionId = 55U;
+    duplicate.client->onMessageAt(bytes(protocol::encode(protocol::InputBatch{{first}})), 2.0);
+    EXPECT_TRUE(!duplicate.wire->closed);
+    auto second = command(2U, 2U);
+    second.buttonFlags = 1U << 2U;
+    second.reloadActionId = 55U;
+    duplicate.client->onMessageAt(bytes(protocol::encode(protocol::InputBatch{{second}})), 2.1);
+    EXPECT_TRUE(duplicate.wire->closed);
+}
+
+TEST_CASE(session_rejects_client_authored_authority_and_clock_messages) {
     GameServer server;
     Session session(server, 1U); welcome(session);
     const auto spoof = protocol::encode(protocol::Damage{
@@ -450,6 +566,12 @@ TEST_CASE(session_rejects_client_authored_damage_messages) {
     session.client->onMessageAt(bytes(spoof), 2.0);
     EXPECT_TRUE(session.wire->closed);
     EXPECT_EQ(session.wire->closeCode, 1002U);
+
+    Session clockSpoof(server, 2U); welcome(clockSpoof);
+    const auto pong = protocol::encode(protocol::Pong{1U, 2U, 3U});
+    clockSpoof.client->onMessageAt(bytes(pong), 2.0);
+    EXPECT_TRUE(clockSpoof.wire->closed);
+    EXPECT_EQ(clockSpoof.wire->closeCode, 1002U);
 }
 
 TEST_CASE(protocol_close_is_requested_once_and_subsequent_hello_still_works) {
@@ -486,22 +608,14 @@ TEST_CASE(snapshots_include_all_players_but_only_local_private_state) {
     EXPECT_EQ(first.wire->sent.size(), 1U);
     const auto snapshotEnvelope = decoded(first.wire->sent[0]);
     const auto& snapshot =
-        std::get<protocol::Snapshot>(snapshotEnvelope.message);
-    EXPECT_EQ(snapshot.entities.size(), 2U);
-    std::size_t privateRecords = 0U;
-    for (const auto& entity : snapshot.entities) {
-        if (entity.entityId == static_cast<std::uint32_t>(first.client->m_entity)) {
-            EXPECT_EQ(entity.equippedWeapon, protocol::Weapon::Rifle);
-            EXPECT_TRUE(entity.health.has_value());
-            EXPECT_TRUE(entity.weaponState.has_value());
-            ++privateRecords;
-        } else {
-            EXPECT_EQ(entity.equippedWeapon, protocol::Weapon::Shotgun);
-            EXPECT_TRUE(!entity.health.has_value());
-            EXPECT_TRUE(!entity.weaponState.has_value());
-        }
-    }
-    EXPECT_EQ(privateRecords, 1U);
+        std::get<protocol::SnapshotDelta>(snapshotEnvelope.message);
+    EXPECT_EQ(snapshot.created.size(), 1U);
+    EXPECT_EQ(snapshot.local.handle.slot,
+              server.makeEntityHandle(first.client->m_entity).slot);
+    EXPECT_EQ(snapshot.local.weaponState.selected, protocol::Weapon::Rifle);
+    EXPECT_TRUE(snapshot.local.health > 0U);
+    EXPECT_EQ(snapshot.created[0].state.equippedWeapon,
+              protocol::Weapon::Shotgun);
 }
 
 TEST_CASE(disconnect_and_reconnect_remove_session_owned_entity_state) {
@@ -524,7 +638,10 @@ TEST_CASE(disconnect_and_reconnect_remove_session_owned_entity_state) {
         const auto removeEnvelope = decoded(observer.wire->sent[0]);
         const auto& remove =
             std::get<protocol::Remove>(removeEnvelope.message);
-        EXPECT_EQ(remove.entityId, static_cast<std::uint32_t>(disconnected));
+        EXPECT_EQ(remove.handle.slot,
+                  server.makeEntityHandle(disconnected).slot);
+        EXPECT_EQ(remove.handle.generation,
+                  server.makeEntityHandle(disconnected).generation);
         EXPECT_EQ(remove.reason, protocol::RemoveReason::Disconnected);
         server.simulateOneTick();
         EXPECT_TRUE(!server.m_entityManager.getRegistry().valid(disconnected));
@@ -561,11 +678,11 @@ TEST_CASE(reliable_spawn_remove_and_chat_apis_use_generated_messages) {
     GameServer server;
     Session session(server, 1U); welcome(session);
     session.wire->sent.clear();
-    protocol::EntityRecord entity{};
-    entity.entityId = 42U;
+    protocol::PublicEntityState entity{};
+    entity.handle = {42U, 3U};
     entity.kind = protocol::EntityKind::Prop;
     server.broadcastSpawn({1U, entity});
-    server.broadcastRemove({2U, 42U, protocol::RemoveReason::Destroyed});
+    server.broadcastRemove({2U, {42U, 3U}, protocol::RemoveReason::Destroyed});
     server.broadcastChat({std::nullopt, protocol::ChatChannel::System, "ready"});
     session.client->sendBytes();
     EXPECT_EQ(session.wire->sent.size(), 3U);
@@ -661,6 +778,7 @@ TEST_CASE(accepted_shot_confirmation_is_broadcast_with_owner_correlation) {
     input.dirtyClick = true;
     input.clientTick = 1U;
     input.inputSequence = 123U;
+    input.fireActionId = 456U;
     server.queueValidatedInput(shooter.client->m_entity, input);
     server.simulateOneTick();
     shooter.client->sendBytes();
@@ -674,11 +792,18 @@ TEST_CASE(accepted_shot_confirmation_is_broadcast_with_owner_correlation) {
     EXPECT_EQ(ownerConfirmation.shooterId,
               static_cast<std::uint32_t>(shooter.client->m_entity));
     EXPECT_EQ(ownerConfirmation.inputSequence, 123U);
+    EXPECT_EQ(ownerConfirmation.actionId, 456U);
     EXPECT_EQ(remoteConfirmation.shooterId, ownerConfirmation.shooterId);
     EXPECT_EQ(remoteConfirmation.shotId, ownerConfirmation.shotId);
     EXPECT_EQ(remoteConfirmation.inputSequence, 123U);
     EXPECT_EQ(ownerConfirmation.weapon, protocol::Weapon::Rifle);
     EXPECT_EQ(remoteConfirmation.weapon, protocol::Weapon::Rifle);
+    EXPECT_TRUE(shooter.wire->sent.size() >= 2U);
+    const auto& action = std::get<protocol::ActionResult>(
+        decoded(shooter.wire->sent[1]).message);
+    EXPECT_TRUE(action.accepted);
+    EXPECT_EQ(action.actionId, 456U);
+    EXPECT_EQ(action.reason, protocol::ActionRejectReason::None);
 }
 
 TEST_CASE(round_reset_preserves_client_owned_entity_ids) {

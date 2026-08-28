@@ -1,0 +1,50 @@
+{
+  "format": "cpp-server-movement-trace",
+  "formatVersion": 1,
+  "name": "phase7-copper-yard-parity",
+  "fixedDeltaSeconds": 0.016666666666666666,
+  "map": {
+    "mapId": "copper-yard",
+    "collisionAsset": "client/public/maps/copper-yard/collision.bin",
+    "contentHash": "sha256:5d0c9977e32841521f84c940f32ea07583b297aa90e8ed20afdf56978b7df42c"
+  },
+  "spawn": [-15.0, 0.1, -27.0],
+  "tuning": {
+    "capsuleRadius": 0.42,
+    "capsuleHalfHeight": 0.48,
+    "eyeHeight": 1.62,
+    "groundSpeed": 7.5,
+    "groundAcceleration": 42.0,
+    "airAcceleration": 12.0,
+    "airControl": 0.45,
+    "jumpSpeed": 6.4,
+    "gravity": 20.0,
+    "terminalVelocity": 35.0,
+    "maxSlopeRadians": 0.78539816339,
+    "stepUpHeight": 0.42,
+    "stickToFloorDistance": 0.5
+  },
+  "segments": [
+    { "ticks": 60, "forward": 0.0, "right": 0.0, "jumpAt": [], "yaw": 2.6 },
+    { "ticks": 75, "forward": 1.0, "right": 0.0, "jumpAt": [20], "yaw": 2.6 },
+    { "ticks": 45, "forward": 0.6, "right": -0.8, "jumpAt": [], "yaw": 1.8 },
+    { "ticks": 30, "forward": 0.0, "right": 0.0, "jumpAt": [0], "yaw": 1.8 },
+    { "ticks": 60, "forward": -1.0, "right": 0.25, "jumpAt": [], "yaw": -0.35 },
+    { "ticks": 30, "forward": 0.0, "right": 0.0, "jumpAt": [], "yaw": -0.35 }
+  ],
+  "checkpointTicks": [60, 135, 180, 210, 270, 300],
+  "replayResetTicks": [135, 270],
+  "referenceCheckpoints": [
+    { "tick": 60, "position": [-15.0, 0.0, -27.0], "velocity": [0.0, -0.33333334, 0.0], "grounded": true },
+    { "tick": 135, "position": [-10.31434917, 0.0, -19.40567589], "velocity": [3.86626029, -0.33333334, 6.42666578], "grounded": true },
+    { "tick": 180, "position": [-7.44000673, 0.0, -21.60857391], "velocity": [5.74552679, -0.33333334, -4.82067633], "grounded": true },
+    { "tick": 210, "position": [-7.44000673, 0.61666638, -23.01641464], "velocity": [0.0, -3.60000038, -1.51067805], "grounded": false },
+    { "tick": 270, "position": [-7.44000673, 0.0, -18.30613518], "velocity": [4.2036829, -0.33333334, 6.21120358], "grounded": true },
+    { "tick": 300, "position": [-7.44000673, 0.0, -17.89797401], "velocity": [0.0, -0.33333334, 0.0], "grounded": true }
+  ],
+  "comparisonTolerance": {
+    "positionMeters": 0.35,
+    "velocityMetersPerSecond": 0.5,
+    "groundedMustMatch": true
+  }
+}

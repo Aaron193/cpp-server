@@ -75,7 +75,7 @@ describe('generated cross-language protocol', () => {
 
         const validBatch: Message = {
             type: MessageType.InputBatch,
-            payload: { commands: [{ sequence: 1, clientTick: 2, moveX: 0, moveY: 0, buttonFlags: 0, yaw: 0, pitch: 0, selectedWeapon: Weapon.Rifle }] },
+            payload: { commands: [{ sequence: 1, clientTick: 2, moveX: 0, moveY: 0, buttonFlags: 0, fireActionId: 0, reloadActionId: 0, yaw: 0, pitch: 0, selectedWeapon: Weapon.Rifle }] },
         }
         const nonFinite = encodeMessage(validBatch).slice()
         nonFinite.set([0, 0, 0xc0, 0x7f], 13)
@@ -128,5 +128,18 @@ describe('generated cross-language protocol', () => {
         const shot = decodeEnvelope(fromHex(vectors[6]!.expectedHex))
         if (!shot.known || shot.message.type !== MessageType.ShotConfirmed) throw new Error('wrong fixture')
         expect(shot.message.payload).toMatchObject({ shooterId: 42, shotId: 123, weapon: Weapon.Shotgun })
+        const action = decodeEnvelope(fromHex(vectors.find((fixture) => fixture.message === 'ActionResult')!.expectedHex))
+        if (!action.known || action.message.type !== MessageType.ActionResult) throw new Error('wrong fixture')
+        expect(action.message.payload).toMatchObject({ actionId: 78, accepted: false, reason: 1, authoritativeMagazineAmmo: 18 })
+    })
+
+    it('carries bounded wrapping ping/pong clock anchors', () => {
+        const ping = decodeEnvelope(fromHex(vectors.find((fixture) => fixture.message === 'Ping')!.expectedHex))
+        if (!ping.known || ping.message.type !== MessageType.Ping) throw new Error('wrong fixture')
+        expect(ping.message.payload.pingId).toBe(0xffffffff)
+        const pong = decodeEnvelope(fromHex(vectors.find((fixture) => fixture.message === 'Pong')!.expectedHex))
+        if (!pong.known || pong.message.type !== MessageType.Pong) throw new Error('wrong fixture')
+        expect(pong.message.payload).toEqual({ pingId: 0xffffffff, serverTick: 0xfffffffe, serverMonotonicMs: 0xfffffff0 })
+        expect(() => decodeEnvelope(Uint8Array.from([MessageType.Pong, 11, 0, ...new Array(11).fill(0)]))).toThrow(ProtocolError)
     })
 })

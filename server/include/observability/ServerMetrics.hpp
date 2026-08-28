@@ -78,6 +78,8 @@ struct ServerMetricsSnapshot {
     std::size_t pendingClientInputHighWater = 0U;
     std::size_t outboundQueueBytesHighWater = 0U;
     std::size_t outboundQueueMessagesHighWater = 0U;
+    std::size_t transportBufferedBytesHighWater = 0U;
+    std::uint64_t coalescedSnapshots = 0U;
     std::uint64_t snapshots = 0U;
     std::uint64_t reliableEvents = 0U;
     std::uint64_t inboundMessages = 0U;
@@ -123,6 +125,10 @@ class ServerMetrics {
         outboundQueueBytesHighWater =
             std::max(outboundQueueBytesHighWater, bytes);
     }
+    void observeTransportBuffered(std::size_t bytes) {
+        transportBufferedBytesHighWater =
+            std::max(transportBufferedBytesHighWater, bytes);
+    }
 
     ServerMetricsSnapshot snapshot(std::size_t players,
                                    std::uint64_t shotsFired,
@@ -143,6 +149,8 @@ class ServerMetrics {
         value.pendingClientInputHighWater = pendingClientInputHighWater;
         value.outboundQueueBytesHighWater = outboundQueueBytesHighWater;
         value.outboundQueueMessagesHighWater = outboundQueueMessagesHighWater;
+        value.transportBufferedBytesHighWater = transportBufferedBytesHighWater;
+        value.coalescedSnapshots = coalescedSnapshots;
         value.snapshots = snapshots;
         value.reliableEvents = reliableEvents;
         value.inboundMessages = inboundMessages;
@@ -173,6 +181,8 @@ class ServerMetrics {
     std::size_t pendingClientInputHighWater = 0U;
     std::size_t outboundQueueBytesHighWater = 0U;
     std::size_t outboundQueueMessagesHighWater = 0U;
+    std::size_t transportBufferedBytesHighWater = 0U;
+    std::uint64_t coalescedSnapshots = 0U;
     std::uint64_t snapshots = 0U;
     std::uint64_t reliableEvents = 0U;
     std::uint64_t inboundMessages = 0U;

@@ -1,41 +1,51 @@
 export type MapVec3 = readonly [number, number, number]
-
+export interface ClientMapSpawn { readonly id: string; readonly position: MapVec3; readonly yaw: number; readonly modes: readonly string[]; readonly team: string | null; readonly weight: number; readonly clearanceRadius: number }
+export interface ClientMapGameplay { readonly spawnPoints: readonly ClientMapSpawn[]; readonly markers: readonly { readonly id: string; readonly type: string; readonly position: MapVec3 }[]; readonly zones: readonly { readonly id: string; readonly type: string; readonly min: MapVec3; readonly max: MapVec3 }[] }
 export interface ClientMapManifest {
-    readonly format: 'cpp-server-map'
-    readonly formatVersion: 1
-    readonly mapId: string
-    readonly contentHash: string
-    readonly coordinateSystem: {
-        readonly handedness: 'right'
-        readonly upAxis: 'Y'
-        readonly units: 'meters'
-    }
+    readonly format: 'cpp-server-map'; readonly formatVersion: 2; readonly mapId: string; readonly contentHash: string
+    readonly coordinateSystem: { readonly handedness: 'right'; readonly upAxis: 'Y'; readonly units: 'meters' }
     readonly worldBounds: { readonly min: MapVec3; readonly max: MapVec3 }
-    readonly renderAsset: string
-    readonly collisionAsset: string
-    readonly spawnPoints: readonly { readonly id: string; readonly position: MapVec3; readonly yaw: number }[]
+    readonly assets: { readonly render: string; readonly collision: string; readonly gameplay: string | null; readonly navigation: string | null; readonly radar: string | null; readonly debug: string | null }
+    readonly assetHashes: Readonly<Record<string, string>>
+    readonly environment: { readonly clearColor: MapVec3; readonly exposure: number; readonly sunDirection: MapVec3; readonly shadowDistance: number }
+    readonly policy: { readonly stepSmoothingMax: number; readonly audioDistanceScale: number; readonly radarNorthYaw: number }
 }
 
-function vec3(value: unknown): value is MapVec3 {
-    return Array.isArray(value) && value.length === 3 && value.every((entry) => typeof entry === 'number' && Number.isFinite(entry))
+const HASH = /^sha256:[a-f0-9]{64}$/, ID = /^[a-z][a-z0-9-]{0,63}$/, ASSET = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/
+function object(value: unknown, label: string): Record<string, any> { if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new TypeError(`${label} must be an object`); return value as Record<string, any> }
+function exact(value: Record<string, any>, keys: readonly string[], label: string): void { const expected = new Set(keys); for (const key of Object.keys(value)) if (!expected.has(key)) throw new TypeError(`${label} has unsupported property "${key}"`); for (const key of keys) if (!(key in value)) throw new TypeError(`${label} is missing "${key}"`) }
+function finite(value: unknown, label: string, min = -100000, max = 100000): number { if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) throw new TypeError(`${label} is outside its finite range`); return value }
+function vec3(value: unknown, label: string, min = -100000, max = 100000): MapVec3 { if (!Array.isArray(value) || value.length !== 3) throw new TypeError(`${label} must be a three-number array`); return [finite(value[0], label, min, max), finite(value[1], label, min, max), finite(value[2], label, min, max)] }
+function asset(value: unknown, label: string, nullable = false): string | null { if (nullable && value === null) return null; if (typeof value !== 'string' || !ASSET.test(value) || value.includes('..')) throw new TypeError(`${label} is invalid`); return value }
+function coordinates(value: unknown): ClientMapManifest['coordinateSystem'] { const result = object(value, 'coordinateSystem'); exact(result, ['handedness', 'upAxis', 'units'], 'coordinateSystem'); if (result.handedness !== 'right' || result.upAxis !== 'Y' || result.units !== 'meters') throw new TypeError('Unsupported map coordinate system'); return result as ClientMapManifest['coordinateSystem'] }
+function bounds(value: unknown): ClientMapManifest['worldBounds'] { const result = object(value, 'worldBounds'); exact(result, ['min', 'max'], 'worldBounds'); const min = vec3(result.min, 'worldBounds.min'), max = vec3(result.max, 'worldBounds.max'); if (min.some((entry, axis) => entry >= max[axis])) throw new TypeError('Map world bounds are inverted'); return { min, max } }
+
+export function parseMapGameplay(value: unknown, manifest: ClientMapManifest): ClientMapGameplay {
+    const root = object(value, 'gameplay metadata'); exact(root, ['format', 'formatVersion', 'mapId', 'spawnPoints', 'markers', 'zones'], 'gameplay metadata')
+    if (root.format !== 'cpp-server-map-gameplay' || root.formatVersion !== 2 || root.mapId !== manifest.mapId) throw new TypeError('Unsupported or mismatched gameplay metadata')
+    if (!Array.isArray(root.spawnPoints) || root.spawnPoints.length < 12 || root.spawnPoints.length > 4096) throw new TypeError('Invalid map spawn metadata count')
+    const inside = (point: MapVec3): boolean => point.every((entry, axis) => entry >= manifest.worldBounds.min[axis] && entry <= manifest.worldBounds.max[axis])
+    const spawnPoints = root.spawnPoints.map((raw: unknown, index: number): ClientMapSpawn => { const item = object(raw, `spawn[${index}]`); exact(item, ['id', 'position', 'yaw', 'modes', 'team', 'weight', 'clearanceRadius'], `spawn[${index}]`); const position = vec3(item.position, `spawn[${index}].position`); if (!ID.test(item.id) || !inside(position) || !Array.isArray(item.modes) || item.modes.length === 0 || item.modes.length > 16 || item.modes.some((mode: unknown) => typeof mode !== 'string' || !ID.test(mode)) || (item.team !== null && (typeof item.team !== 'string' || !ID.test(item.team)))) throw new TypeError(`Invalid spawn[${index}]`); return { id: item.id, position, yaw: finite(item.yaw, `spawn[${index}].yaw`, -Math.PI * 2, Math.PI * 2), modes: [...item.modes], team: item.team, weight: finite(item.weight, `spawn[${index}].weight`, 0.0001, 100), clearanceRadius: finite(item.clearanceRadius, `spawn[${index}].clearanceRadius`, 0.2, 5) } })
+    if (new Set(spawnPoints.map((spawn) => spawn.id)).size !== spawnPoints.length) throw new TypeError('Spawn ids must be unique')
+    const metadata = (entries: unknown, label: string, max: number) => { if (!Array.isArray(entries) || entries.length > max) throw new TypeError(`${label} count is invalid`); return entries }
+    const markers = metadata(root.markers, 'marker', 8192).map((raw: unknown, index: number) => { const item = object(raw, `marker[${index}]`); exact(item, ['id', 'type', 'position'], `marker[${index}]`); const position = vec3(item.position, `marker[${index}].position`); if (!ID.test(item.id) || !['landmark', 'pickup', 'objective', 'callout'].includes(item.type) || !inside(position)) throw new TypeError(`Invalid marker[${index}]`); return { id: item.id, type: item.type as string, position } })
+    const zones = metadata(root.zones, 'zone', 2048).map((raw: unknown, index: number) => { const item = object(raw, `zone[${index}]`); exact(item, ['id', 'type', 'min', 'max'], `zone[${index}]`); const min = vec3(item.min, `zone[${index}].min`), max = vec3(item.max, `zone[${index}].max`); if (!ID.test(item.id) || !['playable', 'kill', 'objective', 'audio', 'reverb', 'projectile-fence'].includes(item.type) || !inside(min) || !inside(max) || min.some((entry, axis) => entry >= max[axis])) throw new TypeError(`Invalid zone[${index}]`); return { id: item.id, type: item.type as string, min, max } })
+    return { spawnPoints, markers, zones }
 }
 
 export function parseMapManifest(value: unknown): ClientMapManifest {
-    if (value === null || typeof value !== 'object') throw new TypeError('Map manifest must be an object')
-    const manifest = value as Record<string, any>
-    if (manifest.format !== 'cpp-server-map' || manifest.formatVersion !== 1) throw new TypeError('Unsupported map manifest format')
-    if (typeof manifest.mapId !== 'string' || !/^[a-z][a-z0-9-]*$/.test(manifest.mapId)) throw new TypeError('Invalid map id')
-    if (typeof manifest.contentHash !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(manifest.contentHash)) throw new TypeError('Invalid map content hash')
-    if (manifest.coordinateSystem?.handedness !== 'right' || manifest.coordinateSystem?.upAxis !== 'Y' || manifest.coordinateSystem?.units !== 'meters') throw new TypeError('Unsupported map coordinate system')
-    if (!vec3(manifest.worldBounds?.min) || !vec3(manifest.worldBounds?.max)) throw new TypeError('Invalid map world bounds')
-    if (typeof manifest.renderAsset !== 'string' || !/^[a-zA-Z0-9._-]+\.glb$/.test(manifest.renderAsset)) throw new TypeError('Invalid map render asset')
-    if (typeof manifest.collisionAsset !== 'string' || !/^[a-zA-Z0-9._-]+\.bin$/.test(manifest.collisionAsset)) throw new TypeError('Invalid map collision asset')
-    if (!Array.isArray(manifest.spawnPoints) || manifest.spawnPoints.length < 12 || manifest.spawnPoints.some((spawn: any) => typeof spawn?.id !== 'string' || !vec3(spawn.position) || typeof spawn.yaw !== 'number' || !Number.isFinite(spawn.yaw))) throw new TypeError('Invalid map spawn metadata')
-    return manifest as unknown as ClientMapManifest
+    const root = object(value, 'Map manifest')
+    if (root.format !== 'cpp-server-map') throw new TypeError('Unsupported map manifest format')
+    if (root.formatVersion !== 2) throw new TypeError('Unsupported map manifest major version')
+    exact(root, ['format', 'formatVersion', 'mapId', 'contentHash', 'coordinateSystem', 'worldBounds', 'assets', 'assetHashes', 'environment', 'policy'], 'Map manifest')
+    if (typeof root.mapId !== 'string' || !ID.test(root.mapId) || typeof root.contentHash !== 'string' || !HASH.test(root.contentHash)) throw new TypeError('Invalid map id or content hash')
+    const assets = object(root.assets, 'assets'); exact(assets, ['render', 'collision', 'gameplay', 'navigation', 'radar', 'debug'], 'assets')
+    const normalizedAssets = { render: asset(assets.render, 'assets.render')!, collision: asset(assets.collision, 'assets.collision')!, gameplay: asset(assets.gameplay, 'assets.gameplay')!, navigation: asset(assets.navigation, 'assets.navigation', true), radar: asset(assets.radar, 'assets.radar', true), debug: asset(assets.debug, 'assets.debug') }
+    const hashes = object(root.assetHashes, 'assetHashes'); const expected = Object.values(normalizedAssets).filter((entry): entry is string => entry !== null).sort(); if (Object.keys(hashes).sort().join('\0') !== expected.join('\0') || Object.values(hashes).some((hash) => typeof hash !== 'string' || !HASH.test(hash))) throw new TypeError('assetHashes must exactly cover every declared asset')
+    const environment = object(root.environment, 'environment'); exact(environment, ['clearColor', 'exposure', 'sunDirection', 'shadowDistance'], 'environment')
+    const policy = object(root.policy, 'policy'); exact(policy, ['stepSmoothingMax', 'audioDistanceScale', 'radarNorthYaw'], 'policy')
+    return { format: 'cpp-server-map', formatVersion: 2, mapId: root.mapId, contentHash: root.contentHash, coordinateSystem: coordinates(root.coordinateSystem), worldBounds: bounds(root.worldBounds), assets: normalizedAssets, assetHashes: { ...hashes }, environment: { clearColor: vec3(environment.clearColor, 'environment.clearColor', 0, 1), exposure: finite(environment.exposure, 'environment.exposure', 0.0001, 8), sunDirection: vec3(environment.sunDirection, 'environment.sunDirection', -1, 1), shadowDistance: finite(environment.shadowDistance, 'environment.shadowDistance', 0, 1000) }, policy: { stepSmoothingMax: finite(policy.stepSmoothingMax, 'policy.stepSmoothingMax', 0, 2), audioDistanceScale: finite(policy.audioDistanceScale, 'policy.audioDistanceScale', 0.0001, 100), radarNorthYaw: finite(policy.radarNorthYaw, 'policy.radarNorthYaw', -Math.PI * 2, Math.PI * 2) } }
 }
 
-export async function loadMapManifest(url: string, fetcher: typeof fetch = fetch): Promise<ClientMapManifest> {
-    const response = await fetcher(url)
-    if (!response.ok) throw new Error(`Unable to load map manifest (${response.status})`)
-    return parseMapManifest(await response.json())
-}
+export async function loadMapManifest(url: string, fetcher: typeof fetch = fetch): Promise<ClientMapManifest> { const response = await fetcher(url); if (!response.ok) throw new Error(`Unable to load map manifest (${response.status})`); return parseMapManifest(await response.json()) }
+export async function loadMapGameplay(url: string, manifest: ClientMapManifest, fetcher: typeof fetch = fetch): Promise<ClientMapGameplay> { const response = await fetcher(url); if (!response.ok) throw new Error(`Unable to load map gameplay (${response.status})`); return parseMapGameplay(await response.json(), manifest) }

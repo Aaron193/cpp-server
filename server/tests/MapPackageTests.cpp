@@ -36,6 +36,10 @@ std::filesystem::path committedMap() {
     return std::filesystem::path(SERVER_SOURCE_DIR).parent_path() /
            "client/public/maps/graybox-arena";
 }
+std::filesystem::path committedMap(const char* id) {
+    return std::filesystem::path(SERVER_SOURCE_DIR).parent_path() /
+           "client/public/maps" / id;
+}
 }  // namespace
 
 TEST_CASE(m3cl_parser_accepts_valid_little_endian_triangle) {
@@ -65,9 +69,34 @@ TEST_CASE(committed_manifest_spawns_hash_and_bounds_validate) {
     EXPECT_EQ(package.manifest.mapId, "graybox-arena");
     EXPECT_TRUE(package.manifest.spawnPoints.size() >= 12U);
     EXPECT_EQ(package.manifest.contentHash,
-              "sha256:f53f54d7df39162f8abaa3f0e6fed888bf94402f28b82b24d3533e914579e6d0");
+              "sha256:3984a02b8a6ce8abaebddacb010273285fbb666cb4f973f5eb7e251e3fb9b477");
     EXPECT_EQ(package.manifest.boundsMin, package.collision.boundsMin);
     EXPECT_EQ(package.manifest.boundsMax, package.collision.boundsMax);
+}
+
+TEST_CASE(both_v2_packages_parse_and_hash_without_map_specific_code) {
+    const auto graybox = MapPackageLoader::load(committedMap("graybox-arena"));
+    const auto copper = MapPackageLoader::load(committedMap("copper-yard"));
+    EXPECT_EQ(graybox.manifest.formatVersion, 2U);
+    EXPECT_EQ(copper.manifest.mapId, "copper-yard");
+    EXPECT_EQ(copper.manifest.contentHash,
+              "sha256:5d0c9977e32841521f84c940f32ea07583b297aa90e8ed20afdf56978b7df42c");
+    EXPECT_EQ(copper.manifest.spawnPoints.size(), 12U);
+    EXPECT_TRUE(!copper.manifest.navigationAsset.empty());
+    EXPECT_TRUE(!copper.manifest.radarAsset.empty());
+}
+
+TEST_CASE(v2_manifest_rejects_unknown_fields_versions_and_uncovered_assets) {
+    std::ifstream input(committedMap("copper-yard") / "manifest.json");
+    nlohmann::json json; input >> json;
+    json["unexpected"] = true;
+    EXPECT_TRUE(throwsMapError([&] { MapPackageLoader::parseManifest(json.dump()); }));
+    json.erase("unexpected"); json["formatVersion"] = 3;
+    EXPECT_TRUE(throwsMapError([&] { MapPackageLoader::parseManifest(json.dump()); }));
+    json["formatVersion"] = 1;
+    EXPECT_TRUE(throwsMapError([&] { MapPackageLoader::parseManifest(json.dump()); }));
+    json["formatVersion"] = 2; json["assetHashes"].erase("radar.svg");
+    EXPECT_TRUE(throwsMapError([&] { MapPackageLoader::parseManifest(json.dump()); }));
 }
 
 TEST_CASE(configuration_sha256_is_stable_formatted_and_change_sensitive) {

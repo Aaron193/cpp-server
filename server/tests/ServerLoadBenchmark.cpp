@@ -19,6 +19,8 @@ struct WireTotals {
     std::uint64_t bytes = 0U;
     std::uint64_t messages = 0U;
     std::uint64_t closes = 0U;
+    std::size_t buffered = 0U;
+    std::vector<std::string> reliableChatOrder;
 };
 
 class CountingTransport final : public PeerTransport {
@@ -28,8 +30,14 @@ class CountingTransport final : public PeerTransport {
     void sendBinary(const std::vector<std::uint8_t>& bytes) override {
         totals_->bytes += bytes.size();
         ++totals_->messages;
+        const auto envelope = protocol::decodeEnvelope(bytes);
+        if (envelope.known && envelope.messageType ==
+                                  static_cast<std::uint8_t>(protocol::MessageType::Chat))
+            totals_->reliableChatOrder.push_back(
+                std::get<protocol::Chat>(envelope.message).text);
     }
     void close(std::uint16_t, std::string_view) override { ++totals_->closes; }
+    std::size_t bufferedBytes() const override { return totals_->buffered; }
 
    private:
     std::shared_ptr<WireTotals> totals_;
@@ -72,6 +80,22 @@ int main() {
 
     std::vector<std::uint32_t> sequences(kPlayers, 0U);
     for (std::uint32_t tick = 1U; tick <= kTicks; ++tick) {
+        // Five seconds of synthetic socket pressure on one of the twelve
+        // players. Reliable messages must remain ordered while 20 Hz state is
+        // coalesced into an independently decodable baseline reset.
+        if (tick == 600U) {
+            wires.front()->buffered = 200U * 1024U;
+            clients.front()->queueChat({std::nullopt,
+                                        protocol::ChatChannel::System,
+                                        "pressure-one"});
+            clients.front()->queueChat({std::nullopt,
+                                        protocol::ChatChannel::System,
+                                        "pressure-two"});
+            clients.front()->queueChat({std::nullopt,
+                                        protocol::ChatChannel::System,
+                                        "pressure-three"});
+        }
+        if (tick == 900U) wires.front()->buffered = 0U;
         const double now = 1.0 + static_cast<double>(tick) / 60.0;
         for (std::size_t index = 0; index < kPlayers; ++index) {
             const float phase = static_cast<float>((tick + index * 11U) % 240U) /
@@ -80,6 +104,7 @@ int main() {
             const float moveY = std::cos(phase * 6.28318530718F) * 0.7F;
             protocol::InputCommand command{
                 ++sequences[index], tick, moveX, moveY, 1U << 1U,
+                sequences[index], 0U,
                 static_cast<float>(index) * 0.35F - 1.9F, 0.0F,
                 protocol::Weapon::Rifle};
             const auto encoded =
@@ -132,18 +157,33 @@ int main() {
         {"pendingInputHighWater", metrics.pendingClientInputHighWater},
         {"allocationProxyPeakQueuedBytes",
          metrics.outboundQueueBytesHighWater},
+        {"transportBufferedBytesHighWater",
+         metrics.transportBufferedBytesHighWater},
+        {"coalescedSnapshots", metrics.coalescedSnapshots},
+        {"reliableEvents", metrics.reliableEvents},
+        {"reliablePressureOrder", wires.front()->reliableChatOrder},
+        {"deltaPressureChangedFieldsPerSecond",
+         (kPlayers - 1U) * 2U * GameServer::kSnapshotsPerSecond},
         {"wireBytes", wireBytes},
         {"wireMessages", wireMessages},
         {"shots", metrics.shotsFired},
         {"hits", metrics.pelletHits}};
     std::cout << report.dump() << '\n';
 
+    const std::vector<std::string> expectedOrder{
+        "pressure-one", "pressure-two", "pressure-three"};
     bool valid = closes == 0U && metrics.playerCount == kPlayers &&
                  metrics.maxStepsPerAdvance <= 1U &&
                  metrics.droppedTimeSeconds == 0.0 &&
                  metrics.queuedInputHighWater <= kPlayers &&
                  metrics.pendingClientInputHighWater <= 1U &&
                  metrics.outboundQueueBytesHighWater <= 256U * 1024U &&
+                 metrics.transportBufferedBytesHighWater == 200U * 1024U &&
+                 metrics.coalescedSnapshots > 0U &&
+                 wires.front()->reliableChatOrder == expectedOrder &&
+                 metrics.snapshotBytes.p95 <= 1024.0 &&
+                 metrics.outboundBytes / simulatedSeconds / kPlayers <=
+                     16U * 1024U &&
                  metrics.outboundBytes == wireBytes;
 #ifdef NDEBUG
     valid = valid && metrics.tickMilliseconds.p95 < 10.0;

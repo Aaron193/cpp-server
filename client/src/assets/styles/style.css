@@ -968,6 +968,13 @@ body {
 }
 
 #game-hud {
+    --hud-bg: rgba(5, 9, 17, .82);
+    --hud-stroke: rgba(148, 163, 184, .32);
+    --hud-text: #f8fafc;
+    --hud-accent: #38bdf8;
+    --hud-warning: #fbbf24;
+    --hud-danger: #ef4444;
+    --hud-radius: 6px;
     position: fixed;
     inset: 0;
     z-index: 20;
@@ -997,8 +1004,8 @@ body {
 
 #fps-hitmarker { position: absolute; inset: -12px; color: white; font: 700 38px/38px sans-serif; text-align: center; opacity: 0; transform: rotate(45deg); transition: opacity 60ms; }
 #fps-hitmarker.active { opacity: 1; }
-.fps-damage { position: absolute; inset: 0; border: 0 solid rgba(220, 38, 38, 0); transition: border 180ms, background 180ms; }
-.fps-damage.active { border-width: 18px; border-color: rgba(220, 38, 38, .55); background: radial-gradient(circle, transparent 45%, rgba(127, 29, 29, .32)); }
+.fps-damage { position: absolute; inset: 0; opacity: 0; transition: opacity 100ms; background: conic-gradient(from calc(var(--damage-angle, 0rad) - .28rad), rgba(239,68,68,.72) 0 .56rad, transparent .56rad); mask: radial-gradient(circle, transparent 0 52%, #000 63%); }
+.fps-damage.active { opacity: 1; }
 
 .fps-vitals {
     position: absolute;
@@ -1021,6 +1028,7 @@ body {
 }
 
 .fps-vitals > div { min-width: 112px; padding: 10px 14px; }
+.fps-vitals > div { border-color: color-mix(in srgb, var(--hud-warning) calc(var(--resource-flash, 0) * 100%), var(--hud-stroke)); }
 .fps-vitals strong { display: block; font-family: var(--font-display); font-size: 1.2rem; }
 .fps-label { color: var(--text-muted); font-size: 0.62rem; letter-spacing: 1px; }
 
@@ -1058,10 +1066,22 @@ body {
 .fps-scoreboard h2 { margin: 0 0 10px; text-align: center; font-family: var(--font-display); }
 #fps-score-rows > div { display: grid; grid-template-columns: 1fr repeat(3, 70px); padding: 5px 8px; border-top: 1px solid rgba(148, 163, 184, .15); }
 .fps-kill-feed { position: absolute; right: 22px; top: 20px; color: white; text-align: right; font: 600 13px/1.7 var(--font-body); text-shadow: 0 2px 4px #000; }
-.fps-round { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); padding: 12px 20px; color: white; background: rgba(5, 9, 17, .78); font: 700 24px var(--font-display); }
+.fps-round { position: absolute; left: 50%; top: 18%; transform: translateX(-50%) scale(var(--countdown-scale, 1)); padding: 12px 20px; color: white; background: rgba(5, 9, 17, .78); font: 700 24px var(--font-display); }
 .fps-chat-log { position: absolute; left: 24px; bottom: 145px; width: min(420px, 50vw); color: white; font: 13px/1.5 var(--font-body); text-shadow: 0 1px 3px #000; }
 .fps-chat-log strong { color: #7dd3fc; }
 #fps-reload { display: block; color: #fbbf24; font-size: 10px; }
+
+.fps-radar { position: absolute; right: 24px; bottom: 25px; width: min(220px, 24vw); max-height: 220px; overflow: hidden; background: var(--hud-bg); border: 1px solid var(--hud-stroke); border-radius: var(--hud-radius); box-shadow: 0 5px 20px rgba(0,0,0,.35); }
+.fps-radar img { display: block; width: 100%; height: 100%; position: absolute; inset: 0; object-fit: fill; opacity: .82; }
+.fps-radar-north { position: absolute; left: 50%; top: 3px; transform: translateX(-50%); color: var(--hud-text); font: 800 10px var(--font-display); }
+.fps-radar-local { position: absolute; width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 18px solid var(--hud-accent); transform-origin: 50% 50%; filter: drop-shadow(0 1px 2px #000); }
+.fps-radar-rumor { position: absolute; width: 9px; height: 9px; transform: translate(-50%,-50%); border: 2px solid var(--hud-warning); border-radius: 50%; box-shadow: 0 0 8px var(--hud-warning); }
+.fps-connection-quality { position: absolute; right: 24px; bottom: 255px; color: var(--hud-text); font: 700 9px var(--font-display); letter-spacing: .08em; text-shadow: 0 1px 2px #000; }
+.fps-connection-quality[data-quality='good'] { color: #86efac; }
+.fps-connection-quality[data-quality='fair'] { color: var(--hud-warning); }
+.fps-connection-quality[data-quality='poor'] { color: #fca5a5; }
+.fps-presentation-state { position: absolute; left: 50%; top: 9%; transform: translateX(-50%); padding: 9px 16px; background: var(--hud-bg); border: 1px solid var(--hud-stroke); color: var(--hud-text); font: 700 15px var(--font-display); }
+.fps-action-rejection { position: absolute; left: 50%; top: 62%; transform: translateX(-50%); color: #fecaca; font: 700 11px var(--font-display); letter-spacing: .06em; text-shadow: 0 2px 4px #000; }
 
 .fps-pointer-prompt,
 .fps-loading,
