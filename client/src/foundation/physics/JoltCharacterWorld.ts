@@ -146,6 +146,15 @@ export class JoltCharacterWorld {
         this.spawn = { ...position }
         this.spawnVector.Set(position.x, position.y, position.z)
         this.character.SetPosition(this.spawnVector)
+        // CharacterVirtual caches its contacts and ground state. Reconciliation
+        // rewinds to an older authoritative position, so retaining contacts from
+        // the newer predicted position can make a grounded jump replay as if the
+        // character were still airborne. The native server refreshes contacts in
+        // its position setter; do the same here before replaying pending inputs.
+        this.character.RefreshContacts(
+            this.broadPhaseFilter, this.objectLayerFilter, this.bodyFilter,
+            this.shapeFilter, this.joltInterface.GetTempAllocator()
+        )
         this.velocityVector.Set(velocity.x, velocity.y, velocity.z)
         this.character.SetLinearVelocity(this.velocityVector)
         Object.assign(this.cachedPosition, position); Object.assign(this.cachedVelocity, velocity)

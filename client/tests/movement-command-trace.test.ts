@@ -1,5 +1,8 @@
 import { readFile } from 'node:fs/promises'
+import initJolt from 'jolt-physics/wasm-compat'
 import { describe, expect, it } from 'vitest'
+import { parseCollisionMesh } from '../src/foundation/assets/CollisionMesh'
+import { JoltCharacterWorld } from '../src/foundation/physics/JoltCharacterWorld'
 import { movementTraceFixtureUrl, repositoryRoot, runBrowserMovementTrace } from '../tools/movement-trace-adapter'
 
 describe('shared movement command trace', () => {
@@ -48,5 +51,35 @@ describe('shared movement command trace', () => {
         expect(fixture.tuning).toEqual(phase0.tuning)
         expect(fixture.segments.map(({ ticks, forward, right, jumpAt }: any) => ({ ticks, forward, right, jumpAt })))
             .toEqual(phase0.segments.map(({ ticks, forward, right, jumpAt }: any) => ({ ticks, forward, right, jumpAt })))
+    }, 20_000)
+
+    it('refreshes grounded contacts before replaying a jump from an authoritative rewind', async () => {
+        const fixture = JSON.parse(await readFile(movementTraceFixtureUrl, 'utf8'))
+        const collision = parseCollisionMesh(await readFile(new URL(fixture.map.collisionAsset, repositoryRoot)))
+        const Jolt = await initJolt()
+        const spawn = { x: fixture.spawn[0], y: fixture.spawn[1], z: fixture.spawn[2] }
+        const world = new JoltCharacterWorld(Jolt, collision, spawn, fixture.tuning)
+        const idle = { forward: 0, right: 0, jump: false, yaw: 0 }
+
+        try {
+            for (let tick = 0; tick < 60; tick++) world.step(idle, fixture.fixedDeltaSeconds)
+            expect(world.grounded).toBe(true)
+            const groundedPosition = { ...world.position }
+            const groundedVelocity = { ...world.velocity }
+
+            world.step({ ...idle, jump: true }, fixture.fixedDeltaSeconds)
+            for (let tick = 0; tick < 5; tick++) world.step(idle, fixture.fixedDeltaSeconds)
+            expect(world.grounded).toBe(false)
+
+            // This mirrors reconciliation receiving a grounded snapshot while
+            // the locally predicted character is already in the air.
+            world.setState(groundedPosition, groundedVelocity)
+            expect(world.grounded).toBe(true)
+            world.step({ forward: 1, right: 0, jump: true, yaw: 0 }, fixture.fixedDeltaSeconds)
+            expect(world.velocity.y).toBeGreaterThan(0)
+            expect(world.position.y).toBeGreaterThan(groundedPosition.y)
+        } finally {
+            world.dispose()
+        }
     }, 20_000)
 })
