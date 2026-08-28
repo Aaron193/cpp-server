@@ -39,7 +39,7 @@ struct CombatMetrics {
 };
 
 struct SessionConfiguration {
-    static constexpr std::uint16_t ProtocolVersion = 6;
+    static constexpr std::uint16_t ProtocolVersion = 8;
     std::string buildId = "dev";
     std::string mode = "ffa";
     std::size_t maxPlayers = 12;

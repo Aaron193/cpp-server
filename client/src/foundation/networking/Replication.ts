@@ -67,7 +67,7 @@ export interface AppliedSnapshotDelta {
 }
 
 /**
- * Decoder state for the v6 rule: every non-reset delta names the immediately
+ * Decoder state for the replication rule introduced in v6: every non-reset delta names the immediately
  * previous applied ordered WebSocket delta. Any mismatch is fatal to this
  * baseline and must cause reconnect/reset rather than speculative application.
  */

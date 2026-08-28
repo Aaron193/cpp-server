@@ -15,7 +15,7 @@ import { getServerDiscoveryCutoff } from './server-discovery'
 import { getUserById } from '../auth/auth.service'
 
 const serversRoutes: FastifyPluginAsync = async (fastify) => {
-    const allowLocalGuestJoins = env.NODE_ENV === 'development' && env.ALLOW_GUEST_JOINS
+    const allowLocalGuestJoins = env.ALLOW_GUEST_JOINS
     fastify.post(
         '/:id/join',
         {

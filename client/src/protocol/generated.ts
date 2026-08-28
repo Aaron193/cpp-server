@@ -1,5 +1,5 @@
 // Generated from protocol/schema.json by protocol/generate.mjs. DO NOT EDIT.
-export const PROTOCOL_VERSION = 6 as const
+export const PROTOCOL_VERSION = 8 as const
 
 export const LIMITS = {
     "maxEnvelopeBytes": 61443,
@@ -13,6 +13,7 @@ export const LIMITS = {
     "maxChatBytes": 512,
     "maxConfigurationBytes": 16384,
     "maxInputCommands": 64,
+    "maxPelletsPerShot": 32,
     "maxSnapshotEntities": 512,
     "maxSnapshotCreated": 512,
     "maxSnapshotUpdated": 512,
@@ -268,11 +269,14 @@ export interface ShotConfirmed {
     readonly actionId: number
     readonly shotId: number
     readonly weapon: Weapon
+    readonly origin: Vec3
+    readonly pelletEndPositions: ReadonlyArray<Vec3>
 }
 
 export interface Impact {
     readonly serverTick: number
     readonly shotId: number
+    readonly pelletIndex: number
     readonly position: Vec3
     readonly normal: Vec3
     readonly material: ImpactMaterial
@@ -835,6 +839,11 @@ function writeShotConfirmed(writer: Writer, value: ShotConfirmed): void {
     writer.u32(value.actionId)
     writer.u32(value.shotId)
     writeWeapon(writer, value.weapon)
+    writeVec3(writer, value.origin)
+    writer.length(value.pelletEndPositions.length, 1, LIMITS.maxPelletsPerShot)
+    for (const item of value.pelletEndPositions) {
+        writeVec3(writer, item)
+    }
 }
 function readShotConfirmed(reader: Reader): ShotConfirmed {
     return {
@@ -844,12 +853,15 @@ function readShotConfirmed(reader: Reader): ShotConfirmed {
         actionId: reader.u32(),
         shotId: reader.u32(),
         weapon: readWeapon(reader),
+        origin: readVec3(reader),
+        pelletEndPositions: Array.from({ length: reader.length(1, LIMITS.maxPelletsPerShot) }, () => readVec3(reader)),
     }
 }
 
 function writeImpact(writer: Writer, value: Impact): void {
     writer.u32(value.serverTick)
     writer.u32(value.shotId)
+    writer.u8(value.pelletIndex)
     writeVec3(writer, value.position)
     writeVec3(writer, value.normal)
     writeImpactMaterial(writer, value.material)
@@ -858,6 +870,7 @@ function readImpact(reader: Reader): Impact {
     return {
         serverTick: reader.u32(),
         shotId: reader.u32(),
+        pelletIndex: reader.u8(),
         position: readVec3(reader),
         normal: readVec3(reader),
         material: readImpactMaterial(reader),

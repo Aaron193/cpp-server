@@ -377,27 +377,16 @@ void GameServer::fireWeapon(entt::entity shooter, Components::Gun& gun,
     if (nextShotId_ == 0U) nextShotId_ = 1U;
     ++combatMetrics_.shotsFired;
 
-    emitReliable(std::nullopt, protocol::ShotConfirmed{
-        static_cast<std::uint32_t>(m_currentTick),
-        static_cast<std::uint32_t>(shooter), input.inputSequence,
-        input.fireActionId, shotId,
-        protocolWeapon(gun)});
-    if (input.fireActionId != 0U)
-        emitReliable(shooter, protocol::ActionResult{
-            static_cast<std::uint32_t>(m_currentTick), input.fireActionId,
-            protocol::ActionKind::Fire, true, protocol::ActionRejectReason::None,
-            protocolWeapon(gun), static_cast<std::uint16_t>(gun.ammoInMag),
-            static_cast<std::uint16_t>(registry.get<Components::Ammo>(shooter).get(gun.ammoType))});
-
     std::uint32_t acceptedTick = 0;
     const HistoryFrame* history = findHistoryFrame(input.clientTick, acceptedTick);
     if (history && acceptedTick != input.clientTick) ++combatMetrics_.historyClamps;
-    if (!history) return;
-
     glm::vec3 shooterPosition =
         registry.get<Components::Transform3D>(shooter).position;
-    for (const auto& historical : history->players)
-        if (historical.entity == shooter) shooterPosition = historical.position;
+    if (history) {
+        for (const auto& historical : history->players)
+            if (historical.entity == shooter)
+                shooterPosition = historical.position;
+    }
     const float cosinePitch = std::cos(input.pitch);
     const glm::vec3 aim = glm::normalize(glm::vec3{
         std::sin(input.yaw) * cosinePitch, std::sin(input.pitch),
@@ -405,13 +394,39 @@ void GameServer::fireWeapon(entt::entity shooter, Components::Gun& gun,
     const glm::vec3 eye = shooterPosition +
                           glm::vec3{0.0F, m_gameConfig.movement.eyeHeight, 0.0F};
     const glm::vec3 origin = eye + aim * gun.barrelLength;
-    std::map<std::uint32_t, float> damageByTarget;
-
+    std::vector<glm::vec3> pelletDirections;
+    std::vector<protocol::Vec3> pelletEndPositions;
+    pelletDirections.reserve(static_cast<std::size_t>(gun.pellets));
+    pelletEndPositions.reserve(static_cast<std::size_t>(gun.pellets));
     for (int pellet = 0; pellet < gun.pellets; ++pellet) {
         const glm::vec3 direction = CombatGeometry::spreadDirection(
             aim, gun.spread, m_gameConfig.combat.serverSeed,
             static_cast<std::uint32_t>(shooter), shotId,
             static_cast<std::uint32_t>(pellet));
+        const glm::vec3 end = origin + direction * gun.range;
+        pelletDirections.push_back(direction);
+        pelletEndPositions.push_back({end.x, end.y, end.z});
+    }
+
+    emitReliable(std::nullopt, protocol::ShotConfirmed{
+        static_cast<std::uint32_t>(m_currentTick),
+        static_cast<std::uint32_t>(shooter), input.inputSequence,
+        input.fireActionId, shotId, protocolWeapon(gun),
+        {origin.x, origin.y, origin.z},
+        std::move(pelletEndPositions)});
+    if (input.fireActionId != 0U)
+        emitReliable(shooter, protocol::ActionResult{
+            static_cast<std::uint32_t>(m_currentTick), input.fireActionId,
+            protocol::ActionKind::Fire, true, protocol::ActionRejectReason::None,
+            protocolWeapon(gun), static_cast<std::uint16_t>(gun.ammoInMag),
+            static_cast<std::uint16_t>(registry.get<Components::Ammo>(shooter).get(gun.ammoType))});
+
+    if (!history) return;
+    std::map<std::uint32_t, float> damageByTarget;
+
+    for (int pellet = 0; pellet < gun.pellets; ++pellet) {
+        const glm::vec3& direction =
+            pelletDirections[static_cast<std::size_t>(pellet)];
         const auto worldHit =
             m_physicsWorld.castStaticRay(origin, direction, gun.range);
         float nearestDistance = worldHit ? worldHit->distance : gun.range;
@@ -438,6 +453,7 @@ void GameServer::fireWeapon(entt::entity shooter, Components::Gun& gun,
             ++combatMetrics_.pelletHits;
             emitReliable(std::nullopt, protocol::Impact{
                 static_cast<std::uint32_t>(m_currentTick), shotId,
+                static_cast<std::uint8_t>(pellet),
                 {playerHit->position.x, playerHit->position.y,
                  playerHit->position.z},
                 {playerHit->normal.x, playerHit->normal.y,
@@ -448,6 +464,7 @@ void GameServer::fireWeapon(entt::entity shooter, Components::Gun& gun,
         } else if (worldHit) {
             emitReliable(std::nullopt, protocol::Impact{
                 static_cast<std::uint32_t>(m_currentTick), shotId,
+                static_cast<std::uint8_t>(pellet),
                 {worldHit->position.x, worldHit->position.y,
                  worldHit->position.z},
                 {worldHit->normal.x, worldHit->normal.y, worldHit->normal.z},

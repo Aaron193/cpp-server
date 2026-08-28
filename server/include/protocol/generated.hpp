@@ -27,6 +27,7 @@ struct Limits {
     static constexpr std::size_t MaxChatBytes = 512U;
     static constexpr std::size_t MaxConfigurationBytes = 16384U;
     static constexpr std::size_t MaxInputCommands = 64U;
+    static constexpr std::size_t MaxPelletsPerShot = 32U;
     static constexpr std::size_t MaxSnapshotEntities = 512U;
     static constexpr std::size_t MaxSnapshotCreated = 512U;
     static constexpr std::size_t MaxSnapshotUpdated = 512U;
@@ -287,11 +288,14 @@ struct ShotConfirmed {
     std::uint32_t actionId{};
     std::uint32_t shotId{};
     Weapon weapon{};
+    Vec3 origin{};
+    std::vector<Vec3> pelletEndPositions{};
 };
 
 struct Impact {
     std::uint32_t serverTick{};
     std::uint32_t shotId{};
+    std::uint8_t pelletIndex{};
     Vec3 position{};
     Vec3 normal{};
     ImpactMaterial material{};
@@ -990,6 +994,11 @@ inline void writeShotConfirmed(Writer& writer, const ShotConfirmed& value) {
     writer.writeU32(value.actionId);
     writer.writeU32(value.shotId);
     writeWeapon(writer, value.weapon);
+    writeVec3(writer, value.origin);
+    writer.writeLength(value.pelletEndPositions.size(), 1, Limits::MaxPelletsPerShot);
+    for (const auto& item : value.pelletEndPositions) {
+        writeVec3(writer, item);
+    }
 }
 inline ShotConfirmed readShotConfirmed(Reader& reader) {
     ShotConfirmed value{};
@@ -999,12 +1008,24 @@ inline ShotConfirmed readShotConfirmed(Reader& reader) {
     value.actionId = reader.readU32();
     value.shotId = reader.readU32();
     value.weapon = readWeapon(reader);
+    value.origin = readVec3(reader);
+    {
+        const auto count = reader.readLength(1, Limits::MaxPelletsPerShot);
+        value.pelletEndPositions.clear();
+        value.pelletEndPositions.reserve(count);
+        for (std::size_t index = 0; index < count; ++index) {
+            Vec3 decodedValue{};
+            decodedValue = readVec3(reader);
+            value.pelletEndPositions.push_back(std::move(decodedValue));
+        }
+    }
     return value;
 }
 
 inline void writeImpact(Writer& writer, const Impact& value) {
     writer.writeU32(value.serverTick);
     writer.writeU32(value.shotId);
+    writer.writeU8(value.pelletIndex);
     writeVec3(writer, value.position);
     writeVec3(writer, value.normal);
     writeImpactMaterial(writer, value.material);
@@ -1013,6 +1034,7 @@ inline Impact readImpact(Reader& reader) {
     Impact value{};
     value.serverTick = reader.readU32();
     value.shotId = reader.readU32();
+    value.pelletIndex = reader.readU8();
     value.position = readVec3(reader);
     value.normal = readVec3(reader);
     value.material = readImpactMaterial(reader);

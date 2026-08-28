@@ -1,7 +1,7 @@
 # Phase 6 presentation contract
 
 Phase 6 keeps simulation and authority unchanged while replacing placeholder character,
-viewmodel, sound, effects, HUD, and replay presentation. The wire contract is protocol v6.
+viewmodel, sound, effects, HUD, and replay presentation. The current wire contract is protocol v8.
 
 ## Authority boundary
 

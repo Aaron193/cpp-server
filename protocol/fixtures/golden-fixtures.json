@@ -2,12 +2,12 @@
   {
     "name": "hello-with-token",
     "message": "Hello",
-    "value": { "protocolVersion": 6, "clientBuildId": "web-3d-a1", "supportedMapFormat": 1, "accessToken": "token-✓" }
+    "value": { "protocolVersion": 8, "clientBuildId": "web-3d-a1", "supportedMapFormat": 1, "accessToken": "token-✓" }
   },
   {
     "name": "version-mismatch-reject",
     "message": "Reject",
-    "value": { "serverBuildId": "server-a1", "reason": 1, "detail": "protocol 65535 is unsupported", "expectedProtocolVersion": 6, "expectedMapFormat": 2 }
+    "value": { "serverBuildId": "server-a1", "reason": 1, "detail": "protocol 65535 is unsupported", "expectedProtocolVersion": 8, "expectedMapFormat": 2 }
   },
   {
     "name": "input-wrap-values",
@@ -43,7 +43,7 @@
   {
     "name": "shot-confirmed-shotgun",
     "message": "ShotConfirmed",
-    "value": { "serverTick": 88, "shooterId": 42, "inputSequence": 9, "actionId": 77, "shotId": 123, "weapon": 2 }
+    "value": { "serverTick": 88, "shooterId": 42, "inputSequence": 9, "actionId": 77, "shotId": 123, "weapon": 2, "origin": { "x": 1.25, "y": 2.5, "z": -3.75 }, "pelletEndPositions": [{ "x": 1.25, "y": 2.5, "z": -23.75 }, { "x": 2.0, "y": 2.25, "z": -23.5 }] }
   },
   {
     "name": "fire-action-rejected-cadence",

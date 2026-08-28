@@ -798,6 +798,21 @@ TEST_CASE(accepted_shot_confirmation_is_broadcast_with_owner_correlation) {
     EXPECT_EQ(remoteConfirmation.inputSequence, 123U);
     EXPECT_EQ(ownerConfirmation.weapon, protocol::Weapon::Rifle);
     EXPECT_EQ(remoteConfirmation.weapon, protocol::Weapon::Rifle);
+    EXPECT_EQ(remoteConfirmation.origin.x, ownerConfirmation.origin.x);
+    EXPECT_EQ(remoteConfirmation.origin.y, ownerConfirmation.origin.y);
+    EXPECT_EQ(remoteConfirmation.origin.z, ownerConfirmation.origin.z);
+    EXPECT_EQ(remoteConfirmation.pelletEndPositions.size(), 1U);
+    EXPECT_EQ(remoteConfirmation.pelletEndPositions.size(),
+              ownerConfirmation.pelletEndPositions.size());
+    EXPECT_EQ(remoteConfirmation.pelletEndPositions.at(0).x,
+              ownerConfirmation.pelletEndPositions.at(0).x);
+    EXPECT_EQ(remoteConfirmation.pelletEndPositions.at(0).y,
+              ownerConfirmation.pelletEndPositions.at(0).y);
+    EXPECT_EQ(remoteConfirmation.pelletEndPositions.at(0).z,
+              ownerConfirmation.pelletEndPositions.at(0).z);
+    EXPECT_TRUE(std::isfinite(remoteConfirmation.pelletEndPositions.at(0).x));
+    EXPECT_TRUE(std::isfinite(remoteConfirmation.pelletEndPositions.at(0).y));
+    EXPECT_TRUE(std::isfinite(remoteConfirmation.pelletEndPositions.at(0).z));
     EXPECT_TRUE(shooter.wire->sent.size() >= 2U);
     const auto& action = std::get<protocol::ActionResult>(
         decoded(shooter.wire->sent[1]).message);

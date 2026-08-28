@@ -3,3 +3,6 @@ services:
   db:
     ports:
       - "127.0.0.1:5432:5432"
+  web:
+    environment:
+      ALLOW_GUEST_JOINS: "true"

@@ -1,6 +1,6 @@
 {
   "name": "ArenaProtocol",
-  "version": 6,
+  "version": 8,
   "limits": {
     "maxEnvelopeBytes": 61443,
     "maxPayloadBytes": 61440,
@@ -13,6 +13,7 @@
     "maxChatBytes": 512,
     "maxConfigurationBytes": 16384,
     "maxInputCommands": 64,
+    "maxPelletsPerShot": 32,
     "maxSnapshotEntities": 512,
     "maxSnapshotCreated": 512,
     "maxSnapshotUpdated": 512,
@@ -120,7 +121,7 @@
     "Welcome": { "id": 2, "fields": [
       { "name": "protocolVersion", "type": "u16" },
       { "name": "serverBuildId", "type": "string", "max": "maxBuildIdBytes" },
-      { "name": "playerId", "type": "u32", "description": "Raw EnTT value retained for combat/score event correlation in protocol v6; entity view identity uses playerHandle." },
+      { "name": "playerId", "type": "u32", "description": "Raw EnTT value retained for combat/score event correlation in protocol v8; entity view identity uses playerHandle." },
       { "name": "playerHandle", "type": { "ref": "EntityHandle" } },
       { "name": "tickRate", "type": "u16" }, { "name": "snapshotRate", "type": "u16" },
       { "name": "map", "type": { "ref": "MapDescriptor" } },
@@ -142,8 +143,8 @@
     ] },
     "Spawn": { "id": 6, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "entity", "type": { "ref": "PublicEntityState" } }] },
     "Remove": { "id": 7, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "handle", "type": { "ref": "EntityHandle" } }, { "name": "reason", "type": { "enum": "RemoveReason" } }] },
-    "ShotConfirmed": { "id": 8, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "shooterId", "type": "u32" }, { "name": "inputSequence", "type": "u32" }, { "name": "actionId", "type": "u32" }, { "name": "shotId", "type": "u32" }, { "name": "weapon", "type": { "enum": "Weapon" } }] },
-    "Impact": { "id": 9, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "shotId", "type": "u32" }, { "name": "position", "type": { "ref": "Vec3" } }, { "name": "normal", "type": { "ref": "Vec3" } }, { "name": "material", "type": { "enum": "ImpactMaterial" } }] },
+    "ShotConfirmed": { "id": 8, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "shooterId", "type": "u32" }, { "name": "inputSequence", "type": "u32" }, { "name": "actionId", "type": "u32" }, { "name": "shotId", "type": "u32" }, { "name": "weapon", "type": { "enum": "Weapon" } }, { "name": "origin", "type": { "ref": "Vec3" }, "description": "Authoritative lag-compensated muzzle origin used for presentation fallback." }, { "name": "pelletEndPositions", "type": { "array": { "ref": "Vec3" } }, "max": "maxPelletsPerShot", "min": 1, "description": "Server-computed visual trajectory endpoints in pellet-index order; the corresponding Impact may shorten each path." }] },
+    "Impact": { "id": 9, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "shotId", "type": "u32" }, { "name": "pelletIndex", "type": "u8" }, { "name": "position", "type": { "ref": "Vec3" } }, { "name": "normal", "type": { "ref": "Vec3" } }, { "name": "material", "type": { "enum": "ImpactMaterial" } }] },
     "Damage": { "id": 10, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "sourceId", "type": { "optional": "u32" } }, { "name": "targetId", "type": "u32" }, { "name": "amount", "type": "u16" }, { "name": "remainingHealth", "type": "u16" }] },
     "Death": { "id": 11, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "victimId", "type": "u32" }, { "name": "killerId", "type": { "optional": "u32" } }, { "name": "weapon", "type": { "enum": "Weapon" } }] },
     "Respawn": { "id": 12, "fields": [{ "name": "serverTick", "type": "u32" }, { "name": "playerId", "type": "u32" }, { "name": "position", "type": { "ref": "Vec3" } }, { "name": "bodyYaw", "type": "f32" }] },

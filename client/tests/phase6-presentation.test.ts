@@ -6,6 +6,7 @@ import { SimulationAim } from '../src/foundation/camera/SimulationAim'
 import { BoundedEffectFamily, DecalBudget, type EffectSlot } from '../src/foundation/combat/BoundedEffects'
 import { auditViewmodelCalibration } from '../src/foundation/combat/ViewmodelController'
 import { CombatPresentationState } from '../src/foundation/combat/CombatState'
+import { sampleTracerMotion, tracerTravelDurationMs, TRACER_FADE_MS, TRACER_LENGTH_METERS } from '../src/foundation/combat/TracerMotion'
 import { selectVoiceToSteal } from '../src/foundation/audio/AudioModule'
 import { MinimapPrivacyModel, projectRadar, radarAspectRatio } from '../src/foundation/hud/MinimapModel'
 import { MatchFeelClock } from '../src/foundation/hud/MatchFeel'
@@ -38,7 +39,7 @@ describe('Phase 6 bounded character, camera and UX presentation', () => {
     })
     it('correlates independent action IDs and repairs rejection/timeouts without mutating authority', () => {
         const combat = new CombatPresentationState(); combat.setPlayerId(7); combat.localFire(101, 9, Weapon.Rifle, 100); combat.localReload(102, 10, Weapon.Rifle, 100)
-        combat.shot({ serverTick: 4, shooterId: 7, inputSequence: 9, actionId: 101, shotId: 2, weapon: Weapon.Rifle })
+        combat.shot({ serverTick: 4, shooterId: 7, inputSequence: 9, actionId: 101, shotId: 2, weapon: Weapon.Rifle, origin: { x: 0, y: 1, z: 0 }, pelletEndPositions: [{ x: 0, y: 1, z: -80 }] })
         combat.actionResult({ serverTick: 4, actionId: 101, kind: ActionKind.Fire, accepted: false, reason: ActionRejectReason.Cadence, weapon: Weapon.Rifle, authoritativeMagazineAmmo: 20, authoritativeReserveAmmo: 80 }, 130)
         expect(combat.eventsAfter(0).find((event) => event.kind === 'shot')).toMatchObject({ correlated: true })
         expect(combat.eventsAfter(0).find((event) => event.kind === 'action-result')).toMatchObject({ latencyMs: 30 })
@@ -53,6 +54,19 @@ describe('Phase 6 bounded character, camera and UX presentation', () => {
         const decals = new DecalBudget(2, 3, 10); for (let i = 0; i < 10; i++) decals.add({ x: i < 5 ? 1 : 20, z: 1 }, 'world', i)
         expect(decals.active).toBeLessThanOrEqual(3)
         expect(selectVoiceToSteal([{ priority: 2, startedAt: 2 }, { priority: 1, startedAt: 3 }, { priority: 1, startedAt: 1 }], 2)).toBe(2)
+    })
+    it('moves a short cosmetic tracer over multiple frames and fades after arrival', () => {
+        const travel = tracerTravelDurationMs(80, Weapon.Rifle)
+        const early = sampleTracerMotion(80, 16, travel)
+        const middle = sampleTracerMotion(80, travel / 2, travel)
+        const arrived = sampleTracerMotion(80, travel, travel)
+        const faded = sampleTracerMotion(80, travel + TRACER_FADE_MS, travel)
+        expect(travel).toBeGreaterThan(16)
+        expect(early.centerDistance).toBeLessThan(middle.centerDistance)
+        expect(middle.streakLength).toBe(TRACER_LENGTH_METERS)
+        expect(arrived.streakLength).toBeLessThan(80)
+        expect(arrived.complete).toBe(false)
+        expect(faded).toMatchObject({ opacity: 0, complete: true })
     })
     it('preserves radar aspect and reveals only fading gunfire rumors in FFA', () => {
         const projection = { minX: -40, maxX: 40, minZ: -20, maxZ: 20, northYaw: 0 }

@@ -11,9 +11,8 @@ const envSchema = z.object({
     JOIN_TICKET_SECRET: z.string().min(32),
     JOIN_TICKET_AUDIENCE: z.string().min(1).max(64).default('arena-game-server'),
     JOIN_TICKET_TTL_SECONDS: z.coerce.number().int().min(15).max(30).default(20),
-    // Local browser demos can opt in to a non-persistent guest identity. The
-    // route additionally requires NODE_ENV=development, so this cannot weaken
-    // an authenticated production deployment by accident.
+    // Local browser demos can explicitly opt in to a non-persistent guest
+    // identity. Production deployments leave this false.
     ALLOW_GUEST_JOINS: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
 })
 

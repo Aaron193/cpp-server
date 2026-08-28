@@ -103,6 +103,10 @@ TEST_CASE(protocol_decodes_shared_vectors_and_reproduces_identical_bytes) {
             const auto& confirmation =
                 std::get<protocol::ShotConfirmed>(decoded.message);
             EXPECT_EQ(confirmation.weapon, protocol::Weapon::Shotgun);
+            EXPECT_NEAR(confirmation.origin.x, 1.25F, 0.0001F);
+            EXPECT_EQ(confirmation.pelletEndPositions.size(), 2U);
+            EXPECT_NEAR(confirmation.pelletEndPositions.at(0).z, -23.75F,
+                        0.0001F);
         } else if (name == "clock-ping-wrap") {
             EXPECT_EQ(std::get<protocol::Ping>(decoded.message).pingId,
                       0xFFFFFFFFU);

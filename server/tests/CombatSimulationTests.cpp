@@ -111,6 +111,19 @@ TEST_CASE(shotgun_requires_trigger_edges_and_switching_selects_slots) {
     server.simulateOneTick();
     EXPECT_EQ(countType(events, 0U), 2U);
     EXPECT_EQ(inventory.slots[1].gun.ammoInMag, 4);
+    for (const auto& delivery : events) {
+        const auto* confirmation =
+            std::get_if<protocol::ShotConfirmed>(&delivery.second);
+        if (!confirmation) continue;
+        EXPECT_EQ(confirmation->weapon, protocol::Weapon::Shotgun);
+        EXPECT_EQ(confirmation->pelletEndPositions.size(), 8U);
+        EXPECT_TRUE(confirmation->pelletEndPositions.at(0).x !=
+                        confirmation->pelletEndPositions.at(1).x ||
+                    confirmation->pelletEndPositions.at(0).y !=
+                        confirmation->pelletEndPositions.at(1).y ||
+                    confirmation->pelletEndPositions.at(0).z !=
+                        confirmation->pelletEndPositions.at(1).z);
+    }
 }
 
 TEST_CASE(reload_completes_on_exact_tick_and_transfers_only_reserve_ammo) {

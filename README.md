@@ -6,7 +6,7 @@ multiplayer stack:
 - Babylon.js renders the Vite-built TypeScript client.
 - Jolt Physics powers the browser character controller and the authoritative
   C++17 simulation.
-- uWebSockets carries the generated protocol-v6 binary session protocol.
+- uWebSockets carries the generated protocol-v8 binary session protocol.
 - Fastify and PostgreSQL provide authentication, server registration, and
   discovery.
 - Map package v2 ships two original selectable maps (`graybox-arena` and
@@ -22,7 +22,7 @@ old 2D world/sprite runtime are not part of the production build.
 client/                         Babylon.js/Jolt browser client and Vite build
 client/maps/                    authored map sources
 client/public/maps/             committed deployable map packages
-protocol/                       protocol-v6 schema, generator, and fixtures
+protocol/                       protocol-v8 schema, generator, and fixtures
 server/                         native Jolt/uWebSockets authoritative server
 web/                            Fastify/PostgreSQL control plane
 Dockerfile.{client,server,web}  production images
@@ -106,7 +106,7 @@ The web container also runs migrations before serving, so the explicit
 migration command is useful as a controlled rollout gate but is idempotent.
 `SERVER_WEBSOCKET_URL` must be a complete externally reachable URL such as
 `wss://game.example.com/game/`; discovery returns this value verbatim. The
-server and client images must use the same `SERVER_BUILD_ID`, protocol v6, and
+server and client images must use the same `SERVER_BUILD_ID`, protocol v8, and
 discovery-selected map descriptor. Selection uses `SERVER_MAP_ID` without code
 changes per map.
 

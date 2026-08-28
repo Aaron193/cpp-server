@@ -1,4 +1,5 @@
 import 'dotenv/config'
+import { existsSync } from 'node:fs'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import { Pool } from 'pg'
@@ -12,11 +13,11 @@ async function runMigrations() {
 
     console.log('Running migrations...')
 
-    // Use different path for production (compiled) vs development
-    const migrationsFolder =
-        process.env.NODE_ENV === 'production'
-            ? './dist/db/migrations'
-            : './src/db/migrations'
+    // Containers run compiled code even when configured for local-development
+    // behavior, so select source migrations only when that directory exists.
+    const migrationsFolder = existsSync('./src/db/migrations')
+        ? './src/db/migrations'
+        : './dist/db/migrations'
 
     await migrate(db, { migrationsFolder })
 

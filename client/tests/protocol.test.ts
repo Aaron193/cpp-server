@@ -4,6 +4,7 @@ import {
     ChatChannel,
     decodeEnvelope,
     encodeMessage,
+    ImpactMaterial,
     LIMITS,
     MatchPhase,
     MessageType,
@@ -107,6 +108,23 @@ describe('generated cross-language protocol', () => {
         expect(decodeEnvelope(encodeMessage(message))).toMatchObject({ known: true, message })
     })
 
+    it('round trips pellet-indexed impacts and bounds authoritative pellet paths', () => {
+        const impact: Message = {
+            type: MessageType.Impact,
+            payload: { serverTick: 4, shotId: 9, pelletIndex: 7, position: { x: 1, y: 2, z: 3 }, normal: { x: 0, y: 1, z: 0 }, material: ImpactMaterial.World },
+        }
+        expect(decodeEnvelope(encodeMessage(impact))).toMatchObject({ known: true, message: impact })
+        const endpoint = { x: 0, y: 0, z: 0 }
+        expect(() => encodeMessage({
+            type: MessageType.ShotConfirmed,
+            payload: { serverTick: 4, shooterId: 1, inputSequence: 2, actionId: 3, shotId: 9, weapon: Weapon.Shotgun, origin: endpoint, pelletEndPositions: [] },
+        })).toThrow(ProtocolError)
+        expect(() => encodeMessage({
+            type: MessageType.ShotConfirmed,
+            payload: { serverTick: 4, shooterId: 1, inputSequence: 2, actionId: 3, shotId: 9, weapon: Weapon.Shotgun, origin: endpoint, pelletEndPositions: Array.from({ length: LIMITS.maxPelletsPerShot + 1 }, () => endpoint) },
+        })).toThrow(ProtocolError)
+    })
+
     it('carries an authoritative scoreboard row across golden vectors', () => {
         const score = decodeEnvelope(fromHex(vectors[5]!.expectedHex))
         expect(score.known && score.message.type).toBe(MessageType.ScoreChange)
@@ -127,7 +145,14 @@ describe('generated cross-language protocol', () => {
 
         const shot = decodeEnvelope(fromHex(vectors[6]!.expectedHex))
         if (!shot.known || shot.message.type !== MessageType.ShotConfirmed) throw new Error('wrong fixture')
-        expect(shot.message.payload).toMatchObject({ shooterId: 42, shotId: 123, weapon: Weapon.Shotgun })
+        expect(shot.message.payload).toMatchObject({
+            shooterId: 42, shotId: 123, weapon: Weapon.Shotgun,
+            origin: { x: 1.25, y: 2.5, z: -3.75 },
+            pelletEndPositions: [
+                { x: 1.25, y: 2.5, z: -23.75 },
+                { x: 2, y: 2.25, z: -23.5 },
+            ],
+        })
         const action = decodeEnvelope(fromHex(vectors.find((fixture) => fixture.message === 'ActionResult')!.expectedHex))
         if (!action.known || action.message.type !== MessageType.ActionResult) throw new Error('wrong fixture')
         expect(action.message.payload).toMatchObject({ actionId: 78, accepted: false, reason: 1, authoritativeMagazineAmmo: 18 })

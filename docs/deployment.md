@@ -65,7 +65,7 @@ docker compose --env-file .env config --quiet
 
 The validator is read-only. It checks the deployment file set, pinned vcpkg
 commit and Jolt build flag, runtime config/map paths, non-root images, protocol
-v6 and map metadata, nginx WASM/cache/CSP/Upgrade behavior, private PostgreSQL,
+v8 and map metadata, nginx WASM/cache/CSP/Upgrade behavior, private PostgreSQL,
 Compose health ordering, and production HTTPS/WSS values. Compose treats key
 identity, secret, origin, build, and external WebSocket values as required;
 defaults are limited to bounded non-secret settings.

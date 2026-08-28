@@ -1,4 +1,7 @@
-# Protocol v6 replication contract
+# Replication contract introduced in protocol v6
+
+Protocol v8 retains this delta/handle contract and adds authoritative shot
+trajectory endpoints to reliable combat confirmations.
 
 `SnapshotDelta` is an ordered WebSocket replication stream. An entity is
 identified by `EntityHandle { slot, generation }`; consumers must key views by
@@ -23,7 +26,8 @@ depends on one that was not sent.
 transform, health, and weapon/ammo state. `created` and `updated` are public and
 contain no health or ammo fields. `removed` carries a handle and reason.
 Lifecycle `Spawn`/`Remove` messages use the same versioned handles; reliable
-combat/score events remain ordered and use the v6 action correlation IDs.
+combat/score events remain ordered and use the action correlation IDs introduced
+in v6.
 
 Players are globally relevant in the current capped twelve-player mode. The
 interest policy exposes spatial enter/leave thresholds for props and spectators

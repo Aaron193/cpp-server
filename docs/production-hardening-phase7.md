@@ -21,7 +21,7 @@ Capacity gates come directly from production bounds: pending input `128`, replay
 steps `64`, history overflow `0`, interpolation delay `250 ms`, queued/buffered
 bytes `256 KiB`, snapshot p95 `1,024 B`, and 77 maximum changed fields for the
 current eleven-remote-player pressure record. Clock drift is at most 1.5 ticks
-with confidence p50 at least 0.45. Generated v6 encoding p95 has a deliberately
+with confidence p50 at least 0.45. Generated v8 encoding p95 has a deliberately
 loose local-CPU gate of 2 ms; compare distributions rather than treating it as a
 cross-host benchmark.
 
@@ -100,9 +100,9 @@ and minimap privacy. These are software fallback facts, not hardware GPU data.
 
 - Map v1 loaders were removed: every in-repository producer and consumer is v2,
   both packages pass reproducibility/hash gates, and deployment pins map v2.
-- Legacy full `Snapshot` message ID 5 remains in protocol v6. Phase 0 fixture
+- Legacy full `Snapshot` message ID 5 remains in protocol v8. Phase 0 fixture
   lock and prediction reconciliation tests still use it. Remove it only in the
-  v7 schema after those tests emit `SnapshotDelta`, all golden vectors are
+  v8 schema after those tests emit `SnapshotDelta`, all golden vectors are
   regenerated in TS/C++, and a release search finds no ID-5 producer/consumer.
 - Prediction lead/time dilation remains unimplemented/default-off. Remove the
   design flag language only after live traces show a lead controller improves
@@ -133,7 +133,7 @@ and minimap privacy. These are software fallback facts, not hardware GPU data.
 - Browser: all five Playwright tests passed under headless Chrome/SwiftShader,
   including two-player combat, three DPR/aspect captures, explicit WebGPU
   unavailable UI, stepped UX facts, and the existing render profile.
-- Deployment static/Compose validation passed, including protocol v6, both map
+- Deployment static/Compose validation passed, including protocol v8, both map
   packages, private services, WSS/CSP/cache rules, non-root images, map root,
   and secret seams. The checked local `.env` is intentionally not production
   complete: it lacks `JOIN_TICKET_SECRET`, `CLIENT_ORIGIN`, `SERVER_BUILD_ID`,
