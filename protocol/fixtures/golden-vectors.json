@@ -3,12 +3,12 @@
     "name": "hello-with-token",
     "message": "Hello",
     "value": {
-      "protocolVersion": 8,
+      "protocolVersion": 9,
       "clientBuildId": "web-3d-a1",
       "supportedMapFormat": 1,
       "accessToken": "token-✓"
     },
-    "expectedHex": "011b00080009007765622d33642d61310100010900746f6b656e2de29c93"
+    "expectedHex": "011b00090009007765622d33642d61310100010900746f6b656e2de29c93"
   },
   {
     "name": "version-mismatch-reject",
@@ -17,10 +17,10 @@
       "serverBuildId": "server-a1",
       "reason": 1,
       "detail": "protocol 65535 is unsupported",
-      "expectedProtocolVersion": 8,
+      "expectedProtocolVersion": 9,
       "expectedMapFormat": 2
     },
-    "expectedHex": "032f0009007365727665722d6131011d0070726f746f636f6c20363535333520697320756e737570706f7274656408000200"
+    "expectedHex": "032f0009007365727665722d6131011d0070726f746f636f6c20363535333520697320756e737570706f7274656409000200"
   },
   {
     "name": "input-wrap-values",
@@ -72,11 +72,13 @@
           "aimPitch": -0.5,
           "grounded": true,
           "stateFlags": 32769,
+          "stance": 0,
+          "movementMode": 1,
           "equippedWeapon": 1
         }
       ]
     },
-    "expectedHex": "053a00ffffffff0000000002070040e2010001002a000000010000c03f000010c0000070400000000000009040000000be0000a03f000000bf01018001"
+    "expectedHex": "053c00ffffffff0000000002070040e2010001002a000000010000c03f000010c0000070400000000000009040000000be0000a03f000000bf010180000101"
   },
   {
     "name": "unicode-chat",
@@ -200,6 +202,30 @@
         "grounded": true,
         "stateFlags": 0,
         "health": 87,
+        "movementState": {
+          "stance": 1,
+          "mode": 2,
+          "modeTimeRemaining": 0.4,
+          "dashCooldownRemaining": 0,
+          "slideCooldownRemaining": 0.8,
+          "weaponLockRemaining": 0,
+          "stanceExpansionPending": false,
+          "dashDirection": {
+            "x": 0,
+            "y": 0,
+            "z": -1
+          },
+          "mantleStart": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "mantleTarget": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          }
+        },
         "weaponState": {
           "selected": 1,
           "magazineAmmo": 19,
@@ -229,6 +255,8 @@
             "aimPitch": 0,
             "grounded": true,
             "stateFlags": 0,
+            "stance": 1,
+            "movementMode": 2,
             "equippedWeapon": 2
           }
         }
@@ -236,7 +264,7 @@
       "updated": [],
       "removed": []
     },
-    "expectedHex": "1383000100000000000000070000000178000000630000000300000001020100100e00002a00000002000000803f00000040000040400000000000000000000080bf0000003f000080be01000057000113005000000100090000000400010000204100000000000080c00000803f00000000000000000000803f000000000100000200000000"
+    "expectedHex": "13bc000100000000000000070000000178000000630000000300000001020100100e00002a00000002000000803f00000040000040400000000000000000000080bf0000003f000080be01000057000102cdcccc3e00000000cdcc4c3f00000000000000000000000000000080bf0000000000000000000000000000000000000000000000000113005000000100090000000400010000204100000000000080c00000803f00000000000000000000803f0000000001000001020200000000"
   },
   {
     "name": "snapshot-delta-all-update-bits",
@@ -270,6 +298,30 @@
         "grounded": true,
         "stateFlags": 0,
         "health": 86,
+        "movementState": {
+          "stance": 0,
+          "mode": 0,
+          "modeTimeRemaining": 0,
+          "dashCooldownRemaining": 1.2,
+          "slideCooldownRemaining": 0,
+          "weaponLockRemaining": 0,
+          "stanceExpansionPending": false,
+          "dashDirection": {
+            "x": 1,
+            "y": 0,
+            "z": 0
+          },
+          "mantleStart": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "mantleTarget": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          }
+        },
         "weaponState": {
           "selected": 1,
           "magazineAmmo": 18,
@@ -284,7 +336,7 @@
             "slot": 9,
             "generation": 4
           },
-          "changeMask": 127,
+          "changeMask": 511,
           "position": {
             "x": 11,
             "y": 0,
@@ -299,7 +351,9 @@
           "aimPitch": 0.1,
           "grounded": false,
           "stateFlags": 1,
-          "equippedWeapon": 1
+          "equippedWeapon": 1,
+          "stance": 2,
+          "movementMode": 3
         }
       ],
       "removed": [
@@ -312,6 +366,6 @@
         }
       ]
     },
-    "expectedHex": "138b00020000000100000007000000007b0000006600000003000000002a00000002000000803f00000040000040400000000000000000000000000000003f000000000100005600011200500000000001000900000004007f00010000304100000000000080c0010000803f0000000000000000010000a03f01cdcccc3d01000101000101010008000000010003"
+    "expectedHex": "13c600020000000100000007000000007b0000006600000003000000002a00000002000000803f00000040000040400000000000000000000000000000003f0000000001000056000000000000009a99993f0000000000000000000000803f000000000000000000000000000000000000000000000000000000000000000001120050000000000100090000000400ff01010000304100000000000080c0010000803f0000000000000000010000a03f01cdcccc3d0100010100010101020103010008000000010003"
   }
 ]

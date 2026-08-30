@@ -131,6 +131,21 @@ enum class ActionRejectReason : std::uint8_t {
     NoReserve = 8,
     Duplicate = 9,
     Invalid = 10,
+    MovementLocked = 11,
+};
+
+enum class Stance : std::uint8_t {
+    Standing = 0,
+    Crouched = 1,
+    Prone = 2,
+};
+
+enum class MovementMode : std::uint8_t {
+    Normal = 0,
+    Sprinting = 1,
+    Sliding = 2,
+    Dashing = 3,
+    Mantling = 4,
 };
 
 struct Vec3 {
@@ -156,6 +171,19 @@ struct WeaponState {
     std::uint16_t magazineAmmo{};
     std::uint16_t reserveAmmo{};
     std::uint8_t stateFlags{};
+};
+
+struct MovementState {
+    Stance stance{};
+    MovementMode mode{};
+    float modeTimeRemaining{};
+    float dashCooldownRemaining{};
+    float slideCooldownRemaining{};
+    float weaponLockRemaining{};
+    bool stanceExpansionPending{};
+    Vec3 dashDirection{};
+    Vec3 mantleStart{};
+    Vec3 mantleTarget{};
 };
 
 struct InputCommand {
@@ -185,6 +213,8 @@ struct PublicEntityState {
     float aimPitch{};
     bool grounded{};
     std::uint16_t stateFlags{};
+    Stance stance{};
+    MovementMode movementMode{};
     Weapon equippedWeapon{};
 };
 
@@ -202,6 +232,8 @@ struct UpdatedEntity {
     std::optional<bool> grounded{};
     std::optional<std::uint16_t> stateFlags{};
     std::optional<Weapon> equippedWeapon{};
+    std::optional<Stance> stance{};
+    std::optional<MovementMode> movementMode{};
 };
 
 struct RemovedEntity {
@@ -218,6 +250,7 @@ struct LocalAuthoritativeState {
     bool grounded{};
     std::uint16_t stateFlags{};
     std::uint16_t health{};
+    MovementState movementState{};
     WeaponState weaponState{};
 };
 
@@ -230,6 +263,8 @@ struct EntityRecord {
     float aimPitch{};
     bool grounded{};
     std::uint16_t stateFlags{};
+    Stance stance{};
+    MovementMode movementMode{};
     Weapon equippedWeapon{};
 };
 
@@ -567,13 +602,35 @@ inline ActionKind readActionKind(Reader& reader) {
 
 inline void writeActionRejectReason(Writer& writer, ActionRejectReason value) {
     const auto raw = static_cast<std::uint8_t>(value);
-    if (!(raw == 0U || raw == 1U || raw == 2U || raw == 3U || raw == 4U || raw == 5U || raw == 6U || raw == 7U || raw == 8U || raw == 9U || raw == 10U)) throw ProtocolError("invalid ActionRejectReason");
+    if (!(raw == 0U || raw == 1U || raw == 2U || raw == 3U || raw == 4U || raw == 5U || raw == 6U || raw == 7U || raw == 8U || raw == 9U || raw == 10U || raw == 11U)) throw ProtocolError("invalid ActionRejectReason");
     writer.writeU8(raw);
 }
 inline ActionRejectReason readActionRejectReason(Reader& reader) {
     const auto raw = reader.readU8();
-    if (!(raw == 0U || raw == 1U || raw == 2U || raw == 3U || raw == 4U || raw == 5U || raw == 6U || raw == 7U || raw == 8U || raw == 9U || raw == 10U)) throw ProtocolError("invalid ActionRejectReason");
+    if (!(raw == 0U || raw == 1U || raw == 2U || raw == 3U || raw == 4U || raw == 5U || raw == 6U || raw == 7U || raw == 8U || raw == 9U || raw == 10U || raw == 11U)) throw ProtocolError("invalid ActionRejectReason");
     return static_cast<ActionRejectReason>(raw);
+}
+
+inline void writeStance(Writer& writer, Stance value) {
+    const auto raw = static_cast<std::uint8_t>(value);
+    if (!(raw == 0U || raw == 1U || raw == 2U)) throw ProtocolError("invalid Stance");
+    writer.writeU8(raw);
+}
+inline Stance readStance(Reader& reader) {
+    const auto raw = reader.readU8();
+    if (!(raw == 0U || raw == 1U || raw == 2U)) throw ProtocolError("invalid Stance");
+    return static_cast<Stance>(raw);
+}
+
+inline void writeMovementMode(Writer& writer, MovementMode value) {
+    const auto raw = static_cast<std::uint8_t>(value);
+    if (!(raw == 0U || raw == 1U || raw == 2U || raw == 3U || raw == 4U)) throw ProtocolError("invalid MovementMode");
+    writer.writeU8(raw);
+}
+inline MovementMode readMovementMode(Reader& reader) {
+    const auto raw = reader.readU8();
+    if (!(raw == 0U || raw == 1U || raw == 2U || raw == 3U || raw == 4U)) throw ProtocolError("invalid MovementMode");
+    return static_cast<MovementMode>(raw);
 }
 
 inline void writeVec3(Writer& writer, const Vec3& value) {
@@ -630,6 +687,33 @@ inline WeaponState readWeaponState(Reader& reader) {
     return value;
 }
 
+inline void writeMovementState(Writer& writer, const MovementState& value) {
+    writeStance(writer, value.stance);
+    writeMovementMode(writer, value.mode);
+    writer.writeF32(value.modeTimeRemaining);
+    writer.writeF32(value.dashCooldownRemaining);
+    writer.writeF32(value.slideCooldownRemaining);
+    writer.writeF32(value.weaponLockRemaining);
+    writer.writeBool(value.stanceExpansionPending);
+    writeVec3(writer, value.dashDirection);
+    writeVec3(writer, value.mantleStart);
+    writeVec3(writer, value.mantleTarget);
+}
+inline MovementState readMovementState(Reader& reader) {
+    MovementState value{};
+    value.stance = readStance(reader);
+    value.mode = readMovementMode(reader);
+    value.modeTimeRemaining = reader.readF32();
+    value.dashCooldownRemaining = reader.readF32();
+    value.slideCooldownRemaining = reader.readF32();
+    value.weaponLockRemaining = reader.readF32();
+    value.stanceExpansionPending = reader.readBool();
+    value.dashDirection = readVec3(reader);
+    value.mantleStart = readVec3(reader);
+    value.mantleTarget = readVec3(reader);
+    return value;
+}
+
 inline void writeInputCommand(Writer& writer, const InputCommand& value) {
     writer.writeU32(value.sequence);
     writer.writeU32(value.clientTick);
@@ -677,6 +761,8 @@ inline void writePublicEntityState(Writer& writer, const PublicEntityState& valu
     writer.writeF32(value.aimPitch);
     writer.writeBool(value.grounded);
     writer.writeU16(value.stateFlags);
+    writeStance(writer, value.stance);
+    writeMovementMode(writer, value.movementMode);
     writeWeapon(writer, value.equippedWeapon);
 }
 inline PublicEntityState readPublicEntityState(Reader& reader) {
@@ -689,6 +775,8 @@ inline PublicEntityState readPublicEntityState(Reader& reader) {
     value.aimPitch = reader.readF32();
     value.grounded = reader.readBool();
     value.stateFlags = reader.readU16();
+    value.stance = readStance(reader);
+    value.movementMode = readMovementMode(reader);
     value.equippedWeapon = readWeapon(reader);
     return value;
 }
@@ -732,6 +820,14 @@ inline void writeUpdatedEntity(Writer& writer, const UpdatedEntity& value) {
     writer.writeBool(value.equippedWeapon.has_value());
     if (value.equippedWeapon.has_value()) {
         writeWeapon(writer, *value.equippedWeapon);
+    }
+    writer.writeBool(value.stance.has_value());
+    if (value.stance.has_value()) {
+        writeStance(writer, *value.stance);
+    }
+    writer.writeBool(value.movementMode.has_value());
+    if (value.movementMode.has_value()) {
+        writeMovementMode(writer, *value.movementMode);
     }
 }
 inline UpdatedEntity readUpdatedEntity(Reader& reader) {
@@ -787,6 +883,20 @@ inline UpdatedEntity readUpdatedEntity(Reader& reader) {
     } else {
         value.equippedWeapon.reset();
     }
+    if (reader.readBool()) {
+        Stance decodedValue{};
+        decodedValue = readStance(reader);
+        value.stance = std::move(decodedValue);
+    } else {
+        value.stance.reset();
+    }
+    if (reader.readBool()) {
+        MovementMode decodedValue{};
+        decodedValue = readMovementMode(reader);
+        value.movementMode = std::move(decodedValue);
+    } else {
+        value.movementMode.reset();
+    }
     return value;
 }
 
@@ -810,6 +920,7 @@ inline void writeLocalAuthoritativeState(Writer& writer, const LocalAuthoritativ
     writer.writeBool(value.grounded);
     writer.writeU16(value.stateFlags);
     writer.writeU16(value.health);
+    writeMovementState(writer, value.movementState);
     writeWeaponState(writer, value.weaponState);
 }
 inline LocalAuthoritativeState readLocalAuthoritativeState(Reader& reader) {
@@ -822,6 +933,7 @@ inline LocalAuthoritativeState readLocalAuthoritativeState(Reader& reader) {
     value.grounded = reader.readBool();
     value.stateFlags = reader.readU16();
     value.health = reader.readU16();
+    value.movementState = readMovementState(reader);
     value.weaponState = readWeaponState(reader);
     return value;
 }
@@ -835,6 +947,8 @@ inline void writeEntityRecord(Writer& writer, const EntityRecord& value) {
     writer.writeF32(value.aimPitch);
     writer.writeBool(value.grounded);
     writer.writeU16(value.stateFlags);
+    writeStance(writer, value.stance);
+    writeMovementMode(writer, value.movementMode);
     writeWeapon(writer, value.equippedWeapon);
 }
 inline EntityRecord readEntityRecord(Reader& reader) {
@@ -847,6 +961,8 @@ inline EntityRecord readEntityRecord(Reader& reader) {
     value.aimPitch = reader.readF32();
     value.grounded = reader.readBool();
     value.stateFlags = reader.readU16();
+    value.stance = readStance(reader);
+    value.movementMode = readMovementMode(reader);
     value.equippedWeapon = readWeapon(reader);
     return value;
 }

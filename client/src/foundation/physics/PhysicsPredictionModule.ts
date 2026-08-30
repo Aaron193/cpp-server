@@ -7,8 +7,9 @@ import type {
 } from '../lifecycle'
 import { INPUT, PHYSICS } from '../services'
 import { JoltCharacterWorld, type PhysicsPosition } from './JoltCharacterWorld'
-import { DEFAULT_MOVEMENT_TUNING, FixedStepAccumulator, type MovementTuning } from './Movement'
+import { DEFAULT_MOVEMENT_TUNING, FixedStepAccumulator, createMovementState, type MovementTuning } from './Movement'
 import type { MovementCommand } from './Movement'
+import { MovementMode, type MovementState } from '../../protocol/generated'
 import { ProfileStats } from '../performance/ProfileStats'
 
 type JoltRuntime = Awaited<ReturnType<typeof Jolt>>
@@ -68,8 +69,8 @@ export class PhysicsPredictionModule implements ClientModule {
         if (this.world) this.simulatedSteps++
     }
 
-    setAuthoritativeState(position: PhysicsPosition, velocity: PhysicsPosition): void {
-        this.world?.setState(position, velocity)
+    setAuthoritativeState(position: PhysicsPosition, velocity: PhysicsPosition, movementState?: MovementState): void {
+        this.world?.setState(position, velocity, movementState)
     }
 
     async applyAuthoritativeTuning(tuning: MovementTuning): Promise<void> {
@@ -90,6 +91,12 @@ export class PhysicsPredictionModule implements ClientModule {
     get position(): PhysicsPosition { return this.world?.position ?? this.zero }
     get velocity(): PhysicsPosition { return this.world?.velocity ?? this.zero }
     get grounded(): boolean { return this.world?.grounded ?? false }
+    get movementState(): MovementState { return this.world?.movementState ?? createMovementState() }
+    get canFire(): boolean {
+        const movement = this.movementState
+        return movement.weaponLockRemaining <= 0 && movement.mode !== MovementMode.Sprinting &&
+            movement.mode !== MovementMode.Dashing && movement.mode !== MovementMode.Mantling
+    }
     get tuning(): MovementTuning { return this.currentTuning }
     get stepCount(): number { return this.simulatedSteps }
     get droppedSimulationTimeMs(): number { return this.accumulator.totalDroppedSeconds * 1000 }

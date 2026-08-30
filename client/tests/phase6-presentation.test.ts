@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ActionKind, ActionRejectReason, EntityKind, MatchPhase, Weapon, type EntityRecord } from '../src/protocol/generated'
+import { ActionKind, ActionRejectReason, EntityKind, MatchPhase, MovementMode, Stance, Weapon, type EntityRecord } from '../src/protocol/generated'
 import { ACTOR_SOCKET_LOCAL, auditActorCalibration, evaluateActorPose, selectLocomotion } from '../src/foundation/entities/ActorPresentation'
 import { CameraRigController } from '../src/foundation/camera/CameraRig'
 import { SimulationAim } from '../src/foundation/camera/SimulationAim'
@@ -13,7 +13,7 @@ import { MatchFeelClock } from '../src/foundation/hud/MatchFeel'
 import { deriveHudStates } from '../src/foundation/hud/HudState'
 import { frameKillcamCamera, KillcamBuffer } from '../src/foundation/replay/KillcamBuffer'
 
-const entity = (patch: Partial<EntityRecord> = {}): EntityRecord => ({ entityId: 4, kind: EntityKind.Player, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, equippedWeapon: Weapon.Rifle, ...patch })
+const entity = (patch: Partial<EntityRecord> = {}): EntityRecord => ({ entityId: 4, kind: EntityKind.Player, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, stance: Stance.Standing, movementMode: MovementMode.Normal, equippedWeapon: Weapon.Rifle, ...patch })
 
 describe('Phase 6 bounded character, camera and UX presentation', () => {
     it('audits articulated rig/socket calibration and every locomotion branch', () => {
@@ -21,8 +21,12 @@ describe('Phase 6 bounded character, camera and UX presentation', () => {
         expect(ACTOR_SOCKET_LOCAL.muzzle.z).toBeLessThan(ACTOR_SOCKET_LOCAL.rightHand.z)
         expect(selectLocomotion(entity())).toBe('idle')
         expect(selectLocomotion(entity({ velocity: { x: 2, y: 0, z: 0 } }))).toBe('walk')
-        expect(selectLocomotion(entity({ velocity: { x: 6, y: 0, z: 0 } }))).toBe('run')
-        expect(selectLocomotion(entity({ stateFlags: 2 }))).toBe('crouch')
+        expect(selectLocomotion(entity({ velocity: { x: 6, y: 0, z: 0 }, movementMode: MovementMode.Sprinting }))).toBe('sprint')
+        expect(selectLocomotion(entity({ stance: Stance.Crouched }))).toBe('crouch-idle')
+        expect(selectLocomotion(entity({ stance: Stance.Prone }))).toBe('prone-idle')
+        expect(selectLocomotion(entity({ movementMode: MovementMode.Sliding }))).toBe('slide')
+        expect(selectLocomotion(entity({ movementMode: MovementMode.Dashing }))).toBe('dash')
+        expect(selectLocomotion(entity({ movementMode: MovementMode.Mantling }))).toBe('mantle')
         expect(selectLocomotion(entity({ grounded: false }))).toBe('air')
         expect(selectLocomotion(entity({ stateFlags: 1 }))).toBe('dead')
         expect(evaluateActorPose(entity({ stateFlags: 4 }), 1).reloadWeight).toBe(1)

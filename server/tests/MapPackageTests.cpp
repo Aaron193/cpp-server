@@ -69,7 +69,7 @@ TEST_CASE(committed_manifest_spawns_hash_and_bounds_validate) {
     EXPECT_EQ(package.manifest.mapId, "graybox-arena");
     EXPECT_TRUE(package.manifest.spawnPoints.size() >= 12U);
     EXPECT_EQ(package.manifest.contentHash,
-              "sha256:3984a02b8a6ce8abaebddacb010273285fbb666cb4f973f5eb7e251e3fb9b477");
+              "sha256:247161e133c642351519f1c02073ccd15b6e5dfa23c766d8f01a25f936cf1582");
     EXPECT_EQ(package.manifest.boundsMin, package.collision.boundsMin);
     EXPECT_EQ(package.manifest.boundsMax, package.collision.boundsMax);
 }
@@ -80,7 +80,7 @@ TEST_CASE(both_v2_packages_parse_and_hash_without_map_specific_code) {
     EXPECT_EQ(graybox.manifest.formatVersion, 2U);
     EXPECT_EQ(copper.manifest.mapId, "copper-yard");
     EXPECT_EQ(copper.manifest.contentHash,
-              "sha256:5d0c9977e32841521f84c940f32ea07583b297aa90e8ed20afdf56978b7df42c");
+              "sha256:1eee314d6893e8066372010d7eb0c050268f287a7f188d3855dc6550cddbf6ff");
     EXPECT_EQ(copper.manifest.spawnPoints.size(), 12U);
     EXPECT_TRUE(!copper.manifest.navigationAsset.empty());
     EXPECT_TRUE(!copper.manifest.radarAsset.empty());

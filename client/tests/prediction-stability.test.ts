@@ -5,7 +5,8 @@ import { NetworkingModule } from '../src/foundation/networking/NetworkingModule'
 import { sha256Identifier } from '../src/foundation/networking/Handshake'
 import type { NetworkTransport, TransportCallbacks, TransportState } from '../src/foundation/networking/Transport'
 import { ARENA, ENTITY_VIEWS, INPUT, PHYSICS } from '../src/foundation/services'
-import { EntityKind, MatchPhase, MessageType, PROTOCOL_VERSION, Weapon, encodeMessage } from '../src/protocol/generated'
+import { DEFAULT_MOVEMENT_TUNING } from '../src/foundation/physics/Movement'
+import { EntityKind, MatchPhase, MessageType, MovementMode, PROTOCOL_VERSION, Stance, Weapon, encodeMessage } from '../src/protocol/generated'
 
 class FakeTransport implements NetworkTransport {
     state: TransportState = 'idle'
@@ -17,7 +18,7 @@ class FakeTransport implements NetworkTransport {
     close(): void { this.state = 'closed' }
 }
 
-const configurationJson = JSON.stringify({ movement: { capsuleRadius: .42, capsuleHalfHeight: .48, eyeHeight: 1.62, groundSpeed: 7.5, groundAcceleration: 42, airAcceleration: 12, airControl: .45, jumpSpeed: 6.4, gravity: 20, terminalVelocity: 35, maxSlopeRadians: .78, stepUpHeight: .42, stickToFloorDistance: .5 } })
+const configurationJson = JSON.stringify({ movement: DEFAULT_MOVEMENT_TUNING })
 
 async function createHarness(options: ConstructorParameters<typeof NetworkingModule>[0] = {}) {
     const transport = new FakeTransport(), services = new ServiceRegistry()
@@ -42,7 +43,7 @@ async function createHarness(options: ConstructorParameters<typeof NetworkingMod
     transport.callbacks!.message(encodeMessage({ type: MessageType.Welcome, payload: { protocolVersion: PROTOCOL_VERSION, serverBuildId: 'dev', playerId: 7, playerHandle: { slot: 7, generation: 0 }, tickRate: 60, snapshotRate: 20, map, configurationHash } }))
     transport.callbacks!.message(encodeMessage({ type: MessageType.Configuration, payload: { protocolVersion: PROTOCOL_VERSION, serverBuildId: 'dev', map, configurationHash, configurationJson } }))
     await vi.waitFor(() => expect(module.status).toBe('connected'))
-    const local = (x: number, y = 0) => ({ entityId: 7, kind: EntityKind.Player, position: { x, y, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, equippedWeapon: Weapon.Rifle, health: 100, weaponState: { selected: Weapon.Rifle, magazineAmmo: 30, reserveAmmo: 120, stateFlags: 0 } })
+    const local = (x: number, y = 0) => ({ entityId: 7, kind: EntityKind.Player, position: { x, y, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, stance: Stance.Standing, movementMode: MovementMode.Normal, equippedWeapon: Weapon.Rifle, health: 100, weaponState: { selected: Weapon.Rifle, magazineAmmo: 30, reserveAmmo: 120, stateFlags: 0 } })
     const snapshot = (tick: number, acknowledgement: number, x: number, y = 0) => transport.callbacks!.message(encodeMessage({ type: MessageType.Snapshot, payload: { serverTick: tick, lastProcessedInputSequence: acknowledgement, match: { phase: MatchPhase.Active, roundNumber: 1, phaseEndsAtTick: 600 }, entities: [local(x, y)] } }))
     snapshot(100, 0, 0)
     await vi.waitFor(() => expect(module.latestTick).toBe(100))

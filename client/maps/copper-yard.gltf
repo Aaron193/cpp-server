@@ -1,7 +1,7 @@
 {
   "asset": { "version": "2.0", "generator": "cpp-server original reference authoring scene" },
   "scene": 0,
-  "scenes": [{ "name": "CopperYard", "nodes": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44] }],
+  "scenes": [{ "name": "CopperYard", "nodes": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48] }],
   "nodes": [
     { "name": "Render_Floor", "translation": [0,-0.5,0], "extras": { "collection": "Render", "material": { "name": "Sandstone", "baseColor": [0.48,0.29,0.16,1], "metallic": 0.05, "roughness": 0.72 }, "geometry": { "shape": "box", "size": [40,1,64] } } },
     { "name": "Render_NorthWall", "translation": [0,3,-32.5], "extras": { "collection": "Render", "material": { "name": "OxidizedCopper", "baseColor": [0.09,0.42,0.36,1], "metallic": 0.62, "roughness": 0.41 }, "geometry": { "shape": "box", "size": [42,6,1] } } },
@@ -50,7 +50,11 @@
     { "name": "nav-north", "translation": [0,0.1,-25], "extras": { "collection": "Navigation", "links": ["nav-center"] } },
     { "name": "nav-center", "translation": [0,0.1,8], "extras": { "collection": "Navigation", "links": ["nav-north","nav-south"] } },
     { "name": "nav-south", "translation": [8,0.1,26], "extras": { "collection": "Navigation", "links": ["nav-center"] } },
-    { "name": "radar-projection", "extras": { "collection": "Radar" } }
+    { "name": "radar-projection", "extras": { "collection": "Radar" } },
+    { "name": "Render_LowClearanceShortcut", "translation": [15,1.5,-2], "extras": { "collection": "Render", "material": { "name": "CopperBridge", "baseColor": [0.61,0.27,0.09,1], "metallic": 0.75, "roughness": 0.33 }, "geometry": { "shape": "box", "size": [5,0.3,5] } } },
+    { "name": "Collision_LowClearanceShortcut", "translation": [15,1.5,-2], "extras": { "collection": "Collision", "geometry": { "shape": "box", "size": [5,0.3,5] } } },
+    { "name": "Render_MantleCrate", "translation": [-8,0.55,15], "extras": { "collection": "Render", "material": { "name": "OxidizedCopper", "baseColor": [0.09,0.42,0.36,1], "metallic": 0.62, "roughness": 0.41 }, "geometry": { "shape": "box", "size": [2.5,1.1,2.5] } } },
+    { "name": "Collision_MantleCrate", "translation": [-8,0.55,15], "extras": { "collection": "Collision", "geometry": { "shape": "box", "size": [2.5,1.1,2.5] } } }
   ],
   "extras": { "map": { "id": "copper-yard", "bounds": { "min": [-21,-1,-33], "max": [21,12,33] }, "environment": { "clearColor": [0.025,0.055,0.06], "exposure": 1.15, "sunDirection": [-0.2,-1,-0.45], "shadowDistance": 72 }, "policy": { "stepSmoothingMax": 0.42, "audioDistanceScale": 0.9, "radarNorthYaw": 0 } } }
 }

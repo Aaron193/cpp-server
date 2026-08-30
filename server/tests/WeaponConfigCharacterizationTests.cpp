@@ -61,7 +61,12 @@ TEST_CASE(current_movement_and_loadout_configuration_is_validated) {
     EXPECT_NEAR(config.movement.capsuleRadius, 0.42F, 0.0001F);
     EXPECT_NEAR(config.movement.capsuleHalfHeight, 0.48F, 0.0001F);
     EXPECT_NEAR(config.movement.eyeHeight, 1.62F, 0.0001F);
-    EXPECT_NEAR(config.movement.groundSpeed, 7.5F, 0.0001F);
+    EXPECT_NEAR(config.movement.groundSpeed, 5.5F, 0.0001F);
+    EXPECT_NEAR(config.movement.sprintSpeed, 7.5F, 0.0001F);
+    EXPECT_NEAR(config.movement.crouchSpeed, 3.1F, 0.0001F);
+    EXPECT_NEAR(config.movement.proneSpeed, 1.35F, 0.0001F);
+    EXPECT_NEAR(config.movement.dashSpeed, 13.0F, 0.0001F);
+    EXPECT_TRUE(config.movement.mantleEnabled);
     EXPECT_NEAR(config.movement.groundAcceleration, 42.0F, 0.0001F);
     EXPECT_NEAR(config.movement.airAcceleration, 12.0F, 0.0001F);
     EXPECT_NEAR(config.movement.jumpSpeed, 6.4F, 0.0001F);

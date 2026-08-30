@@ -87,24 +87,30 @@ export class EntityViewsModule implements ClientModule {
             const pose = evaluateActorPose(actor.record, frame.elapsedSeconds, actor.oneShots, actor.wallTuckWeight, now)
             const swing = Math.sin(pose.gaitPhase) * .58 * pose.gaitWeight
             actor.leftLeg.rotation.x = swing; actor.rightLeg.rotation.x = -swing
-            actor.leftArm.rotation.x = -swing * .48 - .72 - pose.recoilWeight * .12
-            actor.rightArm.rotation.x = swing * .48 - .78 - pose.recoilWeight * .18
+            actor.leftArm.rotation.x = -swing * .48 - .72 - pose.recoilWeight * .12 - pose.mantleWeight * 1.25
+            actor.rightArm.rotation.x = swing * .48 - .78 - pose.recoilWeight * .18 - pose.mantleWeight * .95
             actor.leftArm.rotation.z = -.18 - pose.reloadWeight * .55
             actor.rightArm.rotation.z = .18 + pose.reloadWeight * .32
-            actor.torso.rotation.x = -pose.aimPitch * .42 - pose.wallTuckWeight * .25
-            actor.torso.rotation.z = pose.hitWeight * .13 + pose.deadWeight * 1.25
+            actor.torso.rotation.x = -pose.aimPitch * .42 - pose.wallTuckWeight * .25 + pose.slideWeight * .32 + pose.proneWeight * 1.15
+            actor.torso.rotation.z = pose.hitWeight * .13 + pose.deadWeight * 1.25 + pose.dashWeight * .12
             actor.head.rotation.x = -pose.aimPitch * .55
-            actor.calibration.position.y = -.34 * pose.crouchWeight + .03 * Math.sin(pose.gaitPhase * 2) * pose.gaitWeight
-            actor.calibration.scaling.y = 1 - .12 * pose.crouchWeight
+            actor.calibration.position.y = -.34 * pose.crouchWeight - .67 * pose.proneWeight - .12 * pose.slideWeight + .03 * Math.sin(pose.gaitPhase * 2) * pose.gaitWeight
+            actor.calibration.scaling.y = 1 - .12 * pose.crouchWeight - .2 * pose.proneWeight
             actor.calibration.scaling.x = actor.calibration.scaling.z = .88 + .12 * pose.respawnWeight
             actor.weapon.rotation.x = -actor.record.aimPitch - pose.wallTuckWeight * .55
-            actor.weapon.position.z = pose.wallTuckWeight * .32 + pose.recoilWeight * .08
+            actor.weapon.position.z = pose.wallTuckWeight * .32 + pose.recoilWeight * .08 + pose.mantleWeight * .28
         }
     }
     attach(entityId: GameplayEntityId, view: TransformNode): void { if (this.get(entityId)) throw new Error(`Entity view already attached: ${entityId}`); this.attached.set(entityId, view) }
     detach(entityId: GameplayEntityId): TransformNode | undefined { const actor = this.actors.get(entityId); if (actor) this.actors.delete(entityId); const custom = this.attached.get(entityId); this.attached.delete(entityId); return actor?.root ?? custom }
     get(entityId: GameplayEntityId): TransformNode | undefined { return this.actors.get(entityId)?.root ?? this.attached.get(entityId) }
     getSocket(entityId: GameplayEntityId, name: keyof typeof ACTOR_SOCKET_LOCAL): TransformNode | undefined { return this.actors.get(entityId)?.sockets[name] }
+    debugActorStates(): readonly { readonly entityId: number; readonly stance: number; readonly movementMode: number; readonly calibrationY: number }[] {
+        return [...this.actors.entries()].map(([entityId, actor]) => ({
+            entityId, stance: actor.record.stance, movementMode: actor.record.movementMode,
+            calibrationY: actor.calibration.position.y,
+        }))
+    }
     forEachPresentationPose(visitor: (entityId: number, position: Vec3, yaw: number) => void): void { for (const [entityId, actor] of this.actors) visitor(entityId, actor.root.position, actor.root.rotation.y) }
     triggerOneShot(entityId: GameplayEntityId, kind: ActorOneShot, nowMs = performance.now()): void { const actor = this.actors.get(entityId); if (actor) actor.oneShots[kind] = nowMs }
     setWallTuck(entityId: GameplayEntityId, weight: number): void { const actor = this.actors.get(entityId); if (actor) actor.wallTuckWeight = Math.max(0, Math.min(1, weight)) }

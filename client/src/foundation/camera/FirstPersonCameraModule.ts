@@ -4,6 +4,8 @@ import type { ClientModule, ClientModuleContext, FrameUpdate } from '../lifecycl
 import { CAMERA, CAMERA_RIG, INPUT, NETWORKING, PHYSICS, SCENE, SIMULATION_AIM } from '../services'
 import { CameraRigController } from './CameraRig'
 import { SimulationAim } from './SimulationAim'
+import { MovementMode } from '../../protocol/generated'
+import { eyeHeightForStance } from '../physics/Movement'
 
 export interface FirstPersonCameraOptions { readonly fieldOfViewRadians?: number }
 
@@ -15,6 +17,7 @@ export class FirstPersonCameraModule implements ClientModule {
     private context?: ClientModuleContext
     private camera?: FreeCamera
     private readonly target = new Vector3()
+    private previousMovementMode = MovementMode.Normal
     constructor(options: FirstPersonCameraOptions = {}) { this.rig = new CameraRigController(options.fieldOfViewRadians ?? Math.PI * .48) }
     initialize(context: ClientModuleContext): void {
         this.context = context
@@ -29,15 +32,24 @@ export class FirstPersonCameraModule implements ClientModule {
         const physics = this.context.services.get(PHYSICS), angles = this.context.services.get(INPUT).angles
         this.simulationAim.set(angles.yaw, angles.pitch)
         const position = physics.position, velocity = physics.velocity
+        const movement = physics.movementState
+        if (movement.mode !== this.previousMovementMode) {
+            if (movement.mode === MovementMode.Dashing) this.rig.addMovementImpulse(.08)
+            else if (movement.mode === MovementMode.Sliding) this.rig.addMovementImpulse(.045)
+            else if (movement.mode === MovementMode.Mantling) this.rig.addMovementImpulse(-.055)
+            this.previousMovementMode = movement.mode
+        }
+        this.rig.setFovTarget(this.rig.baseFov + (movement.mode === MovementMode.Sprinting ? .075 : movement.mode === MovementMode.Dashing ? .11 : movement.mode === MovementMode.Sliding ? .035 : 0))
         const correction = this.context.services.optional(NETWORKING)?.visualCorrection ?? { x: 0, y: 0, z: 0 }
-        const pose = this.rig.update({ predictedFeet: position, correctionResidual: correction, eyeHeight: physics.tuning.eyeHeight, velocity, grounded: physics.grounded, simulationYaw: angles.yaw, simulationPitch: angles.pitch }, frame.deltaSeconds)
+        const pose = this.rig.update({ predictedFeet: position, correctionResidual: correction, eyeHeight: eyeHeightForStance(movement.stance, physics.tuning), velocity, grounded: physics.grounded, simulationYaw: angles.yaw, simulationPitch: angles.pitch, movementTilt: movement.mode === MovementMode.Sliding ? .08 : 0 }, frame.deltaSeconds)
         this.camera.position.copyFromFloats(pose.position.x, pose.position.y, pose.position.z); this.camera.fov = pose.fov
         const cosine = Math.cos(pose.pitch)
         this.target.set(pose.position.x + Math.sin(pose.yaw) * cosine, pose.position.y + Math.sin(pose.pitch), pose.position.z - Math.cos(pose.yaw) * cosine)
         this.camera.setTarget(this.target)
+        this.camera.rotation.z = pose.roll
     }
     dispose(): void {
         this.camera?.dispose(); this.context?.services.remove(CAMERA); this.context?.services.remove(CAMERA_RIG); this.context?.services.remove(SIMULATION_AIM)
-        this.camera = undefined; this.context = undefined; this.rig.hardReset()
+        this.camera = undefined; this.context = undefined; this.rig.hardReset(); this.previousMovementMode = MovementMode.Normal
     }
 }

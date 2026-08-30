@@ -45,6 +45,11 @@ function positive(record: Record<string, unknown>, name: keyof MovementTuning): 
     if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) throw new Error(`Configuration movement.${name} must be a positive finite number`)
     return value
 }
+function enabled(record: Record<string, unknown>, name: keyof MovementTuning): boolean {
+    const value = record[name]
+    if (typeof value !== 'boolean') throw new Error(`Configuration movement.${name} must be boolean`)
+    return value
+}
 
 export function parseMovementTuning(configurationJson: string): MovementTuning {
     let parsed: unknown
@@ -58,6 +63,9 @@ export function parseMovementTuning(configurationJson: string): MovementTuning {
         capsuleHalfHeight: positive(values, 'capsuleHalfHeight'),
         eyeHeight: positive(values, 'eyeHeight'),
         groundSpeed: positive(values, 'groundSpeed'),
+        sprintSpeed: positive(values, 'sprintSpeed'),
+        crouchSpeed: positive(values, 'crouchSpeed'),
+        proneSpeed: positive(values, 'proneSpeed'),
         groundAcceleration: positive(values, 'groundAcceleration'),
         airAcceleration: positive(values, 'airAcceleration'),
         airControl: positive(values, 'airControl'),
@@ -67,8 +75,31 @@ export function parseMovementTuning(configurationJson: string): MovementTuning {
         maxSlopeRadians: positive(values, 'maxSlopeRadians'),
         stepUpHeight: positive(values, 'stepUpHeight'),
         stickToFloorDistance: positive(values, 'stickToFloorDistance'),
+        crouchCapsuleRadius: positive(values, 'crouchCapsuleRadius'),
+        crouchCapsuleHalfHeight: positive(values, 'crouchCapsuleHalfHeight'),
+        crouchEyeHeight: positive(values, 'crouchEyeHeight'),
+        proneCapsuleRadius: positive(values, 'proneCapsuleRadius'),
+        proneCapsuleHalfHeight: positive(values, 'proneCapsuleHalfHeight'),
+        proneEyeHeight: positive(values, 'proneEyeHeight'),
+        slideDuration: positive(values, 'slideDuration'),
+        slideStartSpeed: positive(values, 'slideStartSpeed'),
+        slideEndSpeed: positive(values, 'slideEndSpeed'),
+        slideSteerRadiansPerSecond: positive(values, 'slideSteerRadiansPerSecond'),
+        slideCooldown: positive(values, 'slideCooldown'),
+        slideJumpCommitment: positive(values, 'slideJumpCommitment'),
+        dashSpeed: positive(values, 'dashSpeed'),
+        dashDuration: positive(values, 'dashDuration'),
+        dashCooldown: positive(values, 'dashCooldown'),
+        mantleMinHeight: positive(values, 'mantleMinHeight'),
+        mantleMaxHeight: positive(values, 'mantleMaxHeight'),
+        mantleReach: positive(values, 'mantleReach'),
+        mantleDuration: positive(values, 'mantleDuration'),
+        sprintToFireDelay: positive(values, 'sprintToFireDelay'),
+        slideSpreadMultiplier: positive(values, 'slideSpreadMultiplier'),
+        sprintEnabled: enabled(values, 'sprintEnabled'), crouchEnabled: enabled(values, 'crouchEnabled'), proneEnabled: enabled(values, 'proneEnabled'),
+        slideEnabled: enabled(values, 'slideEnabled'), dashEnabled: enabled(values, 'dashEnabled'), mantleEnabled: enabled(values, 'mantleEnabled'),
     }
-    if (tuning.airControl > 1 || tuning.maxSlopeRadians >= Math.PI / 2) throw new Error('Configuration movement tuning is outside supported bounds')
+    if (tuning.airControl > 1 || tuning.maxSlopeRadians >= Math.PI / 2 || tuning.mantleMinHeight >= tuning.mantleMaxHeight || tuning.slideJumpCommitment >= tuning.slideDuration || tuning.groundSpeed > tuning.sprintSpeed) throw new Error('Configuration movement tuning is outside supported bounds')
     return tuning
 }
 

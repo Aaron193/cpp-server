@@ -10,6 +10,7 @@
 
 #include "common/enums.hpp"
 #include "ecs/EntityManager.hpp"
+#include "protocol/generated.hpp"
 
 namespace Components {
 
@@ -66,11 +67,28 @@ struct PlayerInput {
     // true if the mouse was ever down during the current tick
     bool dirtyClick = false;
     bool reloadRequested = false;
+    bool sprintHeld = false;
+    bool crouchHeld = false;
+    bool pronePressed = false;
+    bool dashPressed = false;
     int8_t switchSlot = -1;
     std::uint32_t clientTick = 0;
     std::uint32_t inputSequence = 0;
     std::uint32_t fireActionId = 0;
     std::uint32_t reloadActionId = 0;
+};
+
+struct MovementState {
+    protocol::Stance stance = protocol::Stance::Standing;
+    protocol::MovementMode mode = protocol::MovementMode::Normal;
+    float modeTimeRemaining = 0.0F;
+    float dashCooldownRemaining = 0.0F;
+    float slideCooldownRemaining = 0.0F;
+    float weaponLockRemaining = 0.0F;
+    bool stanceExpansionPending = false;
+    glm::vec3 dashDirection{0.0F, 0.0F, -1.0F};
+    glm::vec3 mantleStart{0.0F};
+    glm::vec3 mantleTarget{0.0F};
 };
 
 struct State {

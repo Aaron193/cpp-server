@@ -1,6 +1,6 @@
 {
   "name": "ArenaProtocol",
-  "version": 8,
+  "version": 9,
   "limits": {
     "maxEnvelopeBytes": 61443,
     "maxPayloadBytes": 61440,
@@ -29,7 +29,9 @@
     "RoundTransitionKind": { "underlying": "u8", "values": { "Started": 1, "Ended": 2, "Intermission": 3, "Reset": 4 } },
     "ChatChannel": { "underlying": "u8", "values": { "Global": 1, "System": 2 } }
     ,"ActionKind": { "underlying": "u8", "values": { "Fire": 1, "Reload": 2 } }
-    ,"ActionRejectReason": { "underlying": "u8", "values": { "None": 0, "Cadence": 1, "NoAmmo": 2, "Dead": 3, "MatchInactive": 4, "WeaponMismatch": 5, "AlreadyReloading": 6, "MagazineFull": 7, "NoReserve": 8, "Duplicate": 9, "Invalid": 10 } }
+    ,"ActionRejectReason": { "underlying": "u8", "values": { "None": 0, "Cadence": 1, "NoAmmo": 2, "Dead": 3, "MatchInactive": 4, "WeaponMismatch": 5, "AlreadyReloading": 6, "MagazineFull": 7, "NoReserve": 8, "Duplicate": 9, "Invalid": 10, "MovementLocked": 11 } }
+    ,"Stance": { "underlying": "u8", "values": { "Standing": 0, "Crouched": 1, "Prone": 2 } }
+    ,"MovementMode": { "underlying": "u8", "values": { "Normal": 0, "Sprinting": 1, "Sliding": 2, "Dashing": 3, "Mantling": 4 } }
   },
   "types": {
     "Vec3": [
@@ -50,6 +52,18 @@
       { "name": "magazineAmmo", "type": "u16" },
       { "name": "reserveAmmo", "type": "u16" },
       { "name": "stateFlags", "type": "u8" }
+    ],
+    "MovementState": [
+      { "name": "stance", "type": { "enum": "Stance" } },
+      { "name": "mode", "type": { "enum": "MovementMode" } },
+      { "name": "modeTimeRemaining", "type": "f32" },
+      { "name": "dashCooldownRemaining", "type": "f32" },
+      { "name": "slideCooldownRemaining", "type": "f32" },
+      { "name": "weaponLockRemaining", "type": "f32" },
+      { "name": "stanceExpansionPending", "type": "bool" },
+      { "name": "dashDirection", "type": { "ref": "Vec3" } },
+      { "name": "mantleStart", "type": { "ref": "Vec3" } },
+      { "name": "mantleTarget", "type": { "ref": "Vec3" } }
     ],
     "InputCommand": [
       { "name": "sequence", "type": "u32" },
@@ -72,6 +86,7 @@
       { "name": "velocity", "type": { "ref": "Vec3" } },
       { "name": "bodyYaw", "type": "f32" }, { "name": "aimPitch", "type": "f32" },
       { "name": "grounded", "type": "bool" }, { "name": "stateFlags", "type": "u16" },
+      { "name": "stance", "type": { "enum": "Stance" } }, { "name": "movementMode", "type": { "enum": "MovementMode" } },
       { "name": "equippedWeapon", "type": { "enum": "Weapon" } }
     ],
     "CreatedEntity": [
@@ -79,14 +94,16 @@
     ],
     "UpdatedEntity": [
       { "name": "handle", "type": { "ref": "EntityHandle" } },
-      { "name": "changeMask", "type": "u16", "description": "Bits: position=1 velocity=2 bodyYaw=4 aimPitch=8 grounded=16 stateFlags=32 equippedWeapon=64. Presence must exactly match bits." },
+      { "name": "changeMask", "type": "u16", "description": "Bits: position=1 velocity=2 bodyYaw=4 aimPitch=8 grounded=16 stateFlags=32 equippedWeapon=64 stance=128 movementMode=256. Presence must exactly match bits." },
       { "name": "position", "type": { "optional": { "ref": "Vec3" } } },
       { "name": "velocity", "type": { "optional": { "ref": "Vec3" } } },
       { "name": "bodyYaw", "type": { "optional": "f32" } },
       { "name": "aimPitch", "type": { "optional": "f32" } },
       { "name": "grounded", "type": { "optional": "bool" } },
       { "name": "stateFlags", "type": { "optional": "u16" } },
-      { "name": "equippedWeapon", "type": { "optional": { "enum": "Weapon" } } }
+      { "name": "equippedWeapon", "type": { "optional": { "enum": "Weapon" } } },
+      { "name": "stance", "type": { "optional": { "enum": "Stance" } } },
+      { "name": "movementMode", "type": { "optional": { "enum": "MovementMode" } } }
     ],
     "RemovedEntity": [
       { "name": "handle", "type": { "ref": "EntityHandle" } },
@@ -99,6 +116,7 @@
       { "name": "bodyYaw", "type": "f32" }, { "name": "aimPitch", "type": "f32" },
       { "name": "grounded", "type": "bool" }, { "name": "stateFlags", "type": "u16" },
       { "name": "health", "type": "u16" },
+      { "name": "movementState", "type": { "ref": "MovementState" } },
       { "name": "weaponState", "type": { "ref": "WeaponState" } }
     ],
     "EntityRecord": [
@@ -108,6 +126,7 @@
       { "name": "velocity", "type": { "ref": "Vec3" } },
       { "name": "bodyYaw", "type": "f32" }, { "name": "aimPitch", "type": "f32" },
       { "name": "grounded", "type": "bool" }, { "name": "stateFlags", "type": "u16" },
+      { "name": "stance", "type": { "enum": "Stance" } }, { "name": "movementMode", "type": { "enum": "MovementMode" } },
       { "name": "equippedWeapon", "type": { "enum": "Weapon" } }
     ]
   },
@@ -121,7 +140,7 @@
     "Welcome": { "id": 2, "fields": [
       { "name": "protocolVersion", "type": "u16" },
       { "name": "serverBuildId", "type": "string", "max": "maxBuildIdBytes" },
-      { "name": "playerId", "type": "u32", "description": "Raw EnTT value retained for combat/score event correlation in protocol v8; entity view identity uses playerHandle." },
+      { "name": "playerId", "type": "u32", "description": "Raw EnTT value retained for combat/score event correlation in protocol v9; entity view identity uses playerHandle." },
       { "name": "playerHandle", "type": { "ref": "EntityHandle" } },
       { "name": "tickRate", "type": "u16" }, { "name": "snapshotRate", "type": "u16" },
       { "name": "map", "type": { "ref": "MapDescriptor" } },

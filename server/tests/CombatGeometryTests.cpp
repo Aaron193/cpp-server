@@ -29,6 +29,22 @@ TEST_CASE(ray_capsule_nearest_distance_is_stable) {
     EXPECT_TRUE(nearHit->distance < farHit->distance);
 }
 
+TEST_CASE(rotated_prone_capsule_tracks_body_yaw) {
+    const float radius = 0.3F;
+    const CombatGeometry::Capsule forwardProne{{0, radius, -0.48F},
+                                                {0, radius, 0.48F}, radius};
+    const CombatGeometry::Capsule rightProne{{-0.48F, radius, 0},
+                                              {0.48F, radius, 0}, radius};
+    const auto forwardHit = CombatGeometry::rayCapsule(
+        {0, radius, 2}, {0, 0, -1}, forwardProne, 5.0F);
+    const auto rightHit = CombatGeometry::rayCapsule(
+        {0, radius, 2}, {0, 0, -1}, rightProne, 5.0F);
+    EXPECT_TRUE(forwardHit.has_value() && rightHit.has_value());
+    EXPECT_TRUE(forwardHit->distance < rightHit->distance);
+    EXPECT_NEAR(forwardHit->distance, 1.22F, 0.0001F);
+    EXPECT_NEAR(rightHit->distance, 1.7F, 0.0001F);
+}
+
 TEST_CASE(server_seeded_spread_is_reproducible_and_bounded) {
     const glm::vec3 forward{0,0,-1};
     const auto first = CombatGeometry::spreadDirection(

@@ -1,17 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { MatchPhase, RemoveReason, Weapon, type SnapshotDelta, type UpdatedEntity } from '../src/protocol/generated'
+import { MatchPhase, MovementMode, RemoveReason, Stance, Weapon, type SnapshotDelta, type UpdatedEntity } from '../src/protocol/generated'
 import { SnapshotDeltaBaseline, entityHandleKey, validateUpdateMask } from '../src/foundation/networking/Replication'
 
 const local = {
     handle: { slot: 1, generation: 3 },
     position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 },
     bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, health: 100,
+    movementState: { stance: Stance.Standing, mode: MovementMode.Normal, modeTimeRemaining: 0, dashCooldownRemaining: 0, slideCooldownRemaining: 0, weaponLockRemaining: 0, stanceExpansionPending: false, dashDirection: { x: 0, y: 0, z: -1 }, mantleStart: { x: 0, y: 0, z: 0 }, mantleTarget: { x: 0, y: 0, z: 0 } },
     weaponState: { selected: Weapon.Rifle, magazineAmmo: 30, reserveAmmo: 90, stateFlags: 0 },
 } as const
 const publicState = (slot: number, generation: number, x = 0) => ({
     handle: { slot, generation }, kind: 1,
     position: { x, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 },
     bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0,
+    stance: Stance.Standing, movementMode: MovementMode.Normal,
     equippedWeapon: Weapon.Rifle,
 }) as const
 const delta = (value: Partial<SnapshotDelta> = {}): SnapshotDelta => ({
@@ -23,7 +25,7 @@ const delta = (value: Partial<SnapshotDelta> = {}): SnapshotDelta => ({
 
 describe('SnapshotDelta baseline and handles', () => {
     it('accepts every valid field-mask combination and rejects presence mismatches', () => {
-        for (let mask = 1; mask <= 127; mask++) {
+        for (let mask = 1; mask <= 511; mask++) {
             const update: UpdatedEntity = {
                 handle: { slot: 2, generation: 1 }, changeMask: mask,
                 position: mask & 1 ? { x: 1, y: 2, z: 3 } : null,
@@ -31,17 +33,19 @@ describe('SnapshotDelta baseline and handles', () => {
                 bodyYaw: mask & 4 ? 0.5 : null, aimPitch: mask & 8 ? -0.25 : null,
                 grounded: mask & 16 ? false : null, stateFlags: mask & 32 ? 2 : null,
                 equippedWeapon: mask & 64 ? Weapon.Shotgun : null,
+                stance: mask & 128 ? Stance.Crouched : null,
+                movementMode: mask & 256 ? MovementMode.Sliding : null,
             }
             expect(() => validateUpdateMask(update)).not.toThrow()
         }
         expect(() => validateUpdateMask({
             handle: { slot: 2, generation: 1 }, changeMask: 1,
             position: null, velocity: null, bodyYaw: null, aimPitch: null,
-            grounded: null, stateFlags: null, equippedWeapon: null,
+            grounded: null, stateFlags: null, equippedWeapon: null, stance: null, movementMode: null,
         })).toThrow(/presence/)
-        const empty = { handle: { slot: 2, generation: 1 }, changeMask: 0, position: null, velocity: null, bodyYaw: null, aimPitch: null, grounded: null, stateFlags: null, equippedWeapon: null } as const
+        const empty = { handle: { slot: 2, generation: 1 }, changeMask: 0, position: null, velocity: null, bodyYaw: null, aimPitch: null, grounded: null, stateFlags: null, equippedWeapon: null, stance: null, movementMode: null } as const
         expect(() => validateUpdateMask(empty)).toThrow(/empty/)
-        expect(() => validateUpdateMask({ ...empty, changeMask: 128 })).toThrow(/unknown field-mask bits/)
+        expect(() => validateUpdateMask({ ...empty, changeMask: 512 })).toThrow(/unknown field-mask bits/)
     })
 
     it('requires the immediately previous applied ordered baseline and supports reset after reconnect', () => {
@@ -71,5 +75,11 @@ describe('SnapshotDelta baseline and handles', () => {
         expect(state.health).toBeUndefined()
         expect(state.weaponState).toBeUndefined()
         expect(local.health).toBe(100)
+    })
+
+    it('rejects invalid owner movement timers before mutating the baseline', () => {
+        const baseline = new SnapshotDeltaBaseline()
+        expect(() => baseline.apply(delta({ local: { ...local, movementState: { ...local.movementState, dashCooldownRemaining: -1 } } }))).toThrow(/movement state/)
+        expect(baseline.size).toBe(0)
     })
 })

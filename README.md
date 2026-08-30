@@ -124,7 +124,7 @@ The web container also runs migrations before serving, so the explicit
 migration command is useful as a controlled rollout gate but is idempotent.
 `SERVER_WEBSOCKET_URL` must be a complete externally reachable URL such as
 `wss://game.example.com/game/`; discovery returns this value verbatim. The
-server and client images must use the same `SERVER_BUILD_ID`, protocol v8, and
+server and client images must use the same `SERVER_BUILD_ID`, protocol v9, and
 discovery-selected map descriptor. Selection uses `SERVER_MAP_ID` without code
 changes per map.
 

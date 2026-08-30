@@ -1,7 +1,7 @@
-import { ChatChannel, EntityKind, LIMITS, MessageType, PROTOCOL_VERSION, Weapon, decodeEnvelope, encodeMessage, type Configuration, type EntityRecord, type InputCommand, type Snapshot, type SnapshotDelta, type Welcome } from '../../protocol/generated'
+import { ChatChannel, EntityKind, LIMITS, MessageType, MovementMode, PROTOCOL_VERSION, Stance, Weapon, decodeEnvelope, encodeMessage, type Configuration, type EntityRecord, type InputCommand, type MovementState, type Snapshot, type SnapshotDelta, type Welcome } from '../../protocol/generated'
 import type { ClientModule, ClientModuleContext, FrameUpdate } from '../lifecycle'
 import { ARENA, ENTITY_VIEWS, INPUT, NETWORKING, PHYSICS } from '../services'
-import { FixedStepAccumulator } from '../physics/Movement'
+import { FixedStepAccumulator, createMovementState } from '../physics/Movement'
 import { validateConfiguration, validateWelcome, type ServerDiscoveryDescriptor } from './Handshake'
 import { AdaptiveInterpolationDelay, NetworkClock, PredictionHistory, RemoteTimelineSet, isSequenceNewer, type RemoteSample } from './Synchronization'
 import { BrowserWebSocketTransport, type NetworkTransport, type SyntheticImpairment } from './Transport'
@@ -45,6 +45,10 @@ export interface NetworkMetrics {
 const JUMP_BUTTON = 1
 const FIRE_BUTTON = 1 << 1
 const RELOAD_BUTTON = 1 << 2
+const SPRINT_BUTTON = 1 << 3
+const CROUCH_BUTTON = 1 << 4
+const PRONE_BUTTON = 1 << 5
+const DASH_BUTTON = 1 << 6
 const PING_INTERVAL_MS = 500
 export const DEFAULT_RECONCILIATION_TUNING: ReconciliationTuning = Object.freeze({
     horizontalHardSnapMeters: 0.6,
@@ -154,7 +158,8 @@ export class NetworkingModule implements ClientModule {
             const selectedWeapon = snapshot.selectedWeapon === 2 ? Weapon.Shotgun : Weapon.Rifle
             const cosmeticInterval = selectedWeapon === Weapon.Shotgun ? 700 : 100
             let fireActionId = 0, reloadActionId = 0
-            if (snapshot.fire && this.combat.canLocalFire(selectedWeapon) && now - this.lastLocalFireAtMs >= cosmeticInterval) {
+            const physics = this.context.services.get(PHYSICS)
+            if (snapshot.fire && physics.canFire && this.combat.canLocalFire(selectedWeapon) && now - this.lastLocalFireAtMs >= cosmeticInterval) {
                 this.lastLocalFireAtMs = now; fireActionId = this.nextActionId(); this.combat.localFire(fireActionId, sequence, selectedWeapon, now)
             }
             if (snapshot.reload) { reloadActionId = this.nextActionId(); this.combat.localReload(reloadActionId, sequence, selectedWeapon, now) }
@@ -162,15 +167,14 @@ export class NetworkingModule implements ClientModule {
                 sequence,
                 clientTick: this.clientTick = (this.clientTick + 1) >>> 0,
                 moveX: snapshot.right * scale, moveY: -snapshot.forward * scale,
-                buttonFlags: (snapshot.jump ? JUMP_BUTTON : 0) | (fireActionId ? FIRE_BUTTON : 0) | (reloadActionId ? RELOAD_BUTTON : 0),
+                buttonFlags: (snapshot.jump ? JUMP_BUTTON : 0) | (fireActionId ? FIRE_BUTTON : 0) | (reloadActionId ? RELOAD_BUTTON : 0) | (snapshot.sprint ? SPRINT_BUTTON : 0) | (snapshot.crouch ? CROUCH_BUTTON : 0) | (snapshot.prone ? PRONE_BUTTON : 0) | (snapshot.dash ? DASH_BUTTON : 0),
                 fireActionId, reloadActionId,
                 yaw: input.angles.yaw, pitch: input.angles.pitch, selectedWeapon,
             }
-            const physics = this.context.services.get(PHYSICS)
-            physics.stepCommand({ forward: -command.moveY, right: command.moveX, jump: Boolean(command.buttonFlags & JUMP_BUTTON), yaw: command.yaw }, dt)
+            physics.stepCommand(this.movementCommand(command), dt)
             // History owns state snapshots; live physics getters intentionally reuse scratch objects.
             const position = physics.position, velocity = physics.velocity
-            const pushed = this.history.push({ command, position: { x: position.x, y: position.y, z: position.z }, velocity: { x: velocity.x, y: velocity.y, z: velocity.z }, sentAtMs: now })
+            const pushed = this.history.push({ command, position: { x: position.x, y: position.y, z: position.z }, velocity: { x: velocity.x, y: velocity.y, z: velocity.z }, movementState: physics.movementState, sentAtMs: now })
             if (pushed.overflowed) this.requestHardSync('history-overflow')
             commands.push(command)
         })
@@ -416,9 +420,10 @@ export class NetworkingModule implements ClientModule {
             position: snapshot.local.position, velocity: snapshot.local.velocity,
             bodyYaw: snapshot.local.bodyYaw, aimPitch: snapshot.local.aimPitch,
             grounded: snapshot.local.grounded, stateFlags: snapshot.local.stateFlags,
+            stance: snapshot.local.movementState.stance, movementMode: snapshot.local.movementState.mode,
             equippedWeapon: snapshot.local.weaponState.selected,
         }
-        this.reconcile(authoritative, snapshot.lastProcessedInputSequence, now)
+        this.reconcile(authoritative, snapshot.lastProcessedInputSequence, now, snapshot.local.movementState)
         for (const entity of applied.createdOrUpdated) this.acceptEntity(snapshot.serverTick, entity)
         for (const key of applied.removedKeys) this.removeRemote(key)
     }
@@ -434,7 +439,7 @@ export class NetworkingModule implements ClientModule {
         this.latestServerTick = serverTick
     }
 
-    private reconcile(authoritative: EntityRecord, acknowledgedSequence: number, now: number): void {
+    private reconcile(authoritative: EntityRecord, acknowledgedSequence: number, now: number, movementState?: MovementState): void {
         if (!this.context) return
         const physics = this.context.services.get(PHYSICS), before = physics.position
         const beforeX = before.x, beforeY = before.y, beforeZ = before.z
@@ -443,14 +448,14 @@ export class NetworkingModule implements ClientModule {
         const shownBeforeZ = beforeZ + this.visualResidual.z
         if (this.pendingHardSyncReason) {
             const reason = this.pendingHardSyncReason
-            this.hardSyncState(authoritative.position, authoritative.velocity, reason)
+            this.hardSyncState(authoritative.position, authoritative.velocity, reason, movementState)
             this.recordCorrection(beforeX, beforeY, beforeZ, authoritative.position.x, authoritative.position.y, authoritative.position.z)
             return
         }
         const acknowledgement = this.history.acknowledge(acknowledgedSequence)
         if (acknowledgement.status === 'history-overflow' || acknowledgement.status === 'impossible') {
             const reason: HardSyncReason = acknowledgement.status === 'history-overflow' ? 'history-overflow' : 'impossible-acknowledgement'
-            this.hardSyncState(authoritative.position, authoritative.velocity, reason)
+            this.hardSyncState(authoritative.position, authoritative.velocity, reason, movementState)
             this.recordCorrection(beforeX, beforeY, beforeZ, authoritative.position.x, authoritative.position.y, authoritative.position.z)
             return
         }
@@ -461,11 +466,11 @@ export class NetworkingModule implements ClientModule {
             if (this.lastRttMs) this.jitterMs += (Math.abs(sampleRtt - this.lastRttMs) - this.jitterMs) * 0.1
             this.lastRttMs = sampleRtt
         }
-        physics.setAuthoritativeState(authoritative.position, authoritative.velocity)
+        physics.setAuthoritativeState(authoritative.position, authoritative.velocity, movementState)
         const replayStarted = performance.now()
         for (const entry of acknowledgement.pending) {
             const command = entry.command
-            physics.stepCommand({ forward: -command.moveY, right: command.moveX, jump: Boolean(command.buttonFlags & JUMP_BUTTON), yaw: command.yaw })
+            physics.stepCommand(this.movementCommand(command))
         }
         this.replaySteps = acknowledgement.pending.length
         this.replayTimeMs = Math.max(0, performance.now() - replayStarted)
@@ -495,8 +500,12 @@ export class NetworkingModule implements ClientModule {
         this.correctionRevision++
     }
 
-    private hardSyncState(position: { x: number; y: number; z: number }, velocity: { x: number; y: number; z: number }, reason: HardSyncReason): void {
-        this.context?.services.get(PHYSICS).setAuthoritativeState(position, velocity)
+    private movementCommand(command: InputCommand) {
+        return { forward: -command.moveY, right: command.moveX, jump: Boolean(command.buttonFlags & JUMP_BUTTON), yaw: command.yaw, sprint: Boolean(command.buttonFlags & SPRINT_BUTTON), crouch: Boolean(command.buttonFlags & CROUCH_BUTTON), prone: Boolean(command.buttonFlags & PRONE_BUTTON), dash: Boolean(command.buttonFlags & DASH_BUTTON) }
+    }
+
+    private hardSyncState(position: { x: number; y: number; z: number }, velocity: { x: number; y: number; z: number }, reason: HardSyncReason, movementState: MovementState = createMovementState()): void {
+        this.context?.services.get(PHYSICS).setAuthoritativeState(position, velocity, movementState)
         this.history.clear()
         this.accumulator.reset()
         this.clearVisualResidual()

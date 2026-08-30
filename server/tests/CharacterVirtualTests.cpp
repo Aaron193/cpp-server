@@ -169,6 +169,35 @@ TEST_CASE(character_virtual_walks_up_configured_step) {
     EXPECT_TRUE(highest > 0.2F);
 }
 
+TEST_CASE(character_virtual_keeps_feet_fixed_and_rejects_blocked_stance_expansion) {
+    PhysicsWorld world;
+    auto mesh = floorMesh();
+    // Two-sided low ceiling over x=[2, 8], high enough for crouch but not stand.
+    const glm::vec3 a{2, 1.3F, -2}, b{8, 1.3F, -2};
+    const glm::vec3 c{8, 1.3F, 2}, d{2, 1.3F, 2};
+    addTriangle(mesh, a, b, c); addTriangle(mesh, a, c, d);
+    addTriangle(mesh, a, c, b); addTriangle(mesh, a, d, c);
+    world.addStaticCollision(mesh);
+    const auto character = world.createCharacter({}, {0, 1, 0});
+    settle(world, character);
+    const float feetY = world.characterState(character).position.y;
+
+    EXPECT_TRUE(world.setCharacterStance(
+        character, PhysicsWorld::CharacterStance::Crouched));
+    EXPECT_NEAR(world.characterState(character).position.y, feetY, 0.0001F);
+    world.setCharacterPosition(character, {4, feetY, 0});
+    EXPECT_TRUE(!world.setCharacterStance(
+        character, PhysicsWorld::CharacterStance::Standing));
+    EXPECT_TRUE(world.setCharacterStance(
+        character, PhysicsWorld::CharacterStance::Prone));
+    EXPECT_NEAR(world.characterState(character).position.y, feetY, 0.0001F);
+
+    world.setCharacterPosition(character, {0, feetY, 0});
+    EXPECT_TRUE(world.setCharacterStance(
+        character, PhysicsWorld::CharacterStance::Standing));
+    EXPECT_NEAR(world.characterState(character).position.y, feetY, 0.0001F);
+}
+
 TEST_CASE(jolt_runtime_supports_overlapping_world_lifetimes) {
     PhysicsWorld first;
     first.addStaticCollision(floorMesh());

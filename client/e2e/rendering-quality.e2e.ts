@@ -7,7 +7,7 @@ const descriptor = {
     id: 'playwright', host: '127.0.0.1', port: 9002, region: 'Playwright', maxPlayers: 12,
     currentPlayers: 0, lastHeartbeat: new Date().toISOString(), isOnline: true, buildId: 'dev',
     protocolVersion: PROTOCOL_VERSION, mapId: 'graybox-arena', mapFormatVersion: 2,
-    mapContentHash: 'sha256:3984a02b8a6ce8abaebddacb010273285fbb666cb4f973f5eb7e251e3fb9b477',
+    mapContentHash: 'sha256:247161e133c642351519f1c02073ccd15b6e5dfa23c766d8f01a25f936cf1582',
     mode: 'ffa', websocketUrl: 'ws://127.0.0.1:9002',
 }
 

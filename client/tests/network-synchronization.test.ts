@@ -1,9 +1,9 @@
-import { EntityKind, Weapon, type EntityRecord, type InputCommand } from '../src/protocol/generated'
+import { EntityKind, MovementMode, Stance, Weapon, type EntityRecord, type InputCommand } from '../src/protocol/generated'
 import { describe, expect, it } from 'vitest'
 import { PredictionHistory, RemoteEntityTimeline, RemoteTimelineSet, isSequenceNewer } from '../src/foundation/networking/Synchronization'
 
 const command = (sequence: number): InputCommand => ({ sequence, clientTick: sequence, moveX: 0, moveY: -1, buttonFlags: 0, fireActionId: 0, reloadActionId: 0, yaw: 0, pitch: 0, selectedWeapon: Weapon.Rifle })
-const entity = (x: number, velocityX = 0): EntityRecord => ({ entityId: 8, kind: EntityKind.Player, position: { x, y: 0, z: 0 }, velocity: { x: velocityX, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, equippedWeapon: Weapon.Rifle })
+const entity = (x: number, velocityX = 0): EntityRecord => ({ entityId: 8, kind: EntityKind.Player, position: { x, y: 0, z: 0 }, velocity: { x: velocityX, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, stance: Stance.Standing, movementMode: MovementMode.Normal, equippedWeapon: Weapon.Rifle })
 
 describe('prediction sequencing and bounded history', () => {
     it('orders uint32 sequences safely across wrap and retains only unacknowledged inputs', () => {
@@ -48,6 +48,13 @@ describe('remote interpolation lifecycle', () => {
         const sample = timeline.sample(1)!
         expect(timeline.sample(2)).toBe(sample)
         expect(sample.entity.position.x).toBe(1)
+    })
+    it('updates discrete stance and movement mode on the reused presentation sample', () => {
+        const timeline = new RemoteEntityTimeline(60)
+        timeline.add(1, entity(0)); timeline.sample(1)
+        timeline.add(2, { ...entity(1), stance: Stance.Crouched, movementMode: MovementMode.Sliding })
+        const sample = timeline.sample(2)!
+        expect(sample.entity).toMatchObject({ stance: Stance.Crouched, movementMode: MovementMode.Sliding })
     })
     it('cleans remove and disconnect/reconnect lifecycle state', () => {
         const set = new RemoteTimelineSet(60)

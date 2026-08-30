@@ -1,5 +1,5 @@
 // Generated from protocol/schema.json by protocol/generate.mjs. DO NOT EDIT.
-export const PROTOCOL_VERSION = 8 as const
+export const PROTOCOL_VERSION = 9 as const
 
 export const LIMITS = {
     "maxEnvelopeBytes": 61443,
@@ -112,6 +112,21 @@ export enum ActionRejectReason {
     NoReserve = 8,
     Duplicate = 9,
     Invalid = 10,
+    MovementLocked = 11,
+}
+
+export enum Stance {
+    Standing = 0,
+    Crouched = 1,
+    Prone = 2,
+}
+
+export enum MovementMode {
+    Normal = 0,
+    Sprinting = 1,
+    Sliding = 2,
+    Dashing = 3,
+    Mantling = 4,
 }
 
 export interface Vec3 {
@@ -137,6 +152,19 @@ export interface WeaponState {
     readonly magazineAmmo: number
     readonly reserveAmmo: number
     readonly stateFlags: number
+}
+
+export interface MovementState {
+    readonly stance: Stance
+    readonly mode: MovementMode
+    readonly modeTimeRemaining: number
+    readonly dashCooldownRemaining: number
+    readonly slideCooldownRemaining: number
+    readonly weaponLockRemaining: number
+    readonly stanceExpansionPending: boolean
+    readonly dashDirection: Vec3
+    readonly mantleStart: Vec3
+    readonly mantleTarget: Vec3
 }
 
 export interface InputCommand {
@@ -166,6 +194,8 @@ export interface PublicEntityState {
     readonly aimPitch: number
     readonly grounded: boolean
     readonly stateFlags: number
+    readonly stance: Stance
+    readonly movementMode: MovementMode
     readonly equippedWeapon: Weapon
 }
 
@@ -183,6 +213,8 @@ export interface UpdatedEntity {
     readonly grounded: boolean | null
     readonly stateFlags: number | null
     readonly equippedWeapon: Weapon | null
+    readonly stance: Stance | null
+    readonly movementMode: MovementMode | null
 }
 
 export interface RemovedEntity {
@@ -199,6 +231,7 @@ export interface LocalAuthoritativeState {
     readonly grounded: boolean
     readonly stateFlags: number
     readonly health: number
+    readonly movementState: MovementState
     readonly weaponState: WeaponState
 }
 
@@ -211,6 +244,8 @@ export interface EntityRecord {
     readonly aimPitch: number
     readonly grounded: boolean
     readonly stateFlags: number
+    readonly stance: Stance
+    readonly movementMode: MovementMode
     readonly equippedWeapon: Weapon
 }
 
@@ -484,8 +519,14 @@ function readChatChannel(reader: Reader): ChatChannel { const value = reader.u8(
 function writeActionKind(writer: Writer, value: ActionKind): void { if (!(value === 1 || value === 2)) throw new ProtocolError('invalid ActionKind'); writer.u8(value) }
 function readActionKind(reader: Reader): ActionKind { const value = reader.u8(); if (!(value === 1 || value === 2)) throw new ProtocolError('invalid ActionKind'); return value as ActionKind }
 
-function writeActionRejectReason(writer: Writer, value: ActionRejectReason): void { if (!(value === 0 || value === 1 || value === 2 || value === 3 || value === 4 || value === 5 || value === 6 || value === 7 || value === 8 || value === 9 || value === 10)) throw new ProtocolError('invalid ActionRejectReason'); writer.u8(value) }
-function readActionRejectReason(reader: Reader): ActionRejectReason { const value = reader.u8(); if (!(value === 0 || value === 1 || value === 2 || value === 3 || value === 4 || value === 5 || value === 6 || value === 7 || value === 8 || value === 9 || value === 10)) throw new ProtocolError('invalid ActionRejectReason'); return value as ActionRejectReason }
+function writeActionRejectReason(writer: Writer, value: ActionRejectReason): void { if (!(value === 0 || value === 1 || value === 2 || value === 3 || value === 4 || value === 5 || value === 6 || value === 7 || value === 8 || value === 9 || value === 10 || value === 11)) throw new ProtocolError('invalid ActionRejectReason'); writer.u8(value) }
+function readActionRejectReason(reader: Reader): ActionRejectReason { const value = reader.u8(); if (!(value === 0 || value === 1 || value === 2 || value === 3 || value === 4 || value === 5 || value === 6 || value === 7 || value === 8 || value === 9 || value === 10 || value === 11)) throw new ProtocolError('invalid ActionRejectReason'); return value as ActionRejectReason }
+
+function writeStance(writer: Writer, value: Stance): void { if (!(value === 0 || value === 1 || value === 2)) throw new ProtocolError('invalid Stance'); writer.u8(value) }
+function readStance(reader: Reader): Stance { const value = reader.u8(); if (!(value === 0 || value === 1 || value === 2)) throw new ProtocolError('invalid Stance'); return value as Stance }
+
+function writeMovementMode(writer: Writer, value: MovementMode): void { if (!(value === 0 || value === 1 || value === 2 || value === 3 || value === 4)) throw new ProtocolError('invalid MovementMode'); writer.u8(value) }
+function readMovementMode(reader: Reader): MovementMode { const value = reader.u8(); if (!(value === 0 || value === 1 || value === 2 || value === 3 || value === 4)) throw new ProtocolError('invalid MovementMode'); return value as MovementMode }
 
 function writeVec3(writer: Writer, value: Vec3): void {
     writer.f32(value.x)
@@ -541,6 +582,33 @@ function readWeaponState(reader: Reader): WeaponState {
     }
 }
 
+function writeMovementState(writer: Writer, value: MovementState): void {
+    writeStance(writer, value.stance)
+    writeMovementMode(writer, value.mode)
+    writer.f32(value.modeTimeRemaining)
+    writer.f32(value.dashCooldownRemaining)
+    writer.f32(value.slideCooldownRemaining)
+    writer.f32(value.weaponLockRemaining)
+    writer.bool(value.stanceExpansionPending)
+    writeVec3(writer, value.dashDirection)
+    writeVec3(writer, value.mantleStart)
+    writeVec3(writer, value.mantleTarget)
+}
+function readMovementState(reader: Reader): MovementState {
+    return {
+        stance: readStance(reader),
+        mode: readMovementMode(reader),
+        modeTimeRemaining: reader.f32(),
+        dashCooldownRemaining: reader.f32(),
+        slideCooldownRemaining: reader.f32(),
+        weaponLockRemaining: reader.f32(),
+        stanceExpansionPending: reader.bool(),
+        dashDirection: readVec3(reader),
+        mantleStart: readVec3(reader),
+        mantleTarget: readVec3(reader),
+    }
+}
+
 function writeInputCommand(writer: Writer, value: InputCommand): void {
     writer.u32(value.sequence)
     writer.u32(value.clientTick)
@@ -588,6 +656,8 @@ function writePublicEntityState(writer: Writer, value: PublicEntityState): void 
     writer.f32(value.aimPitch)
     writer.bool(value.grounded)
     writer.u16(value.stateFlags)
+    writeStance(writer, value.stance)
+    writeMovementMode(writer, value.movementMode)
     writeWeapon(writer, value.equippedWeapon)
 }
 function readPublicEntityState(reader: Reader): PublicEntityState {
@@ -600,6 +670,8 @@ function readPublicEntityState(reader: Reader): PublicEntityState {
         aimPitch: reader.f32(),
         grounded: reader.bool(),
         stateFlags: reader.u16(),
+        stance: readStance(reader),
+        movementMode: readMovementMode(reader),
         equippedWeapon: readWeapon(reader),
     }
 }
@@ -644,6 +716,14 @@ function writeUpdatedEntity(writer: Writer, value: UpdatedEntity): void {
     if (value.equippedWeapon !== null) {
         writeWeapon(writer, value.equippedWeapon)
     }
+    writer.bool(value.stance !== null)
+    if (value.stance !== null) {
+        writeStance(writer, value.stance)
+    }
+    writer.bool(value.movementMode !== null)
+    if (value.movementMode !== null) {
+        writeMovementMode(writer, value.movementMode)
+    }
 }
 function readUpdatedEntity(reader: Reader): UpdatedEntity {
     return {
@@ -656,6 +736,8 @@ function readUpdatedEntity(reader: Reader): UpdatedEntity {
         grounded: reader.bool() ? reader.bool() : null,
         stateFlags: reader.bool() ? reader.u16() : null,
         equippedWeapon: reader.bool() ? readWeapon(reader) : null,
+        stance: reader.bool() ? readStance(reader) : null,
+        movementMode: reader.bool() ? readMovementMode(reader) : null,
     }
 }
 
@@ -679,6 +761,7 @@ function writeLocalAuthoritativeState(writer: Writer, value: LocalAuthoritativeS
     writer.bool(value.grounded)
     writer.u16(value.stateFlags)
     writer.u16(value.health)
+    writeMovementState(writer, value.movementState)
     writeWeaponState(writer, value.weaponState)
 }
 function readLocalAuthoritativeState(reader: Reader): LocalAuthoritativeState {
@@ -691,6 +774,7 @@ function readLocalAuthoritativeState(reader: Reader): LocalAuthoritativeState {
         grounded: reader.bool(),
         stateFlags: reader.u16(),
         health: reader.u16(),
+        movementState: readMovementState(reader),
         weaponState: readWeaponState(reader),
     }
 }
@@ -704,6 +788,8 @@ function writeEntityRecord(writer: Writer, value: EntityRecord): void {
     writer.f32(value.aimPitch)
     writer.bool(value.grounded)
     writer.u16(value.stateFlags)
+    writeStance(writer, value.stance)
+    writeMovementMode(writer, value.movementMode)
     writeWeapon(writer, value.equippedWeapon)
 }
 function readEntityRecord(reader: Reader): EntityRecord {
@@ -716,6 +802,8 @@ function readEntityRecord(reader: Reader): EntityRecord {
         aimPitch: reader.f32(),
         grounded: reader.bool(),
         stateFlags: reader.u16(),
+        stance: readStance(reader),
+        movementMode: readMovementMode(reader),
         equippedWeapon: readWeapon(reader),
     }
 }

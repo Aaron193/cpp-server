@@ -14,6 +14,8 @@
       "Render_EastRamp",
       "Render_EastWall",
       "Render_Floor",
+      "Render_LowClearanceShortcut",
+      "Render_MantleBlock",
       "Render_NorthDeck",
       "Render_NorthDeckRamp",
       "Render_NorthWall",
@@ -38,6 +40,8 @@
       "Collision_EastRamp",
       "Collision_EastWall",
       "Collision_Floor",
+      "Collision_LowClearanceShortcut",
+      "Collision_MantleBlock",
       "Collision_NorthDeck",
       "Collision_NorthDeckRamp",
       "Collision_NorthWall",
@@ -79,9 +83,9 @@
     "navigation": []
   },
   "render": {
-    "meshCount": 22,
-    "vertexCount": 170,
-    "triangleCount": 252,
+    "meshCount": 24,
+    "vertexCount": 186,
+    "triangleCount": 276,
     "meshes": [
       {
         "name": "Render_CenterCoverE",
@@ -260,6 +264,42 @@
             29,
             0,
             23
+          ]
+        }
+      },
+      {
+        "name": "Render_LowClearanceShortcut",
+        "material": "Render_LowClearanceShortcut-material",
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            -23.5,
+            1.35,
+            -1
+          ],
+          "max": [
+            -18.5,
+            1.65,
+            3
+          ]
+        }
+      },
+      {
+        "name": "Render_MantleBlock",
+        "material": "Render_MantleBlock-material",
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            11.5,
+            0,
+            -2
+          ],
+          "max": [
+            14.5,
+            1,
+            0
           ]
         }
       },
@@ -482,9 +522,9 @@
     ]
   },
   "collision": {
-    "meshCount": 22,
-    "vertexCount": 170,
-    "triangleCount": 252,
+    "meshCount": 24,
+    "vertexCount": 186,
+    "triangleCount": 276,
     "meshes": [
       {
         "name": "Collision_CenterCoverE",
@@ -663,6 +703,42 @@
             29,
             0,
             23
+          ]
+        }
+      },
+      {
+        "name": "Collision_LowClearanceShortcut",
+        "material": null,
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            -23.5,
+            1.35,
+            -1
+          ],
+          "max": [
+            -18.5,
+            1.65,
+            3
+          ]
+        }
+      },
+      {
+        "name": "Collision_MantleBlock",
+        "material": null,
+        "vertices": 8,
+        "triangles": 12,
+        "bounds": {
+          "min": [
+            11.5,
+            0,
+            -2
+          ],
+          "max": [
+            14.5,
+            1,
+            0
           ]
         }
       },

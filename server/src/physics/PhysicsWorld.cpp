@@ -17,6 +17,7 @@
 #include <Jolt/Physics/PhysicsSystem.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <mutex>
 #include <string>
@@ -127,6 +128,8 @@ struct PhysicsWorld::Impl {
     struct CharacterEntry {
         JPH::Ref<JPH::CharacterVirtual> character;
         CharacterConfig config;
+        std::array<JPH::RefConst<JPH::Shape>, 3> stanceShapes;
+        CharacterStance stance = CharacterStance::Standing;
     };
     std::unordered_map<CharacterId, CharacterEntry> characters;
     std::unordered_map<BodyId, JPH::BodyID> bodies;
@@ -234,12 +237,22 @@ PhysicsWorld::CharacterId PhysicsWorld::createCharacter(
           config.terminalVelocity > 0.0F &&
           std::isfinite(config.mass) && config.mass > 0.0F))
         throw std::invalid_argument("invalid character capsule configuration");
+    if (!(std::isfinite(config.crouchRadius) && config.crouchRadius > 0.0F &&
+          std::isfinite(config.crouchHalfHeight) && config.crouchHalfHeight >= 0.0F &&
+          std::isfinite(config.proneRadius) && config.proneRadius > 0.0F &&
+          std::isfinite(config.proneHalfHeight) && config.proneHalfHeight >= 0.0F))
+        throw std::invalid_argument("invalid alternate character capsule configuration");
+    const auto makeShape = [](float halfHeight, float radius) {
+        const auto capsule = JPH::RefConst<JPH::Shape>(new JPH::CapsuleShape(halfHeight, radius));
+        return JPH::RefConst<JPH::Shape>(new JPH::RotatedTranslatedShape(
+            {0.0F, halfHeight + radius, 0.0F}, JPH::Quat::sIdentity(), capsule));
+    };
+    std::array<JPH::RefConst<JPH::Shape>, 3> shapes{
+        makeShape(config.halfHeight, config.radius),
+        makeShape(config.crouchHalfHeight, config.crouchRadius),
+        makeShape(config.proneHalfHeight, config.proneRadius)};
     JPH::CharacterVirtualSettings settings;
-    const auto capsule = JPH::RefConst<JPH::Shape>(
-        new JPH::CapsuleShape(config.halfHeight, config.radius));
-    settings.mShape = new JPH::RotatedTranslatedShape(
-        {0.0F, config.halfHeight + config.radius, 0.0F},
-        JPH::Quat::sIdentity(), capsule);
+    settings.mShape = shapes[0];
     settings.mSupportingVolume = JPH::Plane(JPH::Vec3::sAxisY(), -config.radius);
     settings.mMaxSlopeAngle = config.maxSlopeRadians;
     settings.mMass = config.mass;
@@ -247,7 +260,7 @@ PhysicsWorld::CharacterId PhysicsWorld::createCharacter(
     auto character = new JPH::CharacterVirtual(&settings, toJolt(position),
         JPH::Quat::sIdentity(), 0, &impl_->system);
     const CharacterId id = impl_->nextCharacter++;
-    impl_->characters.emplace(id, Impl::CharacterEntry{character, config});
+    impl_->characters.emplace(id, Impl::CharacterEntry{character, config, std::move(shapes), CharacterStance::Standing});
     return id;
 }
 
@@ -261,6 +274,19 @@ void PhysicsWorld::setCharacterPosition(CharacterId id, const glm::vec3& value) 
     character.RefreshContacts(
         impl_->system.GetDefaultBroadPhaseLayerFilter(Layers::Character),
         impl_->system.GetDefaultLayerFilter(Layers::Character), {}, {}, impl_->allocator);
+}
+bool PhysicsWorld::setCharacterStance(CharacterId id, CharacterStance stance) {
+    auto& entry = impl_->entry(id);
+    if (entry.stance == stance) return true;
+    const auto index = static_cast<std::size_t>(stance);
+    if (index >= entry.stanceShapes.size()) return false;
+    const bool accepted = entry.character->SetShape(
+        entry.stanceShapes[index], 0.04F,
+        impl_->system.GetDefaultBroadPhaseLayerFilter(Layers::Character),
+        impl_->system.GetDefaultLayerFilter(Layers::Character), {}, {},
+        impl_->allocator);
+    if (accepted) entry.stance = stance;
+    return accepted;
 }
 PhysicsWorld::CharacterState PhysicsWorld::characterState(CharacterId id) const {
     const auto& character = impl_->character(id);
@@ -349,6 +375,41 @@ std::optional<PhysicsWorld::StaticRayHit> PhysicsWorld::castStaticRay(
             hit.mSubShapeID2, toJolt(position)));
     }
     return StaticRayHit{maxDistance * hit.mFraction, position, normal};
+}
+
+std::optional<glm::vec3> PhysicsWorld::findMantleTarget(
+    const glm::vec3& feet, float yaw, float minHeight, float maxHeight,
+    float reach, float radius, float standingHeight) const {
+    if (!(minHeight > 0.0F && maxHeight > minHeight && reach > 0.0F &&
+          radius > 0.0F && standingHeight > 0.0F)) return std::nullopt;
+    const glm::vec3 forward{std::sin(yaw), 0.0F, -std::cos(yaw)};
+    const glm::vec3 right{-forward.z, 0.0F, forward.x};
+    std::optional<StaticRayHit> obstacle;
+    for (const float lateral : {0.0F, -0.6F * radius, 0.6F * radius}) {
+        const auto hit = castStaticRay(feet + glm::vec3{0.0F, minHeight, 0.0F} + right * lateral,
+                                       forward, reach);
+        if (hit && std::abs(hit->normal.y) < 0.55F &&
+            (!obstacle || hit->distance < obstacle->distance)) obstacle = hit;
+    }
+    if (!obstacle) return std::nullopt;
+    const glm::vec3 beyond = obstacle->position + forward * (radius + 0.08F);
+    const auto top = castStaticRay(
+        {beyond.x, feet.y + maxHeight + 0.08F, beyond.z},
+        {0.0F, -1.0F, 0.0F}, maxHeight - minHeight + 0.16F);
+    if (!top || top->normal.y < 0.65F || top->position.y - feet.y < minHeight ||
+        top->position.y - feet.y > maxHeight) return std::nullopt;
+    const glm::vec3 target{beyond.x, top->position.y + 0.025F, beyond.z};
+    for (const glm::vec3 offset : {glm::vec3{0.0F}, right * radius, -right * radius,
+                                   forward * radius, -forward * radius}) {
+        if (staticRayBlocked(target + offset + glm::vec3{0.0F, 0.05F, 0.0F},
+                             target + offset + glm::vec3{0.0F, standingHeight, 0.0F}))
+            return std::nullopt;
+    }
+    const float pathHeight = maxHeight + 0.15F;
+    if (staticRayBlocked(feet + glm::vec3{0.0F, pathHeight, 0.0F},
+                         target + glm::vec3{0.0F, pathHeight, 0.0F}))
+        return std::nullopt;
+    return target;
 }
 
 void PhysicsWorld::step(float delta) {

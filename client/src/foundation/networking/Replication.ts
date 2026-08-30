@@ -2,6 +2,7 @@ import {
     EntityKind,
     type EntityHandle,
     type EntityRecord,
+    type MovementState,
     type PublicEntityState,
     type SnapshotDelta,
     type UpdatedEntity,
@@ -15,7 +16,9 @@ export const UPDATE_AIM_PITCH = 1 << 3
 export const UPDATE_GROUNDED = 1 << 4
 export const UPDATE_STATE_FLAGS = 1 << 5
 export const UPDATE_EQUIPPED_WEAPON = 1 << 6
-export const UPDATE_ALL = (1 << 7) - 1
+export const UPDATE_STANCE = 1 << 7
+export const UPDATE_MOVEMENT_MODE = 1 << 8
+export const UPDATE_ALL = (1 << 9) - 1
 
 /** Exact, collision-free JS integer key for a u32 slot plus u16 generation. */
 export function entityHandleKey(handle: EntityHandle): number {
@@ -28,6 +31,7 @@ export function publicStateToEntityRecord(state: PublicEntityState): EntityRecor
         position: { ...state.position }, velocity: { ...state.velocity },
         bodyYaw: state.bodyYaw, aimPitch: state.aimPitch,
         grounded: state.grounded, stateFlags: state.stateFlags,
+        stance: state.stance, movementMode: state.movementMode,
         equippedWeapon: state.equippedWeapon,
     }
 }
@@ -39,12 +43,22 @@ export function validateUpdateMask(update: UpdatedEntity): void {
         [UPDATE_BODY_YAW, update.bodyYaw], [UPDATE_AIM_PITCH, update.aimPitch],
         [UPDATE_GROUNDED, update.grounded], [UPDATE_STATE_FLAGS, update.stateFlags],
         [UPDATE_EQUIPPED_WEAPON, update.equippedWeapon],
+        [UPDATE_STANCE, update.stance], [UPDATE_MOVEMENT_MODE, update.movementMode],
     ]
     for (const [bit, value] of fields) {
         if (((update.changeMask & bit) !== 0) !== (value !== null))
             throw new Error('SnapshotDelta update field presence does not match changeMask')
     }
     if (update.changeMask === 0) throw new Error('SnapshotDelta contains an empty update')
+}
+
+export function validateMovementState(value: MovementState): void {
+    const timer = (seconds: number, maximum: number): boolean => Number.isFinite(seconds) && seconds >= 0 && seconds <= maximum
+    const vector = (item: { x: number; y: number; z: number }): boolean => Number.isFinite(item.x) && Number.isFinite(item.y) && Number.isFinite(item.z)
+    if (!timer(value.modeTimeRemaining, 10) || !timer(value.dashCooldownRemaining, 60) ||
+        !timer(value.slideCooldownRemaining, 60) || !timer(value.weaponLockRemaining, 10) ||
+        !vector(value.dashDirection) || !vector(value.mantleStart) || !vector(value.mantleTarget))
+        throw new Error('SnapshotDelta contains an invalid movement state')
 }
 
 function applyUpdate(state: EntityRecord, update: UpdatedEntity): EntityRecord {
@@ -58,6 +72,8 @@ function applyUpdate(state: EntityRecord, update: UpdatedEntity): EntityRecord {
         grounded: update.grounded ?? state.grounded,
         stateFlags: update.stateFlags ?? state.stateFlags,
         equippedWeapon: update.equippedWeapon ?? state.equippedWeapon,
+        stance: update.stance ?? state.stance,
+        movementMode: update.movementMode ?? state.movementMode,
     }
 }
 
@@ -77,6 +93,7 @@ export class SnapshotDeltaBaseline {
     private revision?: number
 
     apply(delta: SnapshotDelta): AppliedSnapshotDelta {
+        validateMovementState(delta.local.movementState)
         if (delta.baselineReset) {
             if (delta.baselineSequence !== 0) throw new Error('SnapshotDelta reset must use baseline sequence zero')
             this.entities.clear()

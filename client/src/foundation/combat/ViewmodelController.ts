@@ -5,9 +5,9 @@ import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode.js'
 import type { Camera } from '@babylonjs/core/Cameras/camera.js'
 import type { Scene } from '@babylonjs/core/scene.js'
-import { Weapon, type Vec3 } from '../../protocol/generated'
+import { MovementMode, Stance, Weapon, type MovementState, type Vec3 } from '../../protocol/generated'
 
-export type ViewmodelState = 'idle' | 'walk' | 'sprint' | 'ads' | 'fire' | 'reload' | 'grenade' | 'melee' | 'hidden'
+export type ViewmodelState = 'idle' | 'walk' | 'sprint' | 'crouch' | 'slide' | 'prone' | 'dash' | 'mantle' | 'ads' | 'fire' | 'reload' | 'grenade' | 'melee' | 'hidden'
 export const VIEWMODEL_CALIBRATION = { muzzle: { x: .31, y: -.205, z: -1.36 }, optic: { x: .02, y: -.105, z: -.88 } } as const
 export function auditViewmodelCalibration(calibration = VIEWMODEL_CALIBRATION): { readonly passed: boolean; readonly muzzleAheadMeters: number; readonly opticCenterErrorMeters: number } { const muzzleAheadMeters = calibration.optic.z - calibration.muzzle.z, opticCenterErrorMeters = Math.abs(calibration.optic.x); return { passed: muzzleAheadMeters >= .4 && muzzleAheadMeters <= .8 && opticCenterErrorMeters <= .04, muzzleAheadMeters, opticCenterErrorMeters } }
 
@@ -46,9 +46,18 @@ export class ViewmodelController {
     setState(state: ViewmodelState, nowMs: number): void { if (state !== this.stateValue) { this.stateValue = state; this.stateStartedAtMs = nowMs } }
     fire(nowMs: number): void { this.stateValue = 'fire'; this.stateStartedAtMs = nowMs }
     rejectAction(): void { this.rejectionKick = 1 }
-    update(weapon: Weapon, dead: boolean, reloading: boolean, speed: number, grounded: boolean, nowMs: number, dt: number): void {
+    update(weapon: Weapon, dead: boolean, reloading: boolean, speed: number, grounded: boolean, nowMs: number, dt: number, movement?: MovementState): void {
         this.weaponValue = weapon
-        if (dead || weapon === Weapon.None) this.setState('hidden', nowMs); else if (reloading) this.setState('reload', nowMs); else if (this.stateValue === 'fire' && nowMs - this.stateStartedAtMs < 130) {} else this.setState(speed > 5.2 && grounded ? 'sprint' : speed > .15 && grounded ? 'walk' : 'idle', nowMs)
+        if (dead || weapon === Weapon.None) this.setState('hidden', nowMs)
+        else if (movement?.mode === MovementMode.Mantling) this.setState('mantle', nowMs)
+        else if (reloading) this.setState('reload', nowMs)
+        else if (movement?.mode === MovementMode.Dashing) this.setState('dash', nowMs)
+        else if (movement?.mode === MovementMode.Sliding) this.setState('slide', nowMs)
+        else if (movement?.stance === Stance.Prone) this.setState('prone', nowMs)
+        else if (movement?.stance === Stance.Crouched) this.setState('crouch', nowMs)
+        else if (movement?.mode === MovementMode.Sprinting) this.setState('sprint', nowMs)
+        else if (this.stateValue === 'fire' && nowMs - this.stateStartedAtMs < 130) {}
+        else this.setState(speed > .15 && grounded ? 'walk' : 'idle', nowMs)
         this.rejectionKick *= Math.exp(-dt * 18)
         for (const [kind, rig] of this.rigs) {
             rig.root.setEnabled(kind === weapon && this.stateValue !== 'hidden')
@@ -57,8 +66,11 @@ export class ViewmodelController {
             const walk = this.stateValue === 'walk' || this.stateValue === 'sprint' ? Math.sin(nowMs * .012) : 0
             const fire = this.stateValue === 'fire' ? Math.max(0, 1 - elapsed / .13) : 0
             const reload = this.stateValue === 'reload' ? Math.sin(Math.min(1, elapsed / 1.1) * Math.PI) : 0
-            rig.root.position.set(.32 + walk * .012, -.29 + Math.abs(walk) * .009 - reload * .08, -.72 + fire * .11 + this.rejectionKick * .03)
-            rig.root.rotation.set(fire * .075 + reload * .34, 0, walk * .018 + reload * .18)
+            const sprint = this.stateValue === 'sprint' ? 1 : 0, crouch = this.stateValue === 'crouch' ? 1 : 0
+            const slide = this.stateValue === 'slide' ? 1 : 0, prone = this.stateValue === 'prone' ? 1 : 0
+            const dash = this.stateValue === 'dash' ? Math.exp(-elapsed * 14) : 0, mantle = this.stateValue === 'mantle' ? 1 : 0
+            rig.root.position.set(.32 + walk * .012 + sprint * .1, -.29 + Math.abs(walk) * .009 - reload * .08 - sprint * .2 - crouch * .07 - prone * .32 - mantle * .48, -.72 + fire * .11 + this.rejectionKick * .03 + dash * .16)
+            rig.root.rotation.set(fire * .075 + reload * .34 + sprint * .42 + mantle * .7, 0, walk * .018 + reload * .18 + slide * .18 + dash * .08)
         }
     }
     muzzlePosition(): Vec3 | undefined { const rig = this.rigs.get(this.weaponValue); if (!rig || !rig.root.isEnabled()) return undefined; const value = rig.muzzle.getAbsolutePosition(); this.muzzleScratch.x = value.x; this.muzzleScratch.y = value.y; this.muzzleScratch.z = value.z; return this.muzzleScratch }

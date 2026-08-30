@@ -20,7 +20,7 @@ import { PostProcessingModule } from './rendering/PostProcessingModule'
 import { FirstPersonCameraModule } from './camera/FirstPersonCameraModule'
 import { MapModule } from './gameplay/MapModule'
 import type { MovementTuning } from './physics/Movement'
-import { ARENA, ASSETS, ENVIRONMENT, NETWORKING, POST_PROCESSING, RENDER_QUALITY, SCENE } from './services'
+import { ARENA, ASSETS, ENTITY_VIEWS, ENVIRONMENT, NETWORKING, PHYSICS, POST_PROCESSING, RENDER_QUALITY, SCENE } from './services'
 import { CombatPresentationModule } from './combat/CombatPresentationModule'
 import { PerformanceModule } from './performance/PerformanceModule'
 import { isDevelopment } from '../utils/environment'
@@ -96,6 +96,8 @@ export class FoundationClient {
         readonly networkStatus: string
         readonly remotePlayers: number
         readonly localWeapon: number
+        readonly localMovement: { readonly stance: number; readonly mode: number; readonly grounded: boolean }
+        readonly remoteActors: ReturnType<EntityViewsModule['debugActorStates']>
         readonly rendering: {
             readonly quality: ReturnType<FoundationClient['renderingSnapshot']>['quality']
             readonly environment: ReturnType<FoundationClient['renderingSnapshot']>['environment']
@@ -112,6 +114,12 @@ export class FoundationClient {
             networkStatus: networking.status,
             remotePlayers: networking.metrics.remotePlayers,
             localWeapon: networking.combat.localPlayer.weapon,
+            localMovement: {
+                stance: this.services.get(PHYSICS).movementState.stance,
+                mode: this.services.get(PHYSICS).movementState.mode,
+                grounded: this.services.get(PHYSICS).grounded,
+            },
+            remoteActors: this.services.get(ENTITY_VIEWS).debugActorStates(),
             rendering: this.renderingSnapshot(),
             meshes: scene.meshes
                 .filter((mesh) => /^(remote-|viewmodel\/|tracer\/|muzzle\/)/.test(mesh.name))

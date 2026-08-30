@@ -118,7 +118,7 @@ export class CombatPresentationModule implements ClientModule {
             this.shotTracers.clear()
             this.scheduledImpacts.length = 0
         }
-        this.viewmodel.update(local.weapon, local.dead, local.reloading, Math.hypot(physics.velocity.x, physics.velocity.z), physics.grounded, now, frame.deltaSeconds)
+        this.viewmodel.update(local.weapon, local.dead, local.reloading, Math.hypot(physics.velocity.x, physics.velocity.z), physics.grounded, now, frame.deltaSeconds, physics.movementState)
         networking.combat.forEachEventAfter(this.eventCursor, (event) => {
             this.eventCursor = event.id
             switch (event.kind) {

@@ -28,12 +28,12 @@
     "debug": "debug-report.json"
   },
   "assetHashes": {
-    "collision.bin": "sha256:b835666ad6e4dff87d9b0c9afaa8b4b38e94a673ad625e3970812f59255364d3",
-    "debug-report.json": "sha256:0d7b570c9a4a5b039bcb51b93e75030fbeffa57708ce3acad70880e052474a70",
+    "collision.bin": "sha256:7ee7e2d03acccc3852d8524df451465269edcbd97e70e7413ec810fab0bf2bdb",
+    "debug-report.json": "sha256:62eec00430aa2916ee9631e81df145d9c1653be02903ce2df3d5540cf2b1ecf7",
     "gameplay.json": "sha256:2f318e320f713b522688a35ee6e57179eb05639bff2bed48e5d731ab018cbee6",
     "navigation.json": "sha256:ec104bc008d2ca69cdc40d6c4043bacaffb37d7e0e15e11e8e921ea7d44420a7",
     "radar.svg": "sha256:5aa34256fd8d0b6511d73676febd08cd262073cb1a92caea88b82a2930e8fcaa",
-    "scene.glb": "sha256:a5e975dd97a24c922195dd8701aad6dd535740318672503af0fed6255c00fbf6"
+    "scene.glb": "sha256:f6d194a02439ba9e85eff4a99bf51ed0fe710507a7d0c8b1d090b9eb59d959fa"
   },
   "environment": {
     "clearColor": [
@@ -54,5 +54,5 @@
     "audioDistanceScale": 0.9,
     "radarNorthYaw": 0
   },
-  "contentHash": "sha256:5d0c9977e32841521f84c940f32ea07583b297aa90e8ed20afdf56978b7df42c"
+  "contentHash": "sha256:1eee314d6893e8066372010d7eb0c050268f287a7f188d3855dc6550cddbf6ff"
 }

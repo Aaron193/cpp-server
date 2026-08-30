@@ -5,7 +5,10 @@ import { sha256Identifier } from '../src/foundation/networking/Handshake'
 import type { NetworkTransport, TransportCallbacks, TransportState } from '../src/foundation/networking/Transport'
 import { ServiceRegistry } from '../src/foundation/lifecycle'
 import { ARENA, ENTITY_VIEWS, INPUT, PHYSICS } from '../src/foundation/services'
-import { ChatChannel, EntityKind, MatchPhase, MessageType, PROTOCOL_VERSION, RoundTransitionKind, Weapon, decodeEnvelope, encodeMessage } from '../src/protocol/generated'
+import { DEFAULT_MOVEMENT_TUNING } from '../src/foundation/physics/Movement'
+import { ChatChannel, EntityKind, MatchPhase, MessageType, MovementMode, PROTOCOL_VERSION, RoundTransitionKind, Stance, Weapon, decodeEnvelope, encodeMessage } from '../src/protocol/generated'
+
+const movementState = { stance: Stance.Standing, mode: MovementMode.Normal, modeTimeRemaining: 0, dashCooldownRemaining: 0, slideCooldownRemaining: 0, weaponLockRemaining: 0, stanceExpansionPending: false, dashDirection: { x: 0, y: 0, z: -1 }, mantleStart: { x: 0, y: 0, z: 0 }, mantleTarget: { x: 0, y: 0, z: 0 } } as const
 
 class FakeTransport implements NetworkTransport {
     state: TransportState = 'idle'
@@ -41,7 +44,7 @@ describe('NetworkingModule integration lifecycle', () => {
         const hello = decodeEnvelope(transport.sent[0]!)
         expect(hello.known && hello.message.type).toBe(MessageType.Hello)
 
-        const configurationJson = JSON.stringify({ movement: { capsuleRadius: .42, capsuleHalfHeight: .48, eyeHeight: 1.62, groundSpeed: 7.5, groundAcceleration: 42, airAcceleration: 12, airControl: .45, jumpSpeed: 6.4, gravity: 20, terminalVelocity: 35, maxSlopeRadians: .78, stepUpHeight: .42, stickToFloorDistance: .5 } })
+        const configurationJson = JSON.stringify({ movement: DEFAULT_MOVEMENT_TUNING })
         const configurationHash = await sha256Identifier(configurationJson)
         const map = { mapId: manifest.mapId, formatVersion: manifest.formatVersion, contentHash: manifest.contentHash }
         transport.callbacks!.message(encodeMessage({ type: MessageType.Welcome, payload: { protocolVersion: PROTOCOL_VERSION, serverBuildId: 'dev', playerId: 7, playerHandle: { slot: 7, generation: 0 }, tickRate: 60, snapshotRate: 20, map, configurationHash } }))
@@ -64,7 +67,7 @@ describe('NetworkingModule integration lifecycle', () => {
         expect(module.serverTickNow).toBe(101)
         expect(module.matchCountdownSeconds(160)).toBe(1)
 
-        const remote = { entityId: 9, kind: EntityKind.Player, position: { x: 1, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, equippedWeapon: Weapon.Rifle, health: null, weaponState: null }
+        const remote = { entityId: 9, kind: EntityKind.Player, position: { x: 1, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, stance: Stance.Standing, movementMode: MovementMode.Normal, equippedWeapon: Weapon.Rifle, health: null, weaponState: null }
         const local = { ...remote, entityId: 7, health: 90, equippedWeapon: Weapon.Shotgun, weaponState: { selected: Weapon.Shotgun, magazineAmmo: 0, reserveAmmo: 20, stateFlags: 0 } }
         transport.callbacks!.message(encodeMessage({ type: MessageType.SnapshotDelta, payload: {
             snapshotSequence: 1, baselineSequence: 0, baselineRevision: 1, baselineReset: true,
@@ -72,11 +75,11 @@ describe('NetworkingModule integration lifecycle', () => {
             match: { phase: MatchPhase.Active, roundNumber: 1, phaseEndsAtTick: 600 },
             local: { handle: { slot: 7, generation: 0 }, position: local.position, velocity: local.velocity,
                 bodyYaw: local.bodyYaw, aimPitch: local.aimPitch, grounded: local.grounded,
-                stateFlags: local.stateFlags, health: 90,
+                stateFlags: local.stateFlags, health: 90, movementState,
                 weaponState: { selected: Weapon.Shotgun, magazineAmmo: 0, reserveAmmo: 20, stateFlags: 0 } },
             created: [{ state: { handle: { slot: 9, generation: 0 }, kind: remote.kind,
                 position: remote.position, velocity: remote.velocity, bodyYaw: remote.bodyYaw,
-                aimPitch: remote.aimPitch, grounded: remote.grounded, stateFlags: remote.stateFlags,
+                aimPitch: remote.aimPitch, grounded: remote.grounded, stateFlags: remote.stateFlags, stance: remote.stance, movementMode: remote.movementMode,
                 equippedWeapon: remote.equippedWeapon } }], updated: [], removed: [],
         } }))
         await vi.waitFor(() => expect(module.metrics.remotePlayers).toBe(1))
@@ -112,7 +115,7 @@ describe('NetworkingModule integration lifecycle', () => {
             match: { phase: MatchPhase.Active, roundNumber: 1, phaseEndsAtTick: 600 },
             local: { handle: { slot: 8, generation: 0 }, position: local.position, velocity: local.velocity,
                 bodyYaw: local.bodyYaw, aimPitch: local.aimPitch, grounded: local.grounded,
-                stateFlags: local.stateFlags, health: 100,
+                stateFlags: local.stateFlags, health: 100, movementState,
                 weaponState: { selected: Weapon.Rifle, magazineAmmo: 30, reserveAmmo: 90, stateFlags: 0 } },
             created: [], updated: [], removed: [],
         } }))

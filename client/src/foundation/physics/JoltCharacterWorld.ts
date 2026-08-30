@@ -1,6 +1,7 @@
 import type initJolt from 'jolt-physics/wasm-compat'
 import type { CollisionMeshData } from '../assets/CollisionMesh'
-import { DEFAULT_MOVEMENT_TUNING, stepMovementVelocity, type MovementCommand, type MovementTuning } from './Movement'
+import { MovementMode, Stance, type MovementState } from '../../protocol/generated'
+import { DEFAULT_MOVEMENT_TUNING, createMovementState, stepMovementState, type MovementCommand, type MovementTuning } from './Movement'
 
 export interface PhysicsPosition { readonly x: number; readonly y: number; readonly z: number }
 
@@ -14,6 +15,10 @@ export class JoltCharacterWorld {
     private readonly physicsSystem: any
     private readonly bodyInterface: any
     private readonly character: any
+    private readonly stanceShapes = new Map<Stance, any>()
+    private readonly stanceShapeResources: Array<{ result: any; translated: any; capsule: any }> = []
+    private movementStateValue: MovementState = createMovementState()
+    private appliedStance = Stance.Standing
     private readonly broadPhaseFilter: any
     private readonly objectLayerFilter: any
     private readonly bodyFilter: any
@@ -84,13 +89,26 @@ export class JoltCharacterWorld {
         Jolt.destroy(triangles)
         Jolt.destroy(materials)
 
-        const shapeOffset = new Jolt.Vec3(0, tuning.capsuleHalfHeight + tuning.capsuleRadius, 0)
-        const capsuleSettings = new Jolt.CapsuleShapeSettings(tuning.capsuleHalfHeight, tuning.capsuleRadius)
-        const translatedSettings = new Jolt.RotatedTranslatedShapeSettings(shapeOffset, identity, capsuleSettings)
-        const capsuleResult = translatedSettings.Create()
-        if (!capsuleResult.IsValid()) throw new Error('Jolt rejected the player capsule')
+        const makeStanceShape = (stance: Stance, halfHeight: number, radius: number): any => {
+            const shapeOffset = new Jolt.Vec3(0, halfHeight + radius, 0)
+            const capsuleSettings = new Jolt.CapsuleShapeSettings(halfHeight, radius)
+            const translatedSettings = new Jolt.RotatedTranslatedShapeSettings(shapeOffset, identity, capsuleSettings)
+            const result = translatedSettings.Create()
+            if (!result.IsValid()) throw new Error(`Jolt rejected movement stance ${stance}`)
+            const shape = result.Get()
+            this.stanceShapes.set(stance, shape)
+            // ShapeResult owns the alternate shape until CharacterVirtual takes
+            // a reference during SetShape. Retain all three results for the
+            // world lifetime; borrowed Get() wrappers alone do not own a ref.
+            this.stanceShapeResources.push({ result, translated: translatedSettings, capsule: capsuleSettings })
+            Jolt.destroy(shapeOffset)
+            return shape
+        }
+        const standingShape = makeStanceShape(Stance.Standing, tuning.capsuleHalfHeight, tuning.capsuleRadius)
+        makeStanceShape(Stance.Crouched, tuning.crouchCapsuleHalfHeight, tuning.crouchCapsuleRadius)
+        makeStanceShape(Stance.Prone, tuning.proneCapsuleHalfHeight, tuning.proneCapsuleRadius)
         const characterSettings = new Jolt.CharacterVirtualSettings()
-        characterSettings.mShape = capsuleResult.Get()
+        characterSettings.mShape = standingShape
         characterSettings.mMaxSlopeAngle = tuning.maxSlopeRadians
         characterSettings.mBackFaceMode = Jolt.EBackFaceMode_CollideWithBackFaces
         characterSettings.mCharacterPadding = 0.02
@@ -100,10 +118,7 @@ export class JoltCharacterWorld {
         characterSettings.mMass = 80
         this.spawnVector = new Jolt.RVec3(spawn.x, spawn.y, spawn.z)
         this.character = new Jolt.CharacterVirtual(characterSettings, this.spawnVector, identity, this.physicsSystem)
-        capsuleResult.Clear()
         Jolt.destroy(characterSettings)
-        Jolt.destroy(translatedSettings)
-        Jolt.destroy(shapeOffset)
 
         this.broadPhaseFilter = new Jolt.DefaultBroadPhaseLayerFilter(this.joltInterface.GetObjectVsBroadPhaseLayerFilter(), CHARACTER_LAYER)
         this.objectLayerFilter = new Jolt.DefaultObjectLayerFilter(this.joltInterface.GetObjectLayerPairFilter(), CHARACTER_LAYER)
@@ -122,11 +137,37 @@ export class JoltCharacterWorld {
         if (this.disposed) return
         const current = this.character.GetLinearVelocity()
         const groundVelocity = this.character.GetGroundVelocity()
-        const velocity = stepMovementVelocity(
-            { x: current.GetX(), y: current.GetY(), z: current.GetZ() }, command,
-            this.character.GetGroundState() === this.Jolt.EGroundState_OnGround,
-            dt, this.tuning, groundVelocity.GetY()
-        )
+        const currentVelocity = { x: current.GetX(), y: current.GetY(), z: current.GetZ() }
+        const grounded = this.character.GetGroundState() === this.Jolt.EGroundState_OnGround
+        const position = this.position
+        const mantleTarget = command.jump && !grounded && this.tuning.mantleEnabled ? this.findMantleTarget(position, command.yaw) : undefined
+        const resolvedCommand = mantleTarget ? { ...command, mantleTarget } : command
+        const result = stepMovementState(this.movementStateValue, resolvedCommand, {
+            grounded, position: { ...position }, horizontalSpeed: Math.hypot(currentVelocity.x, currentVelocity.z),
+            canAdoptStance: (stance) => this.applyStance(stance),
+        }, dt, this.tuning)
+        let nextState = result.state
+        if (nextState.stance !== this.appliedStance && !this.applyStance(nextState.stance)) nextState = { ...nextState, stance: this.appliedStance }
+        this.movementStateValue = nextState
+        if (result.authoredPosition) {
+            this.spawnVector.Set(result.authoredPosition.x, result.authoredPosition.y, result.authoredPosition.z)
+            this.character.SetPosition(this.spawnVector)
+            this.velocityVector.Set(0, 0, 0); this.character.SetLinearVelocity(this.velocityVector)
+            this.joltInterface.Step(dt, 1)
+            return
+        }
+        const groundY = groundVelocity.GetY()
+        const locked = result.state.mode === MovementMode.Dashing || result.state.mode === MovementMode.Sliding
+        const acceleration = grounded ? this.tuning.groundAcceleration : this.tuning.airAcceleration * this.tuning.airControl
+        const maxDelta = acceleration * dt
+        const approach = (value: number, target: number): number => value < target ? Math.min(value + maxDelta, target) : Math.max(value - maxDelta, target)
+        const velocity = {
+            x: locked ? result.desiredHorizontal.x : approach(currentVelocity.x, result.desiredHorizontal.x),
+            y: currentVelocity.y,
+            z: locked ? result.desiredHorizontal.z : approach(currentVelocity.z, result.desiredHorizontal.z),
+        }
+        if (grounded && currentVelocity.y - groundY < .1) { velocity.y = groundY; if (result.jump) velocity.y += this.tuning.jumpSpeed }
+        velocity.y = Math.max(velocity.y - this.tuning.gravity * dt, -this.tuning.terminalVelocity)
         this.velocityVector.Set(velocity.x, velocity.y, velocity.z)
         this.character.SetLinearVelocity(this.velocityVector)
         this.character.ExtendedUpdate(
@@ -142,7 +183,7 @@ export class JoltCharacterWorld {
         this.setState(position, { x: 0, y: 0, z: 0 })
     }
 
-    setState(position: PhysicsPosition, velocity: PhysicsPosition): void {
+    setState(position: PhysicsPosition, velocity: PhysicsPosition, movementState?: MovementState): void {
         this.spawn = { ...position }
         this.spawnVector.Set(position.x, position.y, position.z)
         this.character.SetPosition(this.spawnVector)
@@ -157,6 +198,10 @@ export class JoltCharacterWorld {
         )
         this.velocityVector.Set(velocity.x, velocity.y, velocity.z)
         this.character.SetLinearVelocity(this.velocityVector)
+        if (movementState) {
+            const restored = { ...movementState, dashDirection: { ...movementState.dashDirection }, mantleStart: { ...movementState.mantleStart }, mantleTarget: { ...movementState.mantleTarget } }
+            if (this.applyStance(restored.stance)) this.movementStateValue = restored
+        }
         Object.assign(this.cachedPosition, position); Object.assign(this.cachedVelocity, velocity)
     }
 
@@ -169,6 +214,50 @@ export class JoltCharacterWorld {
         this.cachedVelocity.x = value.GetX(); this.cachedVelocity.y = value.GetY(); this.cachedVelocity.z = value.GetZ(); return this.cachedVelocity
     }
     get grounded(): boolean { return this.character.GetGroundState() === this.Jolt.EGroundState_OnGround }
+    get movementState(): MovementState { return { ...this.movementStateValue, dashDirection: { ...this.movementStateValue.dashDirection }, mantleStart: { ...this.movementStateValue.mantleStart }, mantleTarget: { ...this.movementStateValue.mantleTarget } } }
+
+    private applyStance(stance: Stance): boolean {
+        if (stance === this.appliedStance) return true
+        const shape = this.stanceShapes.get(stance)
+        if (!shape) return false
+        const accepted = this.character.SetShape(shape, .04, this.broadPhaseFilter, this.objectLayerFilter, this.bodyFilter, this.shapeFilter, this.joltInterface.GetTempAllocator())
+        if (accepted) this.appliedStance = stance
+        return accepted
+    }
+
+    private castFraction(origin: PhysicsPosition, displacement: PhysicsPosition): number | undefined {
+        const rayOrigin = new this.Jolt.RVec3(origin.x, origin.y, origin.z)
+        const rayDirection = new this.Jolt.Vec3(displacement.x, displacement.y, displacement.z)
+        const ray = new this.Jolt.RRayCast(rayOrigin, rayDirection)
+        const settings = new this.Jolt.RayCastSettings()
+        const collector = new this.Jolt.CastRayClosestHitCollisionCollector()
+        this.physicsSystem.GetNarrowPhaseQuery().CastRay(ray, settings, collector, this.broadPhaseFilter, this.objectLayerFilter, this.bodyFilter, this.shapeFilter)
+        const fraction = collector.HadHit() ? collector.mHit.mFraction : undefined
+        this.Jolt.destroy(collector); this.Jolt.destroy(settings); this.Jolt.destroy(ray); this.Jolt.destroy(rayDirection); this.Jolt.destroy(rayOrigin)
+        return fraction
+    }
+
+    private findMantleTarget(feet: PhysicsPosition, yaw: number): PhysicsPosition | undefined {
+        const forward = { x: Math.sin(yaw), y: 0, z: -Math.cos(yaw) }
+        const right = { x: -forward.z, y: 0, z: forward.x }
+        let nearest: number | undefined
+        for (const lateral of [0, -.6 * this.tuning.capsuleRadius, .6 * this.tuning.capsuleRadius]) {
+            const fraction = this.castFraction({ x: feet.x + right.x * lateral, y: feet.y + this.tuning.mantleMinHeight, z: feet.z + right.z * lateral }, { x: forward.x * this.tuning.mantleReach, y: 0, z: forward.z * this.tuning.mantleReach })
+            if (fraction !== undefined && (nearest === undefined || fraction < nearest)) nearest = fraction
+        }
+        if (nearest === undefined) return undefined
+        const distance = nearest * this.tuning.mantleReach + this.tuning.capsuleRadius + .08
+        const beyond = { x: feet.x + forward.x * distance, z: feet.z + forward.z * distance }
+        const downLength = this.tuning.mantleMaxHeight - this.tuning.mantleMinHeight + .16
+        const downOrigin = { x: beyond.x, y: feet.y + this.tuning.mantleMaxHeight + .08, z: beyond.z }
+        const topFraction = this.castFraction(downOrigin, { x: 0, y: -downLength, z: 0 })
+        if (topFraction === undefined) return undefined
+        const target = { x: beyond.x, y: downOrigin.y - downLength * topFraction + .025, z: beyond.z }
+        const height = 2 * (this.tuning.capsuleRadius + this.tuning.capsuleHalfHeight)
+        for (const offset of [{ x: 0, z: 0 }, { x: right.x * this.tuning.capsuleRadius, z: right.z * this.tuning.capsuleRadius }, { x: -right.x * this.tuning.capsuleRadius, z: -right.z * this.tuning.capsuleRadius }])
+            if (this.castFraction({ x: target.x + offset.x, y: target.y + .05, z: target.z + offset.z }, { x: 0, y: height - .05, z: 0 }) !== undefined) return undefined
+        return target
+    }
 
     dispose(): void {
         if (this.disposed) return
@@ -181,6 +270,13 @@ export class JoltCharacterWorld {
         this.Jolt.destroy(this.objectLayerFilter)
         this.Jolt.destroy(this.broadPhaseFilter)
         this.Jolt.destroy(this.character)
+        for (const resource of this.stanceShapeResources) {
+            resource.result.Clear()
+            this.Jolt.destroy(resource.translated)
+            this.Jolt.destroy(resource.capsule)
+        }
+        this.stanceShapeResources.length = 0
+        this.stanceShapes.clear()
         this.bodyInterface.RemoveBody(this.staticBodyId)
         this.bodyInterface.DestroyBody(this.staticBodyId)
         this.Jolt.destroy(this.joltInterface)

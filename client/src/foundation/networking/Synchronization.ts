@@ -1,4 +1,4 @@
-import type { EntityRecord, InputCommand, Pong, Vec3 } from '../../protocol/generated'
+import type { EntityRecord, InputCommand, MovementState, Pong, Vec3 } from '../../protocol/generated'
 
 const UINT32_HALF_RANGE = 0x80000000
 const UINT32_RANGE = 0x100000000
@@ -157,6 +157,7 @@ export interface PredictedInput {
     readonly command: InputCommand
     readonly position: Vec3
     readonly velocity: Vec3
+    readonly movementState?: MovementState
     readonly sentAtMs: number
 }
 
@@ -289,7 +290,7 @@ export class RemoteEntityTimeline {
         entity.entityId = source.entityId; entity.kind = source.kind; entity.position.x = x; entity.position.y = y; entity.position.z = z
         entity.velocity.x = source.velocity.x; entity.velocity.y = source.velocity.y; entity.velocity.z = source.velocity.z
         entity.bodyYaw = bodyYaw; entity.aimPitch = aimPitch; entity.grounded = source.grounded; entity.stateFlags = source.stateFlags
-        entity.equippedWeapon = source.equippedWeapon
+        entity.stance = source.stance; entity.movementMode = source.movementMode; entity.equippedWeapon = source.equippedWeapon
         this.result ??= { entity, mode, bufferState }; this.result.mode = mode; this.result.bufferState = bufferState
         return this.result
     }

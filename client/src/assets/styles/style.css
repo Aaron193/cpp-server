@@ -1070,6 +1070,8 @@ body {
 .fps-chat-log { position: absolute; left: 24px; bottom: 145px; width: min(420px, 50vw); color: white; font: 13px/1.5 var(--font-body); text-shadow: 0 1px 3px #000; }
 .fps-chat-log strong { color: #7dd3fc; }
 #fps-reload { display: block; color: #fbbf24; font-size: 10px; }
+.fps-dash-track { display: block; width: 72px; height: 3px; margin-top: 4px; overflow: hidden; background: rgba(148,163,184,.25); }
+.fps-dash-track i { display: block; width: calc(var(--dash-ready, 1) * 100%); height: 100%; background: var(--hud-accent); transition: width 80ms linear; }
 
 .fps-radar { position: absolute; right: 24px; bottom: 25px; width: min(220px, 24vw); max-height: 220px; overflow: hidden; background: var(--hud-bg); border: 1px solid var(--hud-stroke); border-radius: var(--hud-radius); box-shadow: 0 5px 20px rgba(0,0,0,.35); }
 .fps-radar img { display: block; width: 100%; height: 100%; position: absolute; inset: 0; object-fit: fill; opacity: .82; }

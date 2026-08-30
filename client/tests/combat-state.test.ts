@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { ChatChannel, ImpactMaterial, MatchPhase, RoundTransitionKind, Weapon, type LocalAuthoritativeState } from '../src/protocol/generated'
+import { ChatChannel, ImpactMaterial, MatchPhase, MovementMode, RoundTransitionKind, Stance, Weapon, type LocalAuthoritativeState } from '../src/protocol/generated'
 import { CombatPresentationState, alignClientTick } from '../src/foundation/combat/CombatState'
 
-const local = (health: number, ammo = 10): LocalAuthoritativeState => ({ handle: { slot: 7, generation: 0 }, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, health, weaponState: { selected: Weapon.Shotgun, magazineAmmo: ammo, reserveAmmo: 20, stateFlags: 1 } })
+const local = (health: number, ammo = 10): LocalAuthoritativeState => ({ handle: { slot: 7, generation: 0 }, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, health, movementState: { stance: Stance.Standing, mode: MovementMode.Normal, modeTimeRemaining: 0, dashCooldownRemaining: 0, slideCooldownRemaining: 0, weaponLockRemaining: 0, stanceExpansionPending: false, dashDirection: { x: 0, y: 0, z: -1 }, mantleStart: { x: 0, y: 0, z: 0 }, mantleTarget: { x: 0, y: 0, z: 0 } }, weaponState: { selected: Weapon.Shotgun, magazineAmmo: ammo, reserveAmmo: 20, stateFlags: 1 } })
 const match = { phase: MatchPhase.Active, roundNumber: 2, phaseEndsAtTick: 700 }
 
 describe('authoritative combat presentation model', () => {

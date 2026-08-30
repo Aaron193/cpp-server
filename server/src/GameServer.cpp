@@ -92,6 +92,8 @@ const MapSpawnPoint& GameServer::selectSpawnPoint(
 
     const auto& registry = m_entityManager.getRegistry();
     const auto players = registry.view<Components::Transform3D,
+                                       Components::PlayerInput,
+                                       Components::MovementState,
                                        Components::PlayerLife>();
     std::size_t liveOpponents = 0U;
     for (const auto player : players)
@@ -245,33 +247,188 @@ void GameServer::updateCharacterMotors(float delta) {
                                     Components::Velocity3D,
                                     Components::CharacterController,
                                     Components::PlayerInput,
+                                    Components::MovementState,
                                     Components::PlayerLife>();
     for (const auto entity : view) {
         auto& input = view.get<Components::PlayerInput>(entity);
         auto& controller = view.get<Components::CharacterController>(entity);
+        auto& movement = view.get<Components::MovementState>(entity);
+        const auto& tuning = m_gameConfig.movement;
+        const auto decrease = [delta](float value) { return std::max(0.0F, value - delta); };
+        movement.modeTimeRemaining = decrease(movement.modeTimeRemaining);
+        movement.dashCooldownRemaining = decrease(movement.dashCooldownRemaining);
+        movement.slideCooldownRemaining = decrease(movement.slideCooldownRemaining);
+        movement.weaponLockRemaining = decrease(movement.weaponLockRemaining);
         if (view.get<Components::PlayerLife>(entity).dead) {
             m_physicsWorld.setCharacterVelocity(controller.adapterId,
                                                 {0.0F, 0.0F, 0.0F});
             input.jump = false;
+            input.pronePressed = input.dashPressed = false;
+            movement = Components::MovementState{};
             continue;
         }
         if (matchPhase_ != protocol::MatchPhase::Active) {
             m_physicsWorld.setCharacterVelocity(controller.adapterId,
                                                 {0.0F, 0.0F, 0.0F});
             input.jump = false;
+            input.pronePressed = input.dashPressed = false;
+            movement.mode = protocol::MovementMode::Normal;
+            movement.modeTimeRemaining = 0.0F;
+            movement.weaponLockRemaining = 0.0F;
             continue;
         }
+        const auto physical = m_physicsWorld.characterState(controller.adapterId);
         const float forward = -input.movement.y;
         const float right = input.movement.x;
+        const float inputLength = std::hypot(forward, right);
+        const float inputScale = inputLength > 1.0F ? 1.0F / inputLength : 1.0F;
+        const float normalizedForward = forward * inputScale;
+        const float normalizedRight = right * inputScale;
         const float sine = std::sin(input.yaw);
         const float cosine = std::cos(input.yaw);
-        const float speed = m_gameConfig.movement.groundSpeed;
-        const glm::vec3 desired{(sine * forward + cosine * right) * speed,
-                                0.0F,
-                                (-cosine * forward + sine * right) * speed};
+        const glm::vec3 inputDirection{
+            sine * normalizedForward + cosine * normalizedRight, 0.0F,
+            -cosine * normalizedForward + sine * normalizedRight};
+        const glm::vec3 viewForward{sine, 0.0F, -cosine};
+        const auto stance = [&](protocol::Stance target) {
+            PhysicsWorld::CharacterStance physicsStance = PhysicsWorld::CharacterStance::Standing;
+            if (target == protocol::Stance::Crouched) physicsStance = PhysicsWorld::CharacterStance::Crouched;
+            else if (target == protocol::Stance::Prone) physicsStance = PhysicsWorld::CharacterStance::Prone;
+            if (!m_physicsWorld.setCharacterStance(controller.adapterId, physicsStance)) {
+                if (target == protocol::Stance::Standing) ++combatMetrics_.blockedStandAttempts;
+                return false;
+            }
+            movement.stance = target;
+            return true;
+        };
+
+        if (movement.mode == protocol::MovementMode::Mantling) {
+            if (movement.modeTimeRemaining > 0.0F) {
+                const float progress = std::clamp(1.0F - movement.modeTimeRemaining / tuning.mantleDuration, 0.0F, 1.0F);
+                const float smooth = progress * progress * (3.0F - 2.0F * progress);
+                glm::vec3 authored = movement.mantleStart + (movement.mantleTarget - movement.mantleStart) * smooth;
+                authored.y += std::sin(progress * 3.14159265359F) * 0.12F;
+                m_physicsWorld.setCharacterPosition(controller.adapterId, authored);
+                m_physicsWorld.setCharacterVelocity(controller.adapterId, {0.0F, 0.0F, 0.0F});
+                input.jump = input.pronePressed = input.dashPressed = false;
+                continue;
+            }
+            movement.mode = protocol::MovementMode::Normal;
+            stance(protocol::Stance::Standing);
+        }
+        if (movement.mode == protocol::MovementMode::Dashing) {
+            if (movement.modeTimeRemaining > 0.0F) {
+                m_physicsWorld.updateCharacter(controller.adapterId, delta,
+                    movement.dashDirection * tuning.dashSpeed, false);
+                input.jump = input.pronePressed = input.dashPressed = false;
+                continue;
+            }
+            movement.mode = protocol::MovementMode::Normal;
+        }
+        if (movement.mode == protocol::MovementMode::Sliding) {
+            const bool committed = tuning.slideDuration - movement.modeTimeRemaining < tuning.slideJumpCommitment;
+            if (input.jump && !committed) movement.mode = protocol::MovementMode::Normal;
+            else if (movement.modeTimeRemaining > 0.0F && physical.grounded) {
+                const float progress = std::clamp(1.0F - movement.modeTimeRemaining / tuning.slideDuration, 0.0F, 1.0F);
+                const float speed = tuning.slideStartSpeed + (tuning.slideEndSpeed - tuning.slideStartSpeed) * progress;
+                if (inputLength > 0.01F) {
+                    const float currentYaw = std::atan2(movement.dashDirection.x, -movement.dashDirection.z);
+                    const float requestedYaw = std::atan2(inputDirection.x, -inputDirection.z);
+                    const float difference = std::atan2(std::sin(requestedYaw - currentYaw), std::cos(requestedYaw - currentYaw));
+                    const float steer = std::clamp(difference, -tuning.slideSteerRadiansPerSecond * delta, tuning.slideSteerRadiansPerSecond * delta);
+                    movement.dashDirection = {std::sin(currentYaw + steer), 0.0F, -std::cos(currentYaw + steer)};
+                }
+                m_physicsWorld.updateCharacter(controller.adapterId, delta, movement.dashDirection * speed, false);
+                input.jump = input.pronePressed = input.dashPressed = false;
+                continue;
+            } else movement.mode = protocol::MovementMode::Normal;
+        }
+
+        if (tuning.mantleEnabled && !physical.grounded && input.jump) {
+            const float standingHeight = 2.0F * (tuning.capsuleRadius + tuning.capsuleHalfHeight);
+            const auto target = m_physicsWorld.findMantleTarget(physical.position, input.yaw,
+                tuning.mantleMinHeight, tuning.mantleMaxHeight, tuning.mantleReach,
+                tuning.capsuleRadius, standingHeight);
+            if (target && stance(protocol::Stance::Standing)) {
+                ++combatMetrics_.mantleActivations;
+                movement.mode = protocol::MovementMode::Mantling;
+                movement.modeTimeRemaining = tuning.mantleDuration;
+                movement.weaponLockRemaining = tuning.mantleDuration;
+                movement.mantleStart = physical.position;
+                movement.mantleTarget = *target;
+                m_physicsWorld.setCharacterVelocity(controller.adapterId, {0.0F, 0.0F, 0.0F});
+                input.jump = input.pronePressed = input.dashPressed = false;
+                continue;
+            }
+            ++combatMetrics_.mantleFailures;
+        }
+        if (input.dashPressed && movement.dashCooldownRemaining > 0.0F)
+            ++combatMetrics_.cooldownRejections;
+        if (tuning.dashEnabled && input.dashPressed && physical.grounded &&
+            movement.dashCooldownRemaining <= 0.0F && movement.stance != protocol::Stance::Prone) {
+            movement.dashDirection = inputLength > 0.01F ? inputDirection : viewForward;
+            movement.mode = protocol::MovementMode::Dashing;
+            movement.modeTimeRemaining = tuning.dashDuration;
+            movement.dashCooldownRemaining = tuning.dashCooldown;
+            movement.weaponLockRemaining = tuning.dashDuration;
+            ++combatMetrics_.dashActivations;
+            m_physicsWorld.updateCharacter(controller.adapterId, delta, movement.dashDirection * tuning.dashSpeed, false);
+            input.jump = input.pronePressed = input.dashPressed = false;
+            continue;
+        }
+        const float horizontalSpeed = std::hypot(physical.velocity.x, physical.velocity.z);
+        if (input.crouchHeld && physical.grounded &&
+            movement.mode == protocol::MovementMode::Sprinting &&
+            horizontalSpeed >= tuning.groundSpeed && movement.slideCooldownRemaining > 0.0F)
+            ++combatMetrics_.cooldownRejections;
+        if (tuning.slideEnabled && input.crouchHeld && physical.grounded &&
+            movement.slideCooldownRemaining <= 0.0F &&
+            movement.mode == protocol::MovementMode::Sprinting && horizontalSpeed >= tuning.groundSpeed) {
+            stance(protocol::Stance::Crouched);
+            movement.dashDirection = inputLength > 0.01F ? inputDirection : viewForward;
+            movement.mode = protocol::MovementMode::Sliding;
+            movement.modeTimeRemaining = tuning.slideDuration;
+            movement.slideCooldownRemaining = tuning.slideCooldown;
+            ++combatMetrics_.slideActivations;
+            m_physicsWorld.updateCharacter(controller.adapterId, delta, movement.dashDirection * tuning.slideStartSpeed, false);
+            input.jump = input.pronePressed = input.dashPressed = false;
+            continue;
+        }
+        if (movement.stance == protocol::Stance::Prone && movement.stanceExpansionPending &&
+            stance(protocol::Stance::Standing)) movement.stanceExpansionPending = false;
+        if (tuning.proneEnabled && input.pronePressed) {
+            if (movement.stance == protocol::Stance::Prone) {
+                if (stance(protocol::Stance::Standing)) movement.stanceExpansionPending = false;
+                else movement.stanceExpansionPending = true;
+            } else {
+                if (stance(protocol::Stance::Prone)) ++combatMetrics_.proneActivations;
+                movement.stanceExpansionPending = false;
+                movement.mode = protocol::MovementMode::Normal;
+            }
+        } else if (movement.stance != protocol::Stance::Prone && tuning.crouchEnabled) {
+            if (input.crouchHeld) stance(protocol::Stance::Crouched);
+            else if (movement.stance == protocol::Stance::Crouched) stance(protocol::Stance::Standing);
+        }
+        const bool jump = input.jump && physical.grounded && movement.stance != protocol::Stance::Prone;
+        const bool sprint = tuning.sprintEnabled && !jump && movement.stance == protocol::Stance::Standing &&
+                            physical.grounded && input.sprintHeld && normalizedForward > 0.1F;
+        if (sprint) {
+            if (movement.mode != protocol::MovementMode::Sprinting) ++combatMetrics_.sprintActivations;
+            movement.mode = protocol::MovementMode::Sprinting;
+        }
+        else if (movement.mode == protocol::MovementMode::Sprinting) {
+            movement.mode = protocol::MovementMode::Normal;
+            movement.weaponLockRemaining = std::max(movement.weaponLockRemaining, tuning.sprintToFireDelay);
+        }
+        const float speed = movement.stance == protocol::Stance::Prone ? tuning.proneSpeed :
+            movement.stance == protocol::Stance::Crouched ? tuning.crouchSpeed :
+            movement.mode == protocol::MovementMode::Sprinting ? tuning.sprintSpeed : tuning.groundSpeed;
+        const glm::vec3 desired = inputDirection * speed;
         m_physicsWorld.updateCharacter(controller.adapterId, delta, desired,
-                                       input.jump);
+                                       jump);
         input.jump = false;
+        input.pronePressed = false;
+        input.dashPressed = false;
     }
 }
 
@@ -280,19 +437,40 @@ void GameServer::recordPlayerHistory() {
     frame.tick = static_cast<std::uint32_t>(m_currentTick);
     const auto& registry = m_entityManager.getRegistry();
     const auto players = registry.view<Components::Transform3D,
-                                       Components::PlayerLife>();
+                                       Components::PlayerLife,
+                                       Components::MovementState,
+                                       Components::PlayerInput>();
     frame.players.reserve(players.size_hint());
     const float radius = m_gameConfig.movement.capsuleRadius;
     const float halfHeight = m_gameConfig.movement.capsuleHalfHeight;
     for (const auto player : players) {
         const auto position =
             players.get<Components::Transform3D>(player).position;
+        const auto& movement = players.get<Components::MovementState>(player);
+        const float bodyYaw = players.get<Components::PlayerInput>(player).yaw;
+        const float eyeHeight = movement.stance == protocol::Stance::Prone
+            ? m_gameConfig.movement.proneEyeHeight
+            : movement.stance == protocol::Stance::Crouched
+                ? m_gameConfig.movement.crouchEyeHeight
+                : m_gameConfig.movement.eyeHeight;
+        CombatGeometry::Capsule hitVolume{};
+        if (movement.stance == protocol::Stance::Prone) {
+            const glm::vec3 forward{std::sin(bodyYaw), 0.0F, -std::cos(bodyYaw)};
+            const glm::vec3 center = position + glm::vec3{0.0F, m_gameConfig.movement.proneCapsuleRadius, 0.0F};
+            hitVolume = {center - forward * halfHeight, center + forward * halfHeight,
+                         m_gameConfig.movement.proneCapsuleRadius};
+        } else {
+            const float stanceRadius = movement.stance == protocol::Stance::Crouched
+                ? m_gameConfig.movement.crouchCapsuleRadius : radius;
+            const float stanceHalfHeight = movement.stance == protocol::Stance::Crouched
+                ? m_gameConfig.movement.crouchCapsuleHalfHeight : halfHeight;
+            hitVolume = {{position.x, position.y + stanceRadius, position.z},
+                         {position.x, position.y + stanceRadius + 2.0F * stanceHalfHeight, position.z},
+                         stanceRadius};
+        }
         frame.players.push_back(HistoricalPlayer{
-            player, position,
-            {{position.x, position.y + radius, position.z},
-             {position.x, position.y + radius + 2.0F * halfHeight,
-              position.z},
-             radius},
+            player, position, position + glm::vec3{0.0F, eyeHeight, 0.0F},
+            bodyYaw, movement.stance, hitVolume,
             players.get<Components::PlayerLife>(player).dead});
     }
     std::sort(frame.players.begin(), frame.players.end(),
@@ -380,27 +558,28 @@ void GameServer::fireWeapon(entt::entity shooter, Components::Gun& gun,
     std::uint32_t acceptedTick = 0;
     const HistoryFrame* history = findHistoryFrame(input.clientTick, acceptedTick);
     if (history && acceptedTick != input.clientTick) ++combatMetrics_.historyClamps;
-    glm::vec3 shooterPosition =
-        registry.get<Components::Transform3D>(shooter).position;
+    glm::vec3 shooterEye = registry.get<Components::Transform3D>(shooter).position +
+        glm::vec3{0.0F, m_gameConfig.movement.eyeHeight, 0.0F};
     if (history) {
         for (const auto& historical : history->players)
             if (historical.entity == shooter)
-                shooterPosition = historical.position;
+                shooterEye = historical.eyePosition;
     }
     const float cosinePitch = std::cos(input.pitch);
     const glm::vec3 aim = glm::normalize(glm::vec3{
         std::sin(input.yaw) * cosinePitch, std::sin(input.pitch),
         -std::cos(input.yaw) * cosinePitch});
-    const glm::vec3 eye = shooterPosition +
-                          glm::vec3{0.0F, m_gameConfig.movement.eyeHeight, 0.0F};
-    const glm::vec3 origin = eye + aim * gun.barrelLength;
+    const glm::vec3 origin = shooterEye + aim * gun.barrelLength;
     std::vector<glm::vec3> pelletDirections;
     std::vector<protocol::Vec3> pelletEndPositions;
     pelletDirections.reserve(static_cast<std::size_t>(gun.pellets));
     pelletEndPositions.reserve(static_cast<std::size_t>(gun.pellets));
     for (int pellet = 0; pellet < gun.pellets; ++pellet) {
+        const auto* shooterMovement = registry.try_get<Components::MovementState>(shooter);
+        const float movementSpread = shooterMovement && shooterMovement->mode == protocol::MovementMode::Sliding
+            ? m_gameConfig.movement.slideSpreadMultiplier : 1.0F;
         const glm::vec3 direction = CombatGeometry::spreadDirection(
-            aim, gun.spread, m_gameConfig.combat.serverSeed,
+            aim, gun.spread * movementSpread, m_gameConfig.combat.serverSeed,
             static_cast<std::uint32_t>(shooter), shotId,
             static_cast<std::uint32_t>(pellet));
         const glm::vec3 end = origin + direction * gun.range;
@@ -489,6 +668,7 @@ void GameServer::updateWeaponsAndFire() {
         auto& input = players.get<Components::PlayerInput>(player);
         auto& life = players.get<Components::PlayerLife>(player);
         auto& combat = players.get<Components::PlayerCombat>(player);
+        const auto* movement = registry.try_get<Components::MovementState>(player);
         completeReloads(player);
         auto& inventory = players.get<Components::WeaponInventory>(player);
         auto& gun = inventory.getActive().gun;
@@ -518,7 +698,12 @@ void GameServer::updateWeaponsAndFire() {
                                    (gun.automatic || !combat.triggerWasDown);
             if (wantsFire) {
                 protocol::ActionRejectReason reason = protocol::ActionRejectReason::None;
-                if (gun.reloadEndTick != 0) reason = protocol::ActionRejectReason::AlreadyReloading;
+                if (movement && (movement->weaponLockRemaining > 0.0F ||
+                    movement->mode == protocol::MovementMode::Sprinting ||
+                    movement->mode == protocol::MovementMode::Dashing ||
+                    movement->mode == protocol::MovementMode::Mantling))
+                    reason = protocol::ActionRejectReason::MovementLocked;
+                else if (gun.reloadEndTick != 0) reason = protocol::ActionRejectReason::AlreadyReloading;
                 else if (m_currentTick < gun.nextFireTick) reason = protocol::ActionRejectReason::Cadence;
                 else if (gun.ammoInMag < gun.ammoPerShot) reason = protocol::ActionRejectReason::NoAmmo;
                 if (reason == protocol::ActionRejectReason::None) {
@@ -662,6 +847,8 @@ void GameServer::advanceRespawns(float delta) {
         velocity.linear = {0.0F, 0.0F, 0.0F};
         m_physicsWorld.setCharacterPosition(controller.adapterId, spawn.position);
         m_physicsWorld.setCharacterVelocity(controller.adapterId, velocity.linear);
+        m_physicsWorld.setCharacterStance(controller.adapterId, PhysicsWorld::CharacterStance::Standing);
+        registry.get<Components::MovementState>(entity) = Components::MovementState{};
         auto& health = view.get<Components::Health>(entity);
         health.current = health.max;
         health.dirty = true;
@@ -751,6 +938,8 @@ void GameServer::resetPlayerForRound(entt::entity player,
     velocity.linear = {0.0F, 0.0F, 0.0F};
     m_physicsWorld.setCharacterPosition(controller.adapterId, spawn.position);
     m_physicsWorld.setCharacterVelocity(controller.adapterId, velocity.linear);
+    m_physicsWorld.setCharacterStance(controller.adapterId, PhysicsWorld::CharacterStance::Standing);
+    registry.get<Components::MovementState>(player) = Components::MovementState{};
     auto& health = registry.get<Components::Health>(player);
     health.current = health.max;
     health.attacker = entt::null;
@@ -953,6 +1142,13 @@ protocol::EntityRecord GameServer::makeEntityRecord(
     record.aimPitch = input.pitch;
     record.grounded = controller.grounded;
     record.stateFlags = life.dead ? 1U : 0U;
+    if (const auto* movement = registry.try_get<Components::MovementState>(entity)) {
+        record.stance = movement->stance;
+        record.movementMode = movement->mode;
+    } else {
+        record.stance = protocol::Stance::Standing;
+        record.movementMode = protocol::MovementMode::Normal;
+    }
 
     const auto* inventory =
         registry.try_get<Components::WeaponInventory>(entity);
@@ -975,7 +1171,8 @@ protocol::PublicEntityState GameServer::makePublicEntityState(
     const auto legacy = makeEntityRecord(entity, entt::null);
     return {makeEntityHandle(entity), legacy.kind, legacy.position,
             legacy.velocity, legacy.bodyYaw, legacy.aimPitch,
-            legacy.grounded, legacy.stateFlags, legacy.equippedWeapon};
+            legacy.grounded, legacy.stateFlags, legacy.stance,
+            legacy.movementMode, legacy.equippedWeapon};
 }
 
 protocol::LocalAuthoritativeState GameServer::makeLocalAuthoritativeState(
@@ -986,7 +1183,8 @@ protocol::LocalAuthoritativeState GameServer::makeLocalAuthoritativeState(
     const auto* inventory =
         registry.try_get<Components::WeaponInventory>(entity);
     const auto* ammo = registry.try_get<Components::Ammo>(entity);
-    if (!health || !inventory || !ammo)
+    const auto* movement = registry.try_get<Components::MovementState>(entity);
+    if (!health || !inventory || !ammo || !movement)
         throw std::logic_error("local authoritative state is incomplete");
     const auto& gun = inventory->getActive().gun;
     const protocol::WeaponState weaponState{
@@ -995,10 +1193,17 @@ protocol::LocalAuthoritativeState GameServer::makeLocalAuthoritativeState(
         static_cast<std::uint16_t>(
             std::clamp(ammo->get(gun.ammoType), 0, 65535)),
         static_cast<std::uint8_t>(gun.isReloading() ? 1U : 0U)};
+    const protocol::MovementState movementState{
+        movement->stance, movement->mode, movement->modeTimeRemaining,
+        movement->dashCooldownRemaining, movement->slideCooldownRemaining,
+        movement->weaponLockRemaining, movement->stanceExpansionPending,
+        {movement->dashDirection.x, movement->dashDirection.y, movement->dashDirection.z},
+        {movement->mantleStart.x, movement->mantleStart.y, movement->mantleStart.z},
+        {movement->mantleTarget.x, movement->mantleTarget.y, movement->mantleTarget.z}};
     return {makeEntityHandle(entity), owner.position, owner.velocity,
             owner.bodyYaw, owner.aimPitch, owner.grounded, owner.stateFlags,
             static_cast<std::uint16_t>(std::clamp(
-                std::lround(health->current), 0L, 65535L)), weaponState};
+                std::lround(health->current), 0L, 65535L)), movementState, weaponState};
 }
 
 void GameServer::broadcastPlayerSpawn(entt::entity entity) {
@@ -1131,7 +1336,14 @@ std::string GameServer::observabilityJson() const {
         {"shotsFired", metrics.shotsFired},
         {"pelletHits", metrics.pelletHits},
         {"rejectedFireAttempts", metrics.rejectedFireAttempts},
-        {"historyClamps", metrics.historyClamps}};
+        {"historyClamps", metrics.historyClamps},
+        {"movementActivations", {
+            {"sprint", combatMetrics_.sprintActivations}, {"slide", combatMetrics_.slideActivations},
+            {"dash", combatMetrics_.dashActivations}, {"mantle", combatMetrics_.mantleActivations},
+            {"prone", combatMetrics_.proneActivations}}},
+        {"blockedStandAttempts", combatMetrics_.blockedStandAttempts},
+        {"mantleFailures", combatMetrics_.mantleFailures},
+        {"movementCooldownRejections", combatMetrics_.cooldownRejections}};
     return json.dump();
 }
 

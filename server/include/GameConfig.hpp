@@ -29,6 +29,9 @@ struct GameConfig {
         float capsuleHalfHeight;
         float eyeHeight;
         float groundSpeed;
+        float sprintSpeed;
+        float crouchSpeed;
+        float proneSpeed;
         float groundAcceleration;
         float airAcceleration;
         float airControl;
@@ -38,6 +41,33 @@ struct GameConfig {
         float maxSlopeRadians;
         float stepUpHeight;
         float stickToFloorDistance;
+        float crouchCapsuleRadius;
+        float crouchCapsuleHalfHeight;
+        float crouchEyeHeight;
+        float proneCapsuleRadius;
+        float proneCapsuleHalfHeight;
+        float proneEyeHeight;
+        float slideDuration;
+        float slideStartSpeed;
+        float slideEndSpeed;
+        float slideSteerRadiansPerSecond;
+        float slideCooldown;
+        float slideJumpCommitment;
+        float dashSpeed;
+        float dashDuration;
+        float dashCooldown;
+        float mantleMinHeight;
+        float mantleMaxHeight;
+        float mantleReach;
+        float mantleDuration;
+        float sprintToFireDelay;
+        float slideSpreadMultiplier;
+        bool sprintEnabled;
+        bool crouchEnabled;
+        bool proneEnabled;
+        bool slideEnabled;
+        bool dashEnabled;
+        bool mantleEnabled;
     } movement;
 
     struct LoadoutConfig {
@@ -121,6 +151,9 @@ struct GameConfig {
             {"capsuleHalfHeight", movement.capsuleHalfHeight},
             {"eyeHeight", movement.eyeHeight},
             {"groundSpeed", movement.groundSpeed},
+            {"sprintSpeed", movement.sprintSpeed},
+            {"crouchSpeed", movement.crouchSpeed},
+            {"proneSpeed", movement.proneSpeed},
             {"groundAcceleration", movement.groundAcceleration},
             {"airAcceleration", movement.airAcceleration},
             {"airControl", movement.airControl},
@@ -129,7 +162,27 @@ struct GameConfig {
             {"terminalVelocity", movement.terminalVelocity},
             {"maxSlopeRadians", movement.maxSlopeRadians},
             {"stepUpHeight", movement.stepUpHeight},
-            {"stickToFloorDistance", movement.stickToFloorDistance}};
+            {"stickToFloorDistance", movement.stickToFloorDistance},
+            {"crouchCapsuleRadius", movement.crouchCapsuleRadius},
+            {"crouchCapsuleHalfHeight", movement.crouchCapsuleHalfHeight},
+            {"crouchEyeHeight", movement.crouchEyeHeight},
+            {"proneCapsuleRadius", movement.proneCapsuleRadius},
+            {"proneCapsuleHalfHeight", movement.proneCapsuleHalfHeight},
+            {"proneEyeHeight", movement.proneEyeHeight},
+            {"slideDuration", movement.slideDuration},
+            {"slideStartSpeed", movement.slideStartSpeed},
+            {"slideEndSpeed", movement.slideEndSpeed},
+            {"slideSteerRadiansPerSecond", movement.slideSteerRadiansPerSecond},
+            {"slideCooldown", movement.slideCooldown},
+            {"slideJumpCommitment", movement.slideJumpCommitment},
+            {"dashSpeed", movement.dashSpeed}, {"dashDuration", movement.dashDuration},
+            {"dashCooldown", movement.dashCooldown}, {"mantleMinHeight", movement.mantleMinHeight},
+            {"mantleMaxHeight", movement.mantleMaxHeight}, {"mantleReach", movement.mantleReach},
+            {"mantleDuration", movement.mantleDuration}, {"sprintToFireDelay", movement.sprintToFireDelay},
+            {"slideSpreadMultiplier", movement.slideSpreadMultiplier},
+            {"sprintEnabled", movement.sprintEnabled}, {"crouchEnabled", movement.crouchEnabled},
+            {"proneEnabled", movement.proneEnabled}, {"slideEnabled", movement.slideEnabled},
+            {"dashEnabled", movement.dashEnabled}, {"mantleEnabled", movement.mantleEnabled}};
         root["loadout"] = {
             {"rifleReserveAmmo", loadout.rifleReserveAmmo},
             {"shotgunReserveAmmo", loadout.shotgunReserveAmmo}};
@@ -173,6 +226,9 @@ struct GameConfig {
             positiveFloat(value, "capsuleHalfHeight"),
             positiveFloat(value, "eyeHeight"),
             positiveFloat(value, "groundSpeed"),
+            positiveFloat(value, "sprintSpeed"),
+            positiveFloat(value, "crouchSpeed"),
+            positiveFloat(value, "proneSpeed"),
             positiveFloat(value, "groundAcceleration"),
             positiveFloat(value, "airAcceleration"),
             positiveFloat(value, "airControl", true),
@@ -181,13 +237,30 @@ struct GameConfig {
             positiveFloat(value, "terminalVelocity"),
             positiveFloat(value, "maxSlopeRadians"),
             positiveFloat(value, "stepUpHeight", true),
-            positiveFloat(value, "stickToFloorDistance", true)};
+            positiveFloat(value, "stickToFloorDistance", true),
+            positiveFloat(value, "crouchCapsuleRadius"), positiveFloat(value, "crouchCapsuleHalfHeight"), positiveFloat(value, "crouchEyeHeight"),
+            positiveFloat(value, "proneCapsuleRadius"), positiveFloat(value, "proneCapsuleHalfHeight"), positiveFloat(value, "proneEyeHeight"),
+            positiveFloat(value, "slideDuration"), positiveFloat(value, "slideStartSpeed"), positiveFloat(value, "slideEndSpeed"),
+            positiveFloat(value, "slideSteerRadiansPerSecond"), positiveFloat(value, "slideCooldown"), positiveFloat(value, "slideJumpCommitment"),
+            positiveFloat(value, "dashSpeed"), positiveFloat(value, "dashDuration"), positiveFloat(value, "dashCooldown"),
+            positiveFloat(value, "mantleMinHeight"), positiveFloat(value, "mantleMaxHeight"), positiveFloat(value, "mantleReach"), positiveFloat(value, "mantleDuration"),
+            positiveFloat(value, "sprintToFireDelay"), positiveFloat(value, "slideSpreadMultiplier"),
+            boolean(value, "sprintEnabled"), boolean(value, "crouchEnabled"), boolean(value, "proneEnabled"), boolean(value, "slideEnabled"), boolean(value, "dashEnabled"), boolean(value, "mantleEnabled")};
         if (config.airControl > 1.0F ||
             config.maxSlopeRadians >= 1.57079632679F ||
             config.eyeHeight > 2.0F *
-                                   (config.capsuleHalfHeight + config.capsuleRadius))
+                                   (config.capsuleHalfHeight + config.capsuleRadius) ||
+            config.groundSpeed > config.sprintSpeed ||
+            config.slideJumpCommitment >= config.slideDuration ||
+            config.mantleMinHeight >= config.mantleMaxHeight)
             throw std::runtime_error("Movement configuration is out of range");
         return config;
+    }
+
+    static bool boolean(const nlohmann::json& object, const char* key) {
+        if (!object.contains(key) || !object.at(key).is_boolean())
+            throw std::runtime_error(std::string("Config missing boolean field: ") + key);
+        return object.at(key).get<bool>();
     }
 
     static GunFireMode parseFireMode(const std::string& value) {

@@ -60,9 +60,14 @@ entt::entity EntityManager::createPlayer() {
     physicsConfig.jumpSpeed = movement.jumpSpeed;
     physicsConfig.gravity = movement.gravity;
     physicsConfig.terminalVelocity = movement.terminalVelocity;
+    physicsConfig.crouchRadius = movement.crouchCapsuleRadius;
+    physicsConfig.crouchHalfHeight = movement.crouchCapsuleHalfHeight;
+    physicsConfig.proneRadius = movement.proneCapsuleRadius;
+    physicsConfig.proneHalfHeight = movement.proneCapsuleHalfHeight;
     controller.adapterId = m_gameServer.m_physicsWorld.createCharacter(physicsConfig, transform.position);
     m_registry.emplace<NetworkReplicated>(entity);
     auto& input = m_registry.emplace<PlayerInput>(entity);
+    m_registry.emplace<MovementState>(entity);
     input.yaw = spawn.yaw;
     input.angle = spawn.yaw;
     m_registry.emplace<Health>(entity, 100.0F, 100.0F);

@@ -1,4 +1,4 @@
-import type { EntityRecord, Vec3 } from '../../protocol/generated'
+import { MovementMode, Stance, type EntityRecord, type Vec3 } from '../../protocol/generated'
 
 export const ACTOR_CAPSULE = { radius: 0.42, height: 1.8 } as const
 export const ACTOR_SOCKET_LOCAL = {
@@ -10,7 +10,7 @@ export const ACTOR_SOCKET_LOCAL = {
     muzzle: { x: 0.18, y: 1.2, z: -0.93 },
 } as const
 
-export type LocomotionState = 'idle' | 'walk' | 'run' | 'crouch' | 'air' | 'dead'
+export type LocomotionState = 'idle' | 'walk' | 'sprint' | 'crouch-idle' | 'crouch-walk' | 'slide' | 'prone-idle' | 'prone-crawl' | 'dash' | 'mantle' | 'air' | 'dead'
 export type ActorOneShot = 'recoil' | 'hit' | 'death' | 'respawn'
 
 export interface ActorPose {
@@ -18,6 +18,10 @@ export interface ActorPose {
     readonly gaitPhase: number
     readonly gaitWeight: number
     readonly crouchWeight: number
+    readonly proneWeight: number
+    readonly slideWeight: number
+    readonly dashWeight: number
+    readonly mantleWeight: number
     readonly aimPitch: number
     readonly aimYaw: number
     readonly deadWeight: number
@@ -36,12 +40,17 @@ export interface ActorAuditResult {
     readonly muzzleBehindHandMeters: number
 }
 
-export function selectLocomotion(entity: Pick<EntityRecord, 'velocity' | 'grounded' | 'stateFlags'>): LocomotionState {
+export function selectLocomotion(entity: Pick<EntityRecord, 'velocity' | 'grounded' | 'stateFlags' | 'stance' | 'movementMode'>): LocomotionState {
     if ((entity.stateFlags & 1) !== 0) return 'dead'
+    if (entity.movementMode === MovementMode.Mantling) return 'mantle'
+    if (entity.movementMode === MovementMode.Dashing) return 'dash'
+    if (entity.movementMode === MovementMode.Sliding) return 'slide'
     if (!entity.grounded) return 'air'
-    if ((entity.stateFlags & 2) !== 0) return 'crouch'
     const speed = Math.hypot(entity.velocity.x, entity.velocity.z)
-    return speed < 0.08 ? 'idle' : speed < 4.2 ? 'walk' : 'run'
+    if (entity.stance === Stance.Prone) return speed < .08 ? 'prone-idle' : 'prone-crawl'
+    if (entity.stance === Stance.Crouched) return speed < .08 ? 'crouch-idle' : 'crouch-walk'
+    if (entity.movementMode === MovementMode.Sprinting) return 'sprint'
+    return speed < 0.08 ? 'idle' : 'walk'
 }
 
 export function oneShotWeight(nowMs: number, startedAtMs: number, durationMs: number): number {
@@ -52,7 +61,7 @@ export function oneShotWeight(nowMs: number, startedAtMs: number, durationMs: nu
 }
 
 export function evaluateActorPose(
-    entity: Pick<EntityRecord, 'velocity' | 'grounded' | 'stateFlags' | 'aimPitch'>,
+    entity: Pick<EntityRecord, 'velocity' | 'grounded' | 'stateFlags' | 'aimPitch' | 'stance' | 'movementMode'>,
     elapsedSeconds: number,
     oneShots: Readonly<Partial<Record<ActorOneShot, number>>> = {},
     wallTuckWeight = 0,
@@ -60,12 +69,16 @@ export function evaluateActorPose(
 ): ActorPose {
     const locomotion = selectLocomotion(entity)
     const speed = Math.hypot(entity.velocity.x, entity.velocity.z)
-    const gaitRate = locomotion === 'run' ? 2.7 : locomotion === 'walk' ? 1.65 : 0
+    const gaitRate = locomotion === 'sprint' ? 2.7 : locomotion === 'walk' || locomotion === 'crouch-walk' ? 1.65 : locomotion === 'prone-crawl' ? .9 : 0
     return {
         locomotion,
         gaitPhase: elapsedSeconds * Math.PI * 2 * gaitRate,
-        gaitWeight: locomotion === 'walk' || locomotion === 'run' ? Math.min(1, speed / 3.2) : 0,
-        crouchWeight: locomotion === 'crouch' ? 1 : 0,
+        gaitWeight: gaitRate > 0 ? Math.min(1, speed / 3.2) : 0,
+        crouchWeight: entity.stance === Stance.Crouched ? 1 : 0,
+        proneWeight: entity.stance === Stance.Prone ? 1 : 0,
+        slideWeight: locomotion === 'slide' ? 1 : 0,
+        dashWeight: locomotion === 'dash' ? 1 : 0,
+        mantleWeight: locomotion === 'mantle' ? 1 : 0,
         aimPitch: Math.max(-1.3, Math.min(1.3, entity.aimPitch)),
         aimYaw: 0,
         deadWeight: locomotion === 'dead' ? 1 : oneShotWeight(nowMs, oneShots.death ?? -Infinity, 720),

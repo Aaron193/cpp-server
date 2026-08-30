@@ -66,7 +66,7 @@ services:
       MAX_PLAYERS: ${MAX_PLAYERS:-12}
       SERVER_MODE: ${SERVER_MODE:-ffa}
       SERVER_BUILD_ID: ${SERVER_BUILD_ID:?SERVER_BUILD_ID is required}
-      SERVER_PROTOCOL_VERSION: "8"
+      SERVER_PROTOCOL_VERSION: "9"
       SERVER_MAP_ID: ${SERVER_MAP_ID:-graybox-arena}
       SERVER_WEBSOCKET_URL: ${SERVER_WEBSOCKET_URL:?Set the complete externally reachable wss URL}
       GAME_CONFIG_PATH: /app/game_config.json

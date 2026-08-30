@@ -6,9 +6,13 @@ export interface InputSnapshot {
     readonly reload: boolean
     readonly selectedWeapon: 1 | 2
     readonly scoreboard: boolean
+    readonly sprint: boolean
+    readonly crouch: boolean
+    readonly prone: boolean
+    readonly dash: boolean
 }
 
-const GAMEPLAY_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight', 'Space', 'KeyR', 'Digit1', 'Digit2', 'Tab'])
+const GAMEPLAY_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight', 'Space', 'KeyR', 'Digit1', 'Digit2', 'Tab', 'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight', 'KeyZ', 'KeyQ'])
 
 export function isEditableElement(element: Element | null): boolean {
     if (!element || typeof (element as Element).matches !== 'function') return false
@@ -28,6 +32,8 @@ export class InputState {
     private jumpQueued = false
     private reloadQueued = false
     private firing = false
+    private proneQueued = false
+    private dashQueued = false
     private weapon: 1 | 2 = 1
 
     keyDown(code: string, allowed: boolean, repeat = false): boolean {
@@ -39,6 +45,8 @@ export class InputState {
         this.pressed.add(code)
         if (code === 'Space' && !repeat) this.jumpQueued = true
         if (code === 'KeyR' && !repeat) this.reloadQueued = true
+        if (code === 'KeyZ' && !repeat) this.proneQueued = true
+        if (code === 'KeyQ' && !repeat) this.dashQueued = true
         if (code === 'Digit1' && !repeat) this.weapon = 1
         if (code === 'Digit2' && !repeat) this.weapon = 2
         return true
@@ -53,15 +61,19 @@ export class InputState {
     snapshot(allowed: boolean): InputSnapshot {
         if (!allowed) {
             this.clear()
-            return { forward: 0, right: 0, jump: false, fire: false, reload: false, selectedWeapon: this.weapon, scoreboard: false }
+            return { forward: 0, right: 0, jump: false, fire: false, reload: false, selectedWeapon: this.weapon, scoreboard: false, sprint: false, crouch: false, prone: false, dash: false }
         }
         const forward = Number(this.pressed.has('KeyW') || this.pressed.has('ArrowUp')) - Number(this.pressed.has('KeyS') || this.pressed.has('ArrowDown'))
         const right = Number(this.pressed.has('KeyD') || this.pressed.has('ArrowRight')) - Number(this.pressed.has('KeyA') || this.pressed.has('ArrowLeft'))
         const jump = this.jumpQueued
         const reload = this.reloadQueued
+        const prone = this.proneQueued
+        const dash = this.dashQueued
         this.jumpQueued = false
         this.reloadQueued = false
-        return { forward, right, jump, fire: this.firing, reload, selectedWeapon: this.weapon, scoreboard: this.pressed.has('Tab') }
+        this.proneQueued = false
+        this.dashQueued = false
+        return { forward, right, jump, fire: this.firing, reload, selectedWeapon: this.weapon, scoreboard: this.pressed.has('Tab'), sprint: this.pressed.has('ShiftLeft') || this.pressed.has('ShiftRight'), crouch: this.pressed.has('ControlLeft') || this.pressed.has('ControlRight'), prone, dash }
     }
 
     pointerButton(primaryDown: boolean, allowed: boolean): void {
@@ -73,6 +85,8 @@ export class InputState {
         this.pressed.clear()
         this.jumpQueued = false
         this.reloadQueued = false
+        this.proneQueued = false
+        this.dashQueued = false
         this.firing = false
     }
 }

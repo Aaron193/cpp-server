@@ -52,6 +52,10 @@ TEST_CASE(shared_movement_command_trace_runs_through_native_adapter) {
     config.jumpSpeed = tuning.at("jumpSpeed").get<float>();
     config.gravity = tuning.at("gravity").get<float>();
     config.terminalVelocity = tuning.at("terminalVelocity").get<float>();
+    config.crouchRadius = tuning.at("crouchCapsuleRadius").get<float>();
+    config.crouchHalfHeight = tuning.at("crouchCapsuleHalfHeight").get<float>();
+    config.proneRadius = tuning.at("proneCapsuleRadius").get<float>();
+    config.proneHalfHeight = tuning.at("proneCapsuleHalfHeight").get<float>();
 
     PhysicsWorld world;
     world.addStaticCollision(package.collision);

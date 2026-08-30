@@ -5,7 +5,7 @@ import { RingBuffer } from '../performance/RingBuffer'
 import { KillcamBuffer } from '../replay/KillcamBuffer'
 import { AdaptiveInterpolationDelay, NetworkClock, PredictionHistory, RemoteEntityTimeline } from '../networking/Synchronization'
 import { ImpairmentQueue } from '../networking/Transport'
-import { EntityKind, MatchPhase, MessageType, Weapon, encodeMessage, type InputCommand, type UpdatedEntity } from '../../protocol/generated'
+import { EntityKind, MatchPhase, MessageType, MovementMode, Stance, Weapon, encodeMessage, type InputCommand, type UpdatedEntity } from '../../protocol/generated'
 
 export const PHASE7_COVERAGE = Object.freeze({
     fps: [30, 60, 120, 144] as const,
@@ -102,15 +102,17 @@ export function phase7Scenarios(): Phase7Scenario[] {
 }
 
 const command = (sequence: number, tick: number): InputCommand => ({ sequence, clientTick: tick, moveX: .7, moveY: -.45, buttonFlags: 0, fireActionId: 0, reloadActionId: 0, yaw: .35, pitch: -.1, selectedWeapon: Weapon.Rifle })
-const localState = { handle: { slot: 1, generation: 1 }, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, health: 100, weaponState: { selected: Weapon.Rifle, magazineAmmo: 30, reserveAmmo: 120, stateFlags: 0 } }
+const movementState = { stance: Stance.Standing, mode: MovementMode.Normal, modeTimeRemaining: 0, dashCooldownRemaining: 0, slideCooldownRemaining: 0, weaponLockRemaining: 0, stanceExpansionPending: false, dashDirection: { x: 0, y: 0, z: -1 }, mantleStart: { x: 0, y: 0, z: 0 }, mantleTarget: { x: 0, y: 0, z: 0 } } as const
+const localState = { handle: { slot: 1, generation: 1 }, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, health: 100, movementState, weaponState: { selected: Weapon.Rifle, magazineAmmo: 30, reserveAmmo: 120, stateFlags: 0 } }
 
 function updateFor(slot: number, tick: number): UpdatedEntity {
     const all = tick % 20 === 0
     return {
-        handle: { slot, generation: 1 }, changeMask: all ? 127 : 3,
+        handle: { slot, generation: 1 }, changeMask: all ? 511 : 3,
         position: { x: slot + tick * .01, y: 0, z: -slot }, velocity: { x: .6, y: 0, z: -.4 },
         bodyYaw: all ? .2 : null, aimPitch: all ? -.1 : null, grounded: all ? true : null,
         stateFlags: all ? 0 : null, equippedWeapon: all ? Weapon.Rifle : null,
+        stance: all ? Stance.Standing : null, movementMode: all ? MovementMode.Normal : null,
     }
 }
 
@@ -247,7 +249,7 @@ export function runBoundedSoak(simulatedMinutes = 30): Phase7SoakResult {
         history.push({ command: input, position: { x: tick % 20, y: 0, z: 0 }, velocity: { x: 1, y: 0, z: 0 }, sentAtMs: tick * 1000 / 60 })
         if (tick % 3 === 0) history.acknowledge(Math.max(1, tick - 12) >>> 0)
         const entityId = tick % capacities.entities; entities.set(entityId, tick)
-        timeline.add(sequence, { entityId, kind: EntityKind.Player, position: { x: tick % 20, y: 0, z: entityId }, velocity: { x: 1, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, equippedWeapon: Weapon.Rifle })
+        timeline.add(sequence, { entityId, kind: EntityKind.Player, position: { x: tick % 20, y: 0, z: entityId }, velocity: { x: 1, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, stance: Stance.Standing, movementMode: MovementMode.Normal, equippedWeapon: Weapon.Rifle })
         if (tick % 4 === 0) effects.acquire(tick, tick % 3)
         if (tick % 5 === 0) decals.add({ x: tick % 80, z: tick % 40 }, 'world', tick)
         if (tick % 6 === 0) audio.push(tick)

@@ -36,10 +36,18 @@ struct CombatMetrics {
     std::uint64_t pelletHits = 0;
     std::uint64_t rejectedFireAttempts = 0;
     std::uint64_t historyClamps = 0;
+    std::uint64_t sprintActivations = 0;
+    std::uint64_t slideActivations = 0;
+    std::uint64_t dashActivations = 0;
+    std::uint64_t mantleActivations = 0;
+    std::uint64_t proneActivations = 0;
+    std::uint64_t blockedStandAttempts = 0;
+    std::uint64_t mantleFailures = 0;
+    std::uint64_t cooldownRejections = 0;
 };
 
 struct SessionConfiguration {
-    static constexpr std::uint16_t ProtocolVersion = 8;
+    static constexpr std::uint16_t ProtocolVersion = 9;
     std::string buildId = "dev";
     std::string mode = "ffa";
     std::size_t maxPlayers = 12;
@@ -139,6 +147,9 @@ class GameServer {
     struct HistoricalPlayer {
         entt::entity entity = entt::null;
         glm::vec3 position{0.0F};
+        glm::vec3 eyePosition{0.0F};
+        float bodyYaw = 0.0F;
+        protocol::Stance stance = protocol::Stance::Standing;
         CombatGeometry::Capsule capsule{};
         bool dead = false;
     };

@@ -31,14 +31,14 @@ export class HudModule implements ClientModule {
         this.context = context; context.services.provide(HUD, this)
         context.hudRoot.innerHTML = `
             <div class="fps-crosshair" aria-hidden="true"><span id="fps-hitmarker">×</span></div><div id="fps-damage" class="fps-damage" aria-hidden="true"></div>
-            <div id="fps-vitals" class="fps-vitals" aria-label="Player status"><div><span class="fps-label">HEALTH</span><strong id="fps-health">—</strong></div><div id="fps-ammo-panel"><span class="fps-label">AMMO</span><strong id="fps-ammo">—</strong><span id="fps-reload"></span></div></div>
+            <div id="fps-vitals" class="fps-vitals" aria-label="Player status"><div><span class="fps-label">HEALTH</span><strong id="fps-health">—</strong></div><div id="fps-ammo-panel"><span class="fps-label">AMMO</span><strong id="fps-ammo">—</strong><span id="fps-reload"></span></div><div id="fps-dash-panel"><span class="fps-label">DASH</span><strong id="fps-dash">READY</strong><span class="fps-dash-track"><i id="fps-dash-fill"></i></span></div></div>
             <div id="fps-scoreboard" class="fps-scoreboard hidden"><h2>SCOREBOARD</h2><div id="fps-score-rows"></div></div><div id="fps-kill-feed" class="fps-kill-feed"></div><div id="fps-round" class="fps-round hidden"></div><div id="fps-chat-log" class="fps-chat-log"></div>
             <div id="fps-radar" class="fps-radar" aria-label="North-up radar"><img id="fps-radar-map" alt=""><span class="fps-radar-north">N</span><span id="fps-radar-local" class="fps-radar-local"></span><div id="fps-radar-rumors"></div></div>
             <div id="fps-connection-quality" class="fps-connection-quality"></div><div id="fps-presentation-state" class="fps-presentation-state hidden"></div><div id="fps-action-rejection" class="fps-action-rejection hidden"></div>
             <div id="fps-debug" class="fps-debug hidden"><div id="fps-status">Loading offline arena…</div><div id="fps-motion"></div><div id="fps-network"></div><div id="fps-performance"></div><svg id="fps-correction-graph" class="fps-correction-graph" viewBox="0 0 180 32" aria-label="Prediction correction history"></svg>
             ${isDevelopment() ? `<div class="fps-net-controls"><label>Latency <input id="net-latency" type="number" min="0" max="2000" value="0"> ms</label><label>Jitter <input id="net-jitter" type="number" min="0" max="1000" value="0"> ms</label><label><input id="net-stall" type="checkbox"> Stall</label></div>` : ''}
-            <div>WASD move · LMB fire · R reload · 1/2 weapons · Tab scoreboard · Enter chat · F3 network/collision</div></div><div id="fps-pointer-prompt" class="fps-pointer-prompt">Click to enter the arena</div>`
-        for (const id of ['fps-hitmarker', 'fps-damage', 'fps-vitals', 'fps-health', 'fps-ammo-panel', 'fps-ammo', 'fps-reload', 'fps-scoreboard', 'fps-score-rows', 'fps-kill-feed', 'fps-round', 'fps-chat-log', 'fps-radar', 'fps-radar-map', 'fps-radar-local', 'fps-radar-rumors', 'fps-connection-quality', 'fps-presentation-state', 'fps-action-rejection', 'fps-debug', 'fps-status', 'fps-motion', 'fps-network', 'fps-performance', 'fps-pointer-prompt', 'net-latency', 'net-jitter', 'net-stall']) {
+            <div>WASD move · Shift sprint · Ctrl crouch/slide · Z prone · Q dash · Space jump/mantle · LMB fire · R reload · 1/2 weapons · Tab scoreboard · Enter chat · F3 debug</div></div><div id="fps-pointer-prompt" class="fps-pointer-prompt">Click to enter the arena</div>`
+        for (const id of ['fps-hitmarker', 'fps-damage', 'fps-vitals', 'fps-health', 'fps-ammo-panel', 'fps-ammo', 'fps-reload', 'fps-dash-panel', 'fps-dash', 'fps-dash-fill', 'fps-scoreboard', 'fps-score-rows', 'fps-kill-feed', 'fps-round', 'fps-chat-log', 'fps-radar', 'fps-radar-map', 'fps-radar-local', 'fps-radar-rumors', 'fps-connection-quality', 'fps-presentation-state', 'fps-action-rejection', 'fps-debug', 'fps-status', 'fps-motion', 'fps-network', 'fps-performance', 'fps-pointer-prompt', 'net-latency', 'net-jitter', 'net-stall']) {
             const node = context.hudRoot.querySelector<HTMLElement>(`#${id}`); if (node) this.refs.set(id, node)
         }
         const svg = context.hudRoot.querySelector<SVGSVGElement>('#fps-correction-graph')
@@ -63,6 +63,9 @@ export class HudModule implements ClientModule {
         setTextIfChanged(this.refs.get('fps-health'), local.health === null ? '—' : String(local.health))
         setTextIfChanged(this.refs.get('fps-ammo'), local.weapon === 0 ? '—' : `${local.magazineAmmo} / ${local.reserveAmmo}`)
         setTextIfChanged(this.refs.get('fps-reload'), local.reloading ? 'RELOADING' : '')
+        const dashCooldown = this.context.services.get(PHYSICS).movementState.dashCooldownRemaining
+        setTextIfChanged(this.refs.get('fps-dash'), dashCooldown <= 0 ? 'READY' : `${dashCooldown.toFixed(1)}s`)
+        this.refs.get('fps-dash-fill')?.style.setProperty('--dash-ready', String(1 - Math.min(1, dashCooldown / this.context.services.get(PHYSICS).tuning.dashCooldown)))
         if (this.previousAmmo >= 0 && local.magazineAmmo !== this.previousAmmo) this.feel.resource(now); this.previousAmmo = local.magazineAmmo
         this.refs.get('fps-hitmarker')?.classList.toggle('active', now < this.hitMarkerUntil); this.refs.get('fps-damage')?.classList.toggle('active', now < this.damageUntil)
         this.refs.get('fps-action-rejection')?.classList.toggle('hidden', now >= this.actionRejectUntil)

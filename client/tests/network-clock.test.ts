@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { AdaptiveInterpolationDelay, NetworkClock, RemoteEntityTimeline, RemoteTimelineSet } from '../src/foundation/networking/Synchronization'
-import { EntityKind, Weapon, type EntityRecord } from '../src/protocol/generated'
+import { EntityKind, MovementMode, Stance, Weapon, type EntityRecord } from '../src/protocol/generated'
 
 const entity = (x: number, yaw = 0, velocityX = 0): EntityRecord => ({
     entityId: 8, kind: EntityKind.Player, position: { x, y: 0, z: 0 }, velocity: { x: velocityX, y: 0, z: 0 },
-    bodyYaw: yaw, aimPitch: 0, grounded: true, stateFlags: 0, equippedWeapon: Weapon.Rifle,
+    bodyYaw: yaw, aimPitch: 0, grounded: true, stateFlags: 0, stance: Stance.Standing, movementMode: MovementMode.Normal, equippedWeapon: Weapon.Rifle,
 })
 
 describe('NetworkClock', () => {

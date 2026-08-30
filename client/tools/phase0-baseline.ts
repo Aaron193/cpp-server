@@ -9,6 +9,7 @@ import type { NetworkTransport, TransportCallbacks, TransportState } from '../sr
 import { ServiceRegistry } from '../src/foundation/lifecycle'
 import { ARENA, ENTITY_VIEWS, INPUT, PHYSICS } from '../src/foundation/services'
 import { EntityKind, MatchPhase, MessageType, PROTOCOL_VERSION, Weapon, encodeMessage } from '../src/protocol/generated'
+import { DEFAULT_MOVEMENT_TUNING } from '../src/foundation/physics/Movement'
 
 class BaselineTransport implements NetworkTransport {
     state: TransportState = 'idle'
@@ -51,13 +52,13 @@ async function networkBaseline(): Promise<object> {
         const module = new NetworkingModule({ transport, clientBuildId: 'phase0-baseline', server: { websocketUrl: 'wss://baseline.invalid/game', buildId: 'phase0-baseline', protocolVersion: PROTOCOL_VERSION, mapId: manifest.mapId, mode: 'ffa' } })
         module.initialize({ canvas: {} as HTMLCanvasElement, hudRoot: {} as HTMLElement, services })
         module.start(); transport.callbacks!.open()
-        const configurationJson = JSON.stringify({ movement: { capsuleRadius: .42, capsuleHalfHeight: .48, eyeHeight: 1.62, groundSpeed: 7.5, groundAcceleration: 42, airAcceleration: 12, airControl: .45, jumpSpeed: 6.4, gravity: 20, terminalVelocity: 35, maxSlopeRadians: .78539816339, stepUpHeight: .42, stickToFloorDistance: .5 } })
+        const configurationJson = JSON.stringify({ movement: DEFAULT_MOVEMENT_TUNING })
         const configurationHash = await sha256Identifier(configurationJson)
         const map = { mapId: manifest.mapId, formatVersion: manifest.formatVersion, contentHash: manifest.contentHash }
         transport.callbacks!.message(encodeMessage({ type: MessageType.Welcome, payload: { protocolVersion: PROTOCOL_VERSION, serverBuildId: 'phase0-baseline', playerId: 7, playerHandle: { slot: 7, generation: 0 }, tickRate: 60, snapshotRate: 20, map, configurationHash } }))
         transport.callbacks!.message(encodeMessage({ type: MessageType.Configuration, payload: { protocolVersion: PROTOCOL_VERSION, serverBuildId: 'phase0-baseline', map, configurationHash, configurationJson } }))
         await settleMessages()
-        const local = (x: number) => ({ entityId: 7, kind: EntityKind.Player, position: { x, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, equippedWeapon: Weapon.Rifle, health: 100, weaponState: { selected: Weapon.Rifle, magazineAmmo: 30, reserveAmmo: 120, stateFlags: 0 } })
+        const local = (x: number) => ({ entityId: 7, kind: EntityKind.Player, position: { x, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, stance: 0, movementMode: 0, equippedWeapon: Weapon.Rifle, health: 100, weaponState: { selected: Weapon.Rifle, magazineAmmo: 30, reserveAmmo: 120, stateFlags: 0 } })
         const snapshot = (serverTick: number, ack: number, x: number) => encodeMessage({ type: MessageType.Snapshot, payload: { serverTick, lastProcessedInputSequence: ack, match: { phase: MatchPhase.Active, roundNumber: 1, phaseEndsAtTick: 600 }, entities: [local(x)] } })
         clockMs = 100; transport.callbacks!.message(snapshot(100, 0, 0)); await settleMessages()
         clockMs = 110; module.update({ deltaSeconds: 1 / 60, elapsedSeconds: 0, frame: 0 })

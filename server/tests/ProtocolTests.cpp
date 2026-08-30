@@ -136,6 +136,10 @@ TEST_CASE(snapshot_delta_validates_every_field_mask_combination) {
         if (mask & replication::StateFlags) update.stateFlags = 0U;
         if (mask & replication::EquippedWeapon)
             update.equippedWeapon = protocol::Weapon::Rifle;
+        if (mask & replication::Stance)
+            update.stance = protocol::Stance::Crouched;
+        if (mask & replication::MovementMode)
+            update.movementMode = protocol::MovementMode::Sliding;
         EXPECT_TRUE(replication::validUpdatedEntity(update));
     }
     protocol::UpdatedEntity malformed{};
@@ -143,8 +147,25 @@ TEST_CASE(snapshot_delta_validates_every_field_mask_combination) {
     EXPECT_TRUE(!replication::validUpdatedEntity(malformed));
     malformed.changeMask = 0U;
     EXPECT_TRUE(!replication::validUpdatedEntity(malformed));
-    malformed.changeMask = 1U << 7U;
+    malformed.changeMask = 1U << 9U;
     EXPECT_TRUE(!replication::validUpdatedEntity(malformed));
+}
+
+TEST_CASE(authoritative_movement_state_rejects_invalid_timers_and_vectors) {
+    protocol::MovementState movement{};
+    movement.stance = protocol::Stance::Standing;
+    movement.mode = protocol::MovementMode::Normal;
+    movement.dashDirection = {0.0F, 0.0F, -1.0F};
+    EXPECT_TRUE(replication::validMovementState(movement));
+
+    movement.modeTimeRemaining = -0.01F;
+    EXPECT_TRUE(!replication::validMovementState(movement));
+    movement.modeTimeRemaining = 0.0F;
+    movement.dashCooldownRemaining = 61.0F;
+    EXPECT_TRUE(!replication::validMovementState(movement));
+    movement.dashCooldownRemaining = 0.0F;
+    movement.mantleTarget.x = std::numeric_limits<float>::quiet_NaN();
+    EXPECT_TRUE(!replication::validMovementState(movement));
 }
 
 TEST_CASE(protocol_skips_well_formed_unknown_message_by_length) {

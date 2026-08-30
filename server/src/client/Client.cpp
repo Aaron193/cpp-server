@@ -15,7 +15,11 @@ constexpr float kPi = 3.14159265358979323846F;
 constexpr std::uint16_t kJump = 1U << 0U;
 constexpr std::uint16_t kFire = 1U << 1U;
 constexpr std::uint16_t kReload = 1U << 2U;
-constexpr std::uint16_t kKnownButtons = kJump | kFire | kReload;
+constexpr std::uint16_t kSprint = 1U << 3U;
+constexpr std::uint16_t kCrouch = 1U << 4U;
+constexpr std::uint16_t kProne = 1U << 5U;
+constexpr std::uint16_t kDash = 1U << 6U;
+constexpr std::uint16_t kKnownButtons = kJump | kFire | kReload | kSprint | kCrouch | kProne | kDash;
 constexpr std::size_t kMaxPendingInputs = 128U;
 // 20% burst headroom prevents legitimate 60 Hz timer jitter from grazing a
 // rolling one-second boundary. Command rate and pending backlog stay bounded.
@@ -70,6 +74,12 @@ protocol::UpdatedEntity deltaFor(const protocol::PublicEntityState& previous,
     }
     if (previous.equippedWeapon != current.equippedWeapon) {
         delta.changeMask |= 64U; delta.equippedWeapon = current.equippedWeapon;
+    }
+    if (previous.stance != current.stance) {
+        delta.changeMask |= 128U; delta.stance = current.stance;
+    }
+    if (previous.movementMode != current.movementMode) {
+        delta.changeMask |= 256U; delta.movementMode = current.movementMode;
     }
     return delta;
 }
@@ -375,6 +385,10 @@ void Client::handleInputBatch(const protocol::InputBatch& batch, double now) {
         input.mouseIsDown = (command.buttonFlags & kFire) != 0U;
         input.dirtyClick = input.mouseIsDown;
         input.reloadRequested = (command.buttonFlags & kReload) != 0U;
+        input.sprintHeld = (command.buttonFlags & kSprint) != 0U;
+        input.crouchHeld = (command.buttonFlags & kCrouch) != 0U;
+        input.pronePressed = (command.buttonFlags & kProne) != 0U;
+        input.dashPressed = (command.buttonFlags & kDash) != 0U;
         input.fireActionId = command.fireActionId;
         input.reloadActionId = command.reloadActionId;
         input.clientTick = command.clientTick;

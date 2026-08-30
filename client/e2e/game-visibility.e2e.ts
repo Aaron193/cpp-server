@@ -10,7 +10,7 @@ const descriptor = {
     lastHeartbeat: new Date().toISOString(), isOnline: true,
     buildId: 'dev', protocolVersion: PROTOCOL_VERSION, mapId: 'graybox-arena',
     mapFormatVersion: 2,
-    mapContentHash: 'sha256:3984a02b8a6ce8abaebddacb010273285fbb666cb4f973f5eb7e251e3fb9b477', mode: 'ffa',
+    mapContentHash: 'sha256:247161e133c642351519f1c02073ccd15b6e5dfa23c766d8f01a25f936cf1582', mode: 'ffa',
     websocketUrl: 'ws://127.0.0.1:9002',
 }
 
@@ -40,7 +40,7 @@ async function openPlayer(context: BrowserContext): Promise<Page> {
     return page
 }
 
-test('renders outward map faces, both players, weapons, and shot feedback', async ({ browser }, testInfo) => {
+test('renders both players, stance-correct remote movement, weapons, and shot feedback', async ({ browser }, testInfo) => {
     const firstContext = await browser.newContext()
     const secondContext = await browser.newContext()
     const first = await openPlayer(firstContext)
@@ -63,6 +63,23 @@ test('renders outward map faces, both players, weapons, and shot feedback', asyn
 
     await first.bringToFront()
     await first.locator('#game_canvas').click()
+    await expect.poll(async () => (await first.evaluate(() => window.__gameDebug?.()))?.localMovement.grounded).toBe(true)
+    await first.keyboard.down('w')
+    await first.keyboard.down('Shift')
+    await expect.poll(async () => (await first.evaluate(() => window.__gameDebug?.()))?.localMovement.mode).toBe(1)
+    await expect.poll(async () => (await second.evaluate(() => window.__gameDebug?.()))?.remoteActors[0]?.movementMode).toBe(1)
+    await first.waitForTimeout(250)
+    await first.keyboard.down('Control')
+    await expect.poll(async () => (await second.evaluate(() => window.__gameDebug?.()))?.remoteActors[0]?.movementMode).toBe(2)
+    await expect.poll(async () => (await second.evaluate(() => window.__gameDebug?.()))?.remoteActors[0]?.stance).toBe(1)
+    await expect.poll(async () => (await second.evaluate(() => window.__gameDebug?.()))?.remoteActors[0]?.calibrationY).toBeLessThan(-.25)
+    await first.keyboard.up('Control')
+    await first.keyboard.up('Shift')
+    await first.keyboard.up('w')
+    await expect.poll(async () => (await second.evaluate(() => window.__gameDebug?.()))?.remoteActors[0]?.stance).toBe(0)
+    await first.keyboard.press('z')
+    await expect.poll(async () => (await second.evaluate(() => window.__gameDebug?.()))?.remoteActors[0]?.stance).toBe(2)
+    await expect.poll(async () => (await second.evaluate(() => window.__gameDebug?.()))?.remoteActors[0]?.calibrationY).toBeLessThan(-.6)
     await first.mouse.down()
     await expect.poll(async () => {
         const debug = await first.evaluate(() => window.__gameDebug?.())

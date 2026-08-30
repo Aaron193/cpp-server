@@ -3,9 +3,10 @@ import { describe, expect, it } from 'vitest'
 import { validateConfiguration, validateWelcome, sha256Identifier } from '../src/foundation/networking/Handshake'
 import type { ClientMapManifest } from '../src/foundation/assets/MapManifest'
 import { PROTOCOL_VERSION, type Configuration, type Welcome } from '../src/protocol/generated'
+import { DEFAULT_MOVEMENT_TUNING } from '../src/foundation/physics/Movement'
 
 const manifest = manifestJson as unknown as ClientMapManifest
-const movement = { capsuleRadius: .42, capsuleHalfHeight: .48, eyeHeight: 1.62, groundSpeed: 7.5, groundAcceleration: 42, airAcceleration: 12, airControl: .45, jumpSpeed: 6.4, gravity: 20, terminalVelocity: 35, maxSlopeRadians: .78, stepUpHeight: .42, stickToFloorDistance: .5 }
+const movement = DEFAULT_MOVEMENT_TUNING
 
 describe('network handshake validation', () => {
     it('validates discovery, welcome, map, and the exact configuration bytes', async () => {
@@ -14,7 +15,7 @@ describe('network handshake validation', () => {
         const welcome: Welcome = { protocolVersion: PROTOCOL_VERSION, serverBuildId: 'dev', playerId: 7, playerHandle: { slot: 7, generation: 0 }, tickRate: 60, snapshotRate: 20, map: { mapId: manifest.mapId, formatVersion: manifest.formatVersion, contentHash: manifest.contentHash }, configurationHash }
         validateWelcome(welcome, { clientBuildId: 'dev', discovery: { websocketUrl: 'wss://example.test/game/path?token=x', buildId: 'dev', protocolVersion: PROTOCOL_VERSION, mapId: manifest.mapId, mode: 'ffa' }, manifest })
         const configuration: Configuration = { protocolVersion: PROTOCOL_VERSION, serverBuildId: 'dev', map: welcome.map, configurationHash, configurationJson }
-        expect((await validateConfiguration(configuration, welcome)).groundSpeed).toBe(7.5)
+        expect((await validateConfiguration(configuration, welcome)).groundSpeed).toBe(5.5)
     })
 
     it('rejects metadata mismatch and reserialized/tampered configuration JSON', async () => {
