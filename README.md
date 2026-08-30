@@ -83,6 +83,24 @@ PostgreSQL, run `npm run dev` in `web/`, run `./build.sh --release --run` in
 `server/`, and run `npm run dev` in `client/`. Copy each service's `.env.example`
 when local overrides are needed.
 
+### Local development launcher
+
+With Docker, Node.js, and `VCPKG_ROOT` configured, the launcher starts the
+local PostgreSQL dependency, applies migrations, and runs the API, native game
+server, and Vite client. It is idempotent when the managed stack is already
+running.
+
+```bash
+./scripts/dev.sh --start
+./scripts/dev.sh --status
+./scripts/dev.sh --stop
+```
+
+Open `http://127.0.0.1:5173` after starting. Logs are in `.dev/logs/`; `--stop`
+stops the processes and database container but preserves the local database
+volume. Ports can be overridden with `DEV_DB_PORT`, `DEV_WEB_PORT`,
+`DEV_GAME_PORT`, and `DEV_CLIENT_PORT`.
+
 ## Production deployment
 
 The production topology exposes only the client nginx port. PostgreSQL, the

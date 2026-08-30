@@ -1,0 +1,21 @@
+# Development-only dependency stack. The application processes stay on the
+# host so their normal watch/build workflows remain available.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-game_db}
+    ports:
+      - "127.0.0.1:${DEV_DB_PORT:-5432}:5432"
+    volumes:
+      - cpp_server_dev_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  cpp_server_dev_postgres_data:
