@@ -14,6 +14,7 @@ import { ViewmodelController } from './ViewmodelController'
 
 interface TimedMesh extends EffectSlot { readonly mesh: Mesh; expiresAt: number; actionId: number }
 interface TimedLight extends EffectSlot { readonly light: PointLight; expiresAt: number }
+interface ScheduledImpact { readonly position: Vec3; readonly player: boolean; readonly dueAt: number }
 interface TracerSlot extends TimedMesh {
     readonly head: Mesh
     readonly start: Vector3
@@ -43,6 +44,7 @@ export class CombatPresentationModule implements ClientModule {
     private lightPool?: BoundedEffectFamily<TimedLight>
     private readonly decals = new DecalBudget(6, 96)
     private readonly shotTracers = new Map<string, TracerSlot>()
+    private readonly scheduledImpacts: ScheduledImpact[] = []
     private eventCursor = 0
     private worldImpactMaterial?: StandardMaterial
     private playerImpactMaterial?: StandardMaterial
@@ -114,6 +116,7 @@ export class CombatPresentationModule implements ClientModule {
         if (this.eventCursor > networking.combat.lastEventId) {
             this.eventCursor = 0
             this.shotTracers.clear()
+            this.scheduledImpacts.length = 0
         }
         this.viewmodel.update(local.weapon, local.dead, local.reloading, Math.hypot(physics.velocity.x, physics.velocity.z), physics.grounded, now, frame.deltaSeconds)
         networking.combat.forEachEventAfter(this.eventCursor, (event) => {
@@ -170,10 +173,14 @@ export class CombatPresentationModule implements ClientModule {
                     break
                 }
                 case 'impact': {
-                    this.impact(event.value.position, event.value.material === ImpactMaterial.Player, now, 3)
-                    this.context?.services.get(AUDIO).playImpact(event.value.position)
                     const tracer = this.shotTracers.get(this.shotTracerKey(event.value.shotId, event.value.pelletIndex))
                     if (tracer) this.correctTracerPath(tracer, event.value.position, now, true)
+                    this.scheduleImpact(
+                        event.value.position,
+                        event.value.material === ImpactMaterial.Player,
+                        tracer ? tracer.startedAtMs + tracer.travelMs : now,
+                        now,
+                    )
                     break
                 }
                 case 'damage':
@@ -198,6 +205,7 @@ export class CombatPresentationModule implements ClientModule {
             }
         })
         this.updateTracers(now)
+        this.presentScheduledImpacts(now)
         this.releaseExpired(now)
     }
 
@@ -235,6 +243,30 @@ export class CombatPresentationModule implements ClientModule {
         slot.mesh.setEnabled(true)
         slot.expiresAt = now + 210
         this.decals.add(position, player ? 'player' : 'world', now)
+    }
+
+    private scheduleImpact(position: Vec3, player: boolean, dueAt: number, now: number): void {
+        if (dueAt <= now) {
+            this.presentImpact(position, player, now)
+            return
+        }
+        // Keep delayed presentation bounded under sustained shotgun fire.
+        if (this.scheduledImpacts.length >= 64) this.scheduledImpacts.shift()
+        this.scheduledImpacts.push({ position: { ...position }, player, dueAt })
+    }
+
+    private presentScheduledImpacts(now: number): void {
+        for (let index = this.scheduledImpacts.length - 1; index >= 0; index--) {
+            const pending = this.scheduledImpacts[index]!
+            if (pending.dueAt > now) continue
+            this.scheduledImpacts.splice(index, 1)
+            this.presentImpact(pending.position, pending.player, now)
+        }
+    }
+
+    private presentImpact(position: Vec3, player: boolean, now: number): void {
+        this.impact(position, player, now, 3)
+        this.context?.services.get(AUDIO).playImpact(position)
     }
 
     private tracer(from: Vec3, to: Vec3, now: number, actionId: number, weapon: Weapon): TracerSlot | undefined {
@@ -325,6 +357,7 @@ export class CombatPresentationModule implements ClientModule {
         this.tracerMaterial?.dispose()
         this.decals.clear()
         this.shotTracers.clear()
+        this.scheduledImpacts.length = 0
         this.context?.services.remove(COMBAT_PRESENTATION)
         this.context = undefined
     }

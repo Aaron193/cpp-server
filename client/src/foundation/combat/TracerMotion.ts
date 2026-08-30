@@ -3,10 +3,10 @@ import { Weapon } from '../../protocol/generated'
 export const TRACER_LENGTH_METERS = 2.4
 export const TRACER_FADE_MS = 55
 
-const RIFLE_VISUAL_SPEED_METERS_PER_SECOND = 320
-const SHOTGUN_VISUAL_SPEED_METERS_PER_SECOND = 180
-const MINIMUM_TRAVEL_MS = 70
-const MAXIMUM_TRAVEL_MS = 320
+const RIFLE_VISUAL_SPEED_METERS_PER_SECOND = 1000
+const SHOTGUN_VISUAL_SPEED_METERS_PER_SECOND = 450
+const MINIMUM_TRAVEL_MS = 24
+const MAXIMUM_TRAVEL_MS = 120
 
 export interface TracerMotionSample {
     readonly headDistance: number
