@@ -32,6 +32,7 @@ export class InputState {
     private jumpQueued = false
     private reloadQueued = false
     private firing = false
+    private aimingHeld = false
     private proneQueued = false
     private dashQueued = false
     private weapon: 1 | 2 = 1
@@ -76,10 +77,18 @@ export class InputState {
         return { forward, right, jump, fire: this.firing, reload, selectedWeapon: this.weapon, scoreboard: this.pressed.has('Tab'), sprint: this.pressed.has('ShiftLeft') || this.pressed.has('ShiftRight'), crouch: this.pressed.has('ControlLeft') || this.pressed.has('ControlRight'), prone, dash }
     }
 
-    pointerButton(primaryDown: boolean, allowed: boolean): void {
-        this.firing = allowed && primaryDown
+    pointerButton(button: number, down: boolean, allowed: boolean): void {
+        if (button === 0) this.firing = allowed && down
+        if (button === 2) this.aimingHeld = allowed && down
+    }
+    pointerButtons(buttons: number, allowed: boolean): void {
+        this.firing = allowed && Boolean(buttons & 1)
+        this.aimingHeld = allowed && Boolean(buttons & 2)
     }
     get scoreboardVisible(): boolean { return this.pressed.has('Tab') }
+    get firingHeld(): boolean { return this.firing }
+    get aiming(): boolean { return this.aimingHeld }
+    get selectedWeapon(): 1 | 2 { return this.weapon }
 
     clear(): void {
         this.pressed.clear()
@@ -88,5 +97,6 @@ export class InputState {
         this.proneQueued = false
         this.dashQueued = false
         this.firing = false
+        this.aimingHeld = false
     }
 }

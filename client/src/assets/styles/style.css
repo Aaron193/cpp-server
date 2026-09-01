@@ -983,27 +983,39 @@ body {
 }
 
 .fps-crosshair {
+    --reticle-gap: 6px;
+    --reticle-length: 6px;
+    --reticle-color: rgba(255, 255, 255, .94);
+    --reticle-outline: rgba(0, 0, 0, .9);
+    --reticle-user-opacity: 1;
+    --reticle-aim-opacity: 1;
+    --reticle-arm-scale: 1;
     position: absolute;
     left: 50%;
     top: 50%;
-    width: 18px;
-    height: 18px;
+    width: 0;
+    height: 0;
     transform: translate(-50%, -50%);
-    filter: drop-shadow(0 1px 2px #000);
+    opacity: calc(var(--reticle-user-opacity) * var(--reticle-aim-opacity));
+    filter: drop-shadow(0 0 1px var(--reticle-outline));
 }
 
-.fps-crosshair::before,
-.fps-crosshair::after {
-    content: '';
+.fps-reticle-arm {
     position: absolute;
-    background: rgba(255, 255, 255, 0.94);
+    display: block;
+    background: var(--reticle-color);
+    transform-origin: center;
 }
-
-.fps-crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
-.fps-crosshair::after { left: 0; top: 8px; width: 18px; height: 2px; }
-
-#fps-hitmarker { position: absolute; inset: -12px; color: white; font: 700 38px/38px sans-serif; text-align: center; opacity: 0; transform: rotate(45deg); transition: opacity 60ms; }
+.fps-reticle-arm.arm-top { width: 2px; height: calc(var(--reticle-length) * var(--reticle-arm-scale)); left: -1px; bottom: var(--reticle-gap); }
+.fps-reticle-arm.arm-bottom { width: 2px; height: calc(var(--reticle-length) * var(--reticle-arm-scale)); left: -1px; top: var(--reticle-gap); }
+.fps-reticle-arm.arm-left { width: calc(var(--reticle-length) * var(--reticle-arm-scale)); height: 2px; right: var(--reticle-gap); top: -1px; }
+.fps-reticle-arm.arm-right { width: calc(var(--reticle-length) * var(--reticle-arm-scale)); height: 2px; left: var(--reticle-gap); top: -1px; }
+.fps-hitmarker-layer { position: absolute; left: 50%; top: 50%; width: 0; height: 0; filter: drop-shadow(0 1px 2px #000); }
+#fps-hitmarker { position: absolute; width: 38px; height: 38px; left: -19px; top: -19px; color: white; font: 700 38px/38px sans-serif; text-align: center; opacity: 0; transform: rotate(45deg); transition: opacity 60ms; }
 #fps-hitmarker.active { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+    .fps-crosshair, #fps-hitmarker { transition: none; }
+}
 .fps-damage { position: absolute; inset: 0; opacity: 0; transition: opacity 100ms; background: conic-gradient(from calc(var(--damage-angle, 0rad) - .28rad), rgba(239,68,68,.72) 0 .56rad, transparent .56rad); mask: radial-gradient(circle, transparent 0 52%, #000 63%); }
 .fps-damage.active { opacity: 1; }
 

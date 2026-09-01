@@ -48,6 +48,15 @@ TEST_CASE(current_shotgun_configuration_is_preserved) {
     EXPECT_TRUE(!shotgun.automatic);
 }
 
+TEST_CASE(current_weapon_aim_profiles_are_validated_and_serialized) {
+    const auto config = loadCurrentConfig();
+    EXPECT_NEAR(config.rifle.aim.aimInSeconds, 0.165F, 0.0001F);
+    EXPECT_NEAR(config.rifle.aim.adsSpreadRadians, 0.0025F, 0.0001F);
+    EXPECT_NEAR(config.shotgun.aim.adsFovRadians, 1.1868239F, 0.0001F);
+    EXPECT_EQ(config.rifle.aim.recoilYawDegrees.size(), 8U);
+    EXPECT_NEAR(config.toJson().at("weapons").at("shotgun").at("aim").at("reticleArmLengthPx").get<float>(), 8.0F, 0.0001F);
+}
+
 TEST_CASE(current_weapon_config_serializes_with_named_weapon_entries) {
     const nlohmann::json serialized = loadCurrentConfig().toJson();
 

@@ -87,8 +87,8 @@ export class EntityViewsModule implements ClientModule {
             const pose = evaluateActorPose(actor.record, frame.elapsedSeconds, actor.oneShots, actor.wallTuckWeight, now)
             const swing = Math.sin(pose.gaitPhase) * .58 * pose.gaitWeight
             actor.leftLeg.rotation.x = swing; actor.rightLeg.rotation.x = -swing
-            actor.leftArm.rotation.x = -swing * .48 - .72 - pose.recoilWeight * .12 - pose.mantleWeight * 1.25
-            actor.rightArm.rotation.x = swing * .48 - .78 - pose.recoilWeight * .18 - pose.mantleWeight * .95
+            actor.leftArm.rotation.x = -swing * .48 - .72 - pose.recoilWeight * .12 - pose.mantleWeight * 1.25 - pose.adsWeight * .16
+            actor.rightArm.rotation.x = swing * .48 - .78 - pose.recoilWeight * .18 - pose.mantleWeight * .95 - pose.adsWeight * .2
             actor.leftArm.rotation.z = -.18 - pose.reloadWeight * .55
             actor.rightArm.rotation.z = .18 + pose.reloadWeight * .32
             actor.torso.rotation.x = -pose.aimPitch * .42 - pose.wallTuckWeight * .25 + pose.slideWeight * .32 + pose.proneWeight * 1.15
@@ -98,7 +98,7 @@ export class EntityViewsModule implements ClientModule {
             actor.calibration.scaling.y = 1 - .12 * pose.crouchWeight - .2 * pose.proneWeight
             actor.calibration.scaling.x = actor.calibration.scaling.z = .88 + .12 * pose.respawnWeight
             actor.weapon.rotation.x = -actor.record.aimPitch - pose.wallTuckWeight * .55
-            actor.weapon.position.z = pose.wallTuckWeight * .32 + pose.recoilWeight * .08 + pose.mantleWeight * .28
+            actor.weapon.position.z = pose.wallTuckWeight * .32 + pose.recoilWeight * .08 + pose.mantleWeight * .28 - pose.adsWeight * .06
         }
     }
     attach(entityId: GameplayEntityId, view: TransformNode): void { if (this.get(entityId)) throw new Error(`Entity view already attached: ${entityId}`); this.attached.set(entityId, view) }

@@ -62,6 +62,27 @@ TEST_CASE(rifle_automatic_fire_obeys_tick_cadence_and_magazine_ammo) {
     EXPECT_EQ(server.combatMetrics().shotsFired, 11U);
 }
 
+TEST_CASE(ads_intent_overrides_sprint_and_reduces_authoritative_speed) {
+    GameServer server;
+    const auto player = server.m_entityManager.createPlayer();
+    auto input = fireInput(1U, 1U, false);
+    input.movement = {0.0F, -1.0F};
+    input.sprintHeld = true;
+    input.adsHeld = true;
+    server.queueValidatedInput(player, input);
+    for (int tick = 0; tick < 20; ++tick) server.simulateOneTick();
+    auto& registry = server.m_entityManager.getRegistry();
+    const auto& movement = registry.get<Components::MovementState>(player);
+    const auto& aiming = registry.get<Components::PlayerAiming>(player).value;
+    const auto& velocity = registry.get<Components::Velocity3D>(player).linear;
+    EXPECT_EQ(movement.mode, protocol::MovementMode::Normal);
+    EXPECT_NEAR(aiming.aimProgress, 1.0F, 0.0001F);
+    EXPECT_TRUE(std::hypot(velocity.x, velocity.z) <=
+                server.m_gameConfig.movement.groundSpeed *
+                    server.m_gameConfig.rifle.aim.adsMoveMultiplier + 0.05F);
+    EXPECT_TRUE((server.makeEntityRecord(player, player).stateFlags & 2U) != 0U);
+}
+
 TEST_CASE(action_ids_echo_authoritative_accept_and_cadence_rejection) {
     GameServer server;
     const auto shooter = server.m_entityManager.createPlayer();
@@ -166,6 +187,11 @@ TEST_CASE(dead_players_cannot_fire_and_invalid_aim_is_rejected) {
 
 TEST_CASE(lag_compensation_hits_historical_capsule_after_target_moves) {
     GameServer server;
+    server.m_gameConfig.rifle.aim.hipSpreadRadians = 0.0F;
+    server.m_gameConfig.rifle.aim.adsSpreadRadians = 0.0F;
+    server.m_gameConfig.rifle.aim.hipMoveSpreadRadians = 0.0F;
+    server.m_gameConfig.rifle.aim.adsMoveSpreadRadians = 0.0F;
+    server.m_gameConfig.rifle.aim.airborneSpreadRadians = 0.0F;
     const auto shooter = server.m_entityManager.createPlayer();
     const auto target = server.m_entityManager.createPlayer();
     place(server, shooter, {0,10,10});
@@ -236,6 +262,11 @@ TEST_CASE(spawn_protection_blocks_damage_and_firing_cancels_own_protection) {
 
 TEST_CASE(simultaneous_fire_cancels_protection_before_damage_phase) {
     GameServer server;
+    server.m_gameConfig.rifle.aim.hipSpreadRadians = 0.0F;
+    server.m_gameConfig.rifle.aim.adsSpreadRadians = 0.0F;
+    server.m_gameConfig.rifle.aim.hipMoveSpreadRadians = 0.0F;
+    server.m_gameConfig.rifle.aim.adsMoveSpreadRadians = 0.0F;
+    server.m_gameConfig.rifle.aim.airborneSpreadRadians = 0.0F;
     const auto first = server.m_entityManager.createPlayer();
     const auto second = server.m_entityManager.createPlayer();
     place(server, first, {0,10,10});

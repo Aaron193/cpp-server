@@ -2,12 +2,12 @@
   {
     "name": "hello-with-token",
     "message": "Hello",
-    "value": { "protocolVersion": 9, "clientBuildId": "web-3d-a1", "supportedMapFormat": 1, "accessToken": "token-✓" }
+    "value": { "protocolVersion": 10, "clientBuildId": "web-3d-a1", "supportedMapFormat": 1, "accessToken": "token-✓" }
   },
   {
     "name": "version-mismatch-reject",
     "message": "Reject",
-    "value": { "serverBuildId": "server-a1", "reason": 1, "detail": "protocol 65535 is unsupported", "expectedProtocolVersion": 9, "expectedMapFormat": 2 }
+    "value": { "serverBuildId": "server-a1", "reason": 1, "detail": "protocol 65535 is unsupported", "expectedProtocolVersion": 10, "expectedMapFormat": 2 }
   },
   {
     "name": "input-wrap-values",
@@ -72,7 +72,7 @@
         "position": { "x": 1, "y": 2, "z": 3 }, "velocity": { "x": 0, "y": 0, "z": -1 },
         "bodyYaw": 0.5, "aimPitch": -0.25, "grounded": true, "stateFlags": 0, "health": 87,
         "movementState": { "stance": 1, "mode": 2, "modeTimeRemaining": 0.4, "dashCooldownRemaining": 0, "slideCooldownRemaining": 0.8, "weaponLockRemaining": 0, "stanceExpansionPending": false, "dashDirection": { "x": 0, "y": 0, "z": -1 }, "mantleStart": { "x": 0, "y": 0, "z": 0 }, "mantleTarget": { "x": 0, "y": 0, "z": 0 } },
-        "weaponState": { "selected": 1, "magazineAmmo": 19, "reserveAmmo": 80, "stateFlags": 0 }
+        "weaponState": { "selected": 1, "magazineAmmo": 19, "reserveAmmo": 80, "stateFlags": 0, "aimProgress": 0.5, "spreadRadians": 0.006, "recoilPitch": 0.01, "recoilYaw": -0.002, "recoilSequence": 7 }
       },
       "created": [{ "state": {
         "handle": { "slot": 9, "generation": 4 }, "kind": 1,
@@ -93,7 +93,7 @@
         "position": { "x": 1, "y": 2, "z": 3 }, "velocity": { "x": 0, "y": 0, "z": 0 },
         "bodyYaw": 0.5, "aimPitch": 0, "grounded": true, "stateFlags": 0, "health": 86,
         "movementState": { "stance": 0, "mode": 0, "modeTimeRemaining": 0, "dashCooldownRemaining": 1.2, "slideCooldownRemaining": 0, "weaponLockRemaining": 0, "stanceExpansionPending": false, "dashDirection": { "x": 1, "y": 0, "z": 0 }, "mantleStart": { "x": 0, "y": 0, "z": 0 }, "mantleTarget": { "x": 0, "y": 0, "z": 0 } },
-        "weaponState": { "selected": 1, "magazineAmmo": 18, "reserveAmmo": 80, "stateFlags": 0 }
+        "weaponState": { "selected": 1, "magazineAmmo": 18, "reserveAmmo": 80, "stateFlags": 0, "aimProgress": 1.0, "spreadRadians": 0.004, "recoilPitch": 0.02, "recoilYaw": 0.001, "recoilSequence": 8 }
       },
       "created": [],
       "updated": [{

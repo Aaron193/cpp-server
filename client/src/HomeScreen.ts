@@ -114,7 +114,7 @@ export class HomeScreen {
                         ▶ Quick Play
                     </button>
                     <button id="offline-play-btn" class="btn btn-ghost offline-play-btn">
-                        Practice Offline · Movement Only
+                        Practice Offline
                     </button>
                 </section>
 

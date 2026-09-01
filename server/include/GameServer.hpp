@@ -47,7 +47,7 @@ struct CombatMetrics {
 };
 
 struct SessionConfiguration {
-    static constexpr std::uint16_t ProtocolVersion = 9;
+    static constexpr std::uint16_t ProtocolVersion = 10;
     std::string buildId = "dev";
     std::string mode = "ffa";
     std::size_t maxPlayers = 12;
@@ -176,6 +176,7 @@ class GameServer {
     void consumeQueuedValidatedInput();
     void updateMatchAndPlayerState(float delta);
     void updateCharacterMotors(float delta);
+    void updateAiming(float delta);
     void recordPlayerHistory();
     void updateWeaponsAndFire();
     void resolvePendingDamage();

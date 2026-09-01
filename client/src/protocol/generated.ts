@@ -1,5 +1,5 @@
 // Generated from protocol/schema.json by protocol/generate.mjs. DO NOT EDIT.
-export const PROTOCOL_VERSION = 9 as const
+export const PROTOCOL_VERSION = 10 as const
 
 export const LIMITS = {
     "maxEnvelopeBytes": 61443,
@@ -152,6 +152,11 @@ export interface WeaponState {
     readonly magazineAmmo: number
     readonly reserveAmmo: number
     readonly stateFlags: number
+    readonly aimProgress: number
+    readonly spreadRadians: number
+    readonly recoilPitch: number
+    readonly recoilYaw: number
+    readonly recoilSequence: number
 }
 
 export interface MovementState {
@@ -572,6 +577,11 @@ function writeWeaponState(writer: Writer, value: WeaponState): void {
     writer.u16(value.magazineAmmo)
     writer.u16(value.reserveAmmo)
     writer.u8(value.stateFlags)
+    writer.f32(value.aimProgress)
+    writer.f32(value.spreadRadians)
+    writer.f32(value.recoilPitch)
+    writer.f32(value.recoilYaw)
+    writer.u32(value.recoilSequence)
 }
 function readWeaponState(reader: Reader): WeaponState {
     return {
@@ -579,6 +589,11 @@ function readWeaponState(reader: Reader): WeaponState {
         magazineAmmo: reader.u16(),
         reserveAmmo: reader.u16(),
         stateFlags: reader.u8(),
+        aimProgress: reader.f32(),
+        spreadRadians: reader.f32(),
+        recoilPitch: reader.f32(),
+        recoilYaw: reader.f32(),
+        recoilSequence: reader.u32(),
     }
 }
 

@@ -49,6 +49,21 @@ export class CombatPresentationState {
     chatRevision = 0
 
     setPlayerId(playerId: number): void { this.local = { ...this.local, playerId } }
+    initializeOffline(weapon = Weapon.Rifle): void {
+        this.local = { playerId: 1, health: 100, weapon, magazineAmmo: weapon === Weapon.Shotgun ? 8 : 30, reserveAmmo: weapon === Weapon.Shotgun ? 32 : 120, reloading: false, dead: false }
+        this.currentMatch = { phase: MatchPhase.Active, roundNumber: 1, phaseEndsAtTick: 0 }
+    }
+    selectOfflineWeapon(weapon: Weapon): void {
+        if (weapon === this.local.weapon) return
+        this.local = { ...this.local, weapon, magazineAmmo: weapon === Weapon.Shotgun ? 8 : 30, reserveAmmo: weapon === Weapon.Shotgun ? 32 : 120, reloading: false }
+    }
+    offlineFire(actionId: number, sequence: number, weapon: Weapon, nowMs = performance.now()): boolean {
+        if (!this.canLocalFire(weapon)) return false
+        this.localFire(actionId, sequence, weapon, nowMs)
+        this.pendingActions.delete(actionId >>> 0)
+        this.local = { ...this.local, magazineAmmo: Math.max(0, this.local.magazineAmmo - 1) }
+        return true
+    }
     acceptSnapshot(snapshot: Snapshot): void {
         this.currentMatch = snapshot.match
     }

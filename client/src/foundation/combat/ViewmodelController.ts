@@ -46,7 +46,7 @@ export class ViewmodelController {
     setState(state: ViewmodelState, nowMs: number): void { if (state !== this.stateValue) { this.stateValue = state; this.stateStartedAtMs = nowMs } }
     fire(nowMs: number): void { this.stateValue = 'fire'; this.stateStartedAtMs = nowMs }
     rejectAction(): void { this.rejectionKick = 1 }
-    update(weapon: Weapon, dead: boolean, reloading: boolean, speed: number, grounded: boolean, nowMs: number, dt: number, movement?: MovementState): void {
+    update(weapon: Weapon, dead: boolean, reloading: boolean, speed: number, grounded: boolean, nowMs: number, dt: number, movement?: MovementState, aimProgress = 0): void {
         this.weaponValue = weapon
         if (dead || weapon === Weapon.None) this.setState('hidden', nowMs)
         else if (movement?.mode === MovementMode.Mantling) this.setState('mantle', nowMs)
@@ -57,6 +57,7 @@ export class ViewmodelController {
         else if (movement?.stance === Stance.Crouched) this.setState('crouch', nowMs)
         else if (movement?.mode === MovementMode.Sprinting) this.setState('sprint', nowMs)
         else if (this.stateValue === 'fire' && nowMs - this.stateStartedAtMs < 130) {}
+        else if (aimProgress > .01) this.setState('ads', nowMs)
         else this.setState(speed > .15 && grounded ? 'walk' : 'idle', nowMs)
         this.rejectionKick *= Math.exp(-dt * 18)
         for (const [kind, rig] of this.rigs) {
@@ -69,8 +70,10 @@ export class ViewmodelController {
             const sprint = this.stateValue === 'sprint' ? 1 : 0, crouch = this.stateValue === 'crouch' ? 1 : 0
             const slide = this.stateValue === 'slide' ? 1 : 0, prone = this.stateValue === 'prone' ? 1 : 0
             const dash = this.stateValue === 'dash' ? Math.exp(-elapsed * 14) : 0, mantle = this.stateValue === 'mantle' ? 1 : 0
-            rig.root.position.set(.32 + walk * .012 + sprint * .1, -.29 + Math.abs(walk) * .009 - reload * .08 - sprint * .2 - crouch * .07 - prone * .32 - mantle * .48, -.72 + fire * .11 + this.rejectionKick * .03 + dash * .16)
-            rig.root.rotation.set(fire * .075 + reload * .34 + sprint * .42 + mantle * .7, 0, walk * .018 + reload * .18 + slide * .18 + dash * .08)
+            const ads = Math.max(0, Math.min(1, aimProgress))
+            const breathing = Math.sin(nowMs * .0017) * .0015 * ads
+            rig.root.position.set(.32 + walk * .012 * (1 - ads) + sprint * .1 - .02 * ads, -.29 + Math.abs(walk) * .009 * (1 - ads) - reload * .08 - sprint * .2 - crouch * .07 - prone * .32 - mantle * .48 + .105 * ads + breathing, -.72 + fire * .11 + this.rejectionKick * .03 + dash * .16)
+            rig.root.rotation.set(fire * .075 + reload * .34 + sprint * .42 + mantle * .7, 0, walk * .018 * (1 - ads) + reload * .18 + slide * .18 + dash * .08)
         }
     }
     muzzlePosition(): Vec3 | undefined { const rig = this.rigs.get(this.weaponValue); if (!rig || !rig.root.isEnabled()) return undefined; const value = rig.muzzle.getAbsolutePosition(); this.muzzleScratch.x = value.x; this.muzzleScratch.y = value.y; this.muzzleScratch.z = value.z; return this.muzzleScratch }

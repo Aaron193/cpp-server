@@ -411,7 +411,7 @@ void GameServer::updateCharacterMotors(float delta) {
         }
         const bool jump = input.jump && physical.grounded && movement.stance != protocol::Stance::Prone;
         const bool sprint = tuning.sprintEnabled && !jump && movement.stance == protocol::Stance::Standing &&
-                            physical.grounded && input.sprintHeld && normalizedForward > 0.1F;
+                            physical.grounded && input.sprintHeld && !input.adsHeld && normalizedForward > 0.1F;
         if (sprint) {
             if (movement.mode != protocol::MovementMode::Sprinting) ++combatMetrics_.sprintActivations;
             movement.mode = protocol::MovementMode::Sprinting;
@@ -420,15 +420,64 @@ void GameServer::updateCharacterMotors(float delta) {
             movement.mode = protocol::MovementMode::Normal;
             movement.weaponLockRemaining = std::max(movement.weaponLockRemaining, tuning.sprintToFireDelay);
         }
-        const float speed = movement.stance == protocol::Stance::Prone ? tuning.proneSpeed :
+        float speed = movement.stance == protocol::Stance::Prone ? tuning.proneSpeed :
             movement.stance == protocol::Stance::Crouched ? tuning.crouchSpeed :
             movement.mode == protocol::MovementMode::Sprinting ? tuning.sprintSpeed : tuning.groundSpeed;
+        if (const auto* aiming = registry.try_get<Components::PlayerAiming>(entity)) {
+            const auto* inventory = registry.try_get<Components::WeaponInventory>(entity);
+            if (inventory && movement.mode != protocol::MovementMode::Sprinting) {
+                const auto& profile = inventory->getActive().gun.itemType == ItemType::GUN_SHOTGUN
+                    ? m_gameConfig.shotgun.aim : m_gameConfig.rifle.aim;
+                speed *= Aiming::mix(1.0F, profile.adsMoveMultiplier,
+                                     aiming->value.aimProgress);
+            }
+        }
         const glm::vec3 desired = inputDirection * speed;
         m_physicsWorld.updateCharacter(controller.adapterId, delta, desired,
                                        jump);
         input.jump = false;
         input.pronePressed = false;
         input.dashPressed = false;
+    }
+}
+
+void GameServer::updateAiming(float delta) {
+    auto& registry = m_entityManager.getRegistry();
+    const auto players = registry.view<Components::PlayerInput,
+                                       Components::PlayerLife,
+                                       Components::WeaponInventory,
+                                       Components::MovementState,
+                                       Components::CharacterController,
+                                       Components::Velocity3D,
+                                       Components::PlayerAiming>();
+    for (const auto player : players) {
+        const auto& input = players.get<Components::PlayerInput>(player);
+        const auto& life = players.get<Components::PlayerLife>(player);
+        const auto& inventory = players.get<Components::WeaponInventory>(player);
+        const auto& movement = players.get<Components::MovementState>(player);
+        const auto& controller = players.get<Components::CharacterController>(player);
+        const auto& velocity = players.get<Components::Velocity3D>(player).linear;
+        auto& state = players.get<Components::PlayerAiming>(player).value;
+        const auto weapon = protocolWeapon(inventory.getActive().gun);
+        if (state.weapon != weapon) {
+            const auto sequence = state.recoilSequence;
+            state = Aiming::State{};
+            state.weapon = weapon;
+            state.recoilSequence = sequence;
+        }
+        const auto& gun = inventory.getActive().gun;
+        const auto& profile = gun.itemType == ItemType::GUN_SHOTGUN
+            ? m_gameConfig.shotgun.aim : m_gameConfig.rifle.aim;
+        const bool traversal = movement.mode == protocol::MovementMode::Sliding ||
+            movement.mode == protocol::MovementMode::Dashing ||
+            movement.mode == protocol::MovementMode::Mantling;
+        const bool eligible = !life.dead && matchPhase_ == protocol::MatchPhase::Active &&
+            !traversal && !gun.isReloading() && !input.reloadRequested &&
+            weapon != protocol::Weapon::None;
+        const float horizontalSpeed = std::hypot(velocity.x, velocity.z);
+        Aiming::step(state, profile, input.adsHeld, eligible,
+                     horizontalSpeed / std::max(0.001F, m_gameConfig.movement.groundSpeed),
+                     controller.grounded, movement.stance, delta);
     }
 }
 
@@ -555,6 +604,15 @@ void GameServer::fireWeapon(entt::entity shooter, Components::Gun& gun,
     if (nextShotId_ == 0U) nextShotId_ = 1U;
     ++combatMetrics_.shotsFired;
 
+    auto& aiming = registry.get<Components::PlayerAiming>(shooter).value;
+    const auto& aimProfile = gun.itemType == ItemType::GUN_SHOTGUN
+        ? m_gameConfig.shotgun.aim : m_gameConfig.rifle.aim;
+    const float shotSpread = aiming.spreadRadians;
+    const float shotRecoilPitch = aiming.recoilPitch;
+    const float shotRecoilYaw = aiming.recoilYaw;
+    Aiming::acceptedShot(aiming, aimProfile, m_gameConfig.combat.serverSeed,
+                         static_cast<std::uint32_t>(shooter));
+
     std::uint32_t acceptedTick = 0;
     const HistoryFrame* history = findHistoryFrame(input.clientTick, acceptedTick);
     if (history && acceptedTick != input.clientTick) ++combatMetrics_.historyClamps;
@@ -565,21 +623,21 @@ void GameServer::fireWeapon(entt::entity shooter, Components::Gun& gun,
             if (historical.entity == shooter)
                 shooterEye = historical.eyePosition;
     }
-    const float cosinePitch = std::cos(input.pitch);
+    const float shotPitch = std::clamp(input.pitch + shotRecoilPitch,
+                                       -1.5706963F, 1.5706963F);
+    const float shotYaw = input.yaw + shotRecoilYaw;
+    const float cosinePitch = std::cos(shotPitch);
     const glm::vec3 aim = glm::normalize(glm::vec3{
-        std::sin(input.yaw) * cosinePitch, std::sin(input.pitch),
-        -std::cos(input.yaw) * cosinePitch});
+        std::sin(shotYaw) * cosinePitch, std::sin(shotPitch),
+        -std::cos(shotYaw) * cosinePitch});
     const glm::vec3 origin = shooterEye + aim * gun.barrelLength;
     std::vector<glm::vec3> pelletDirections;
     std::vector<protocol::Vec3> pelletEndPositions;
     pelletDirections.reserve(static_cast<std::size_t>(gun.pellets));
     pelletEndPositions.reserve(static_cast<std::size_t>(gun.pellets));
     for (int pellet = 0; pellet < gun.pellets; ++pellet) {
-        const auto* shooterMovement = registry.try_get<Components::MovementState>(shooter);
-        const float movementSpread = shooterMovement && shooterMovement->mode == protocol::MovementMode::Sliding
-            ? m_gameConfig.movement.slideSpreadMultiplier : 1.0F;
         const glm::vec3 direction = CombatGeometry::spreadDirection(
-            aim, gun.spread * movementSpread, m_gameConfig.combat.serverSeed,
+            aim, shotSpread, m_gameConfig.combat.serverSeed,
             static_cast<std::uint32_t>(shooter), shotId,
             static_cast<std::uint32_t>(pellet));
         const glm::vec3 end = origin + direction * gun.range;
@@ -959,6 +1017,10 @@ void GameServer::resetPlayerForRound(entt::entity player,
     ammo.add(AmmoType::SHELL, m_gameConfig.loadout.shotgunReserveAmmo);
     registry.get<Components::PlayerInput>(player) = Components::PlayerInput{};
     registry.get<Components::PlayerCombat>(player) = Components::PlayerCombat{};
+    auto& aiming = registry.get<Components::PlayerAiming>(player);
+    aiming = Components::PlayerAiming{};
+    aiming.value.weapon = protocol::Weapon::Rifle;
+    aiming.value.spreadRadians = m_gameConfig.rifle.aim.hipSpreadRadians;
 }
 
 void GameServer::resetRound() {
@@ -1056,6 +1118,7 @@ void GameServer::simulateOneTick() {
         controller.grounded = state.grounded;
     }
     recordPlayerHistory();
+    updateAiming(delta);
     updateWeaponsAndFire();
     resolvePendingDamage();
     resolveHealthAndDeaths();
@@ -1142,6 +1205,8 @@ protocol::EntityRecord GameServer::makeEntityRecord(
     record.aimPitch = input.pitch;
     record.grounded = controller.grounded;
     record.stateFlags = life.dead ? 1U : 0U;
+    if (const auto* aiming = registry.try_get<Components::PlayerAiming>(entity))
+        if (aiming->value.aimProgress > 0.001F) record.stateFlags |= 2U;
     if (const auto* movement = registry.try_get<Components::MovementState>(entity)) {
         record.stance = movement->stance;
         record.movementMode = movement->mode;
@@ -1187,12 +1252,17 @@ protocol::LocalAuthoritativeState GameServer::makeLocalAuthoritativeState(
     if (!health || !inventory || !ammo || !movement)
         throw std::logic_error("local authoritative state is incomplete");
     const auto& gun = inventory->getActive().gun;
+    const auto* aiming = registry.try_get<Components::PlayerAiming>(entity);
+    const Aiming::State defaultAiming{};
+    const auto& aim = aiming ? aiming->value : defaultAiming;
     const protocol::WeaponState weaponState{
         protocolWeapon(gun),
         static_cast<std::uint16_t>(std::clamp(gun.ammoInMag, 0, 65535)),
         static_cast<std::uint16_t>(
             std::clamp(ammo->get(gun.ammoType), 0, 65535)),
-        static_cast<std::uint8_t>(gun.isReloading() ? 1U : 0U)};
+        static_cast<std::uint8_t>(gun.isReloading() ? 1U : 0U),
+        aim.aimProgress, aim.spreadRadians, aim.recoilPitch, aim.recoilYaw,
+        aim.recoilSequence};
     const protocol::MovementState movementState{
         movement->stance, movement->mode, movement->modeTimeRemaining,
         movement->dashCooldownRemaining, movement->slideCooldownRemaining,

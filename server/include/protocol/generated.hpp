@@ -171,6 +171,11 @@ struct WeaponState {
     std::uint16_t magazineAmmo{};
     std::uint16_t reserveAmmo{};
     std::uint8_t stateFlags{};
+    float aimProgress{};
+    float spreadRadians{};
+    float recoilPitch{};
+    float recoilYaw{};
+    std::uint32_t recoilSequence{};
 };
 
 struct MovementState {
@@ -677,6 +682,11 @@ inline void writeWeaponState(Writer& writer, const WeaponState& value) {
     writer.writeU16(value.magazineAmmo);
     writer.writeU16(value.reserveAmmo);
     writer.writeU8(value.stateFlags);
+    writer.writeF32(value.aimProgress);
+    writer.writeF32(value.spreadRadians);
+    writer.writeF32(value.recoilPitch);
+    writer.writeF32(value.recoilYaw);
+    writer.writeU32(value.recoilSequence);
 }
 inline WeaponState readWeaponState(Reader& reader) {
     WeaponState value{};
@@ -684,6 +694,11 @@ inline WeaponState readWeaponState(Reader& reader) {
     value.magazineAmmo = reader.readU16();
     value.reserveAmmo = reader.readU16();
     value.stateFlags = reader.readU8();
+    value.aimProgress = reader.readF32();
+    value.spreadRadians = reader.readF32();
+    value.recoilPitch = reader.readF32();
+    value.recoilYaw = reader.readF32();
+    value.recoilSequence = reader.readU32();
     return value;
 }
 

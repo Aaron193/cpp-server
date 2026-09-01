@@ -75,11 +75,15 @@ entt::entity EntityManager::createPlayer() {
     life.spawnProtectionRemaining =
         m_gameServer.m_gameConfig.combat.spawnProtectionSeconds;
     m_registry.emplace<PlayerCombat>(entity);
+    m_registry.emplace<PlayerAiming>(entity);
     m_registry.emplace<Score>(entity);
     m_registry.emplace<Camera>(entity, entity);
     auto& inventory = m_registry.emplace<WeaponInventory>(entity);
     inventory.addItem(GunFactory::makeRifle(m_gameServer.m_gameConfig));
     inventory.addItem(GunFactory::makeShotgun(m_gameServer.m_gameConfig));
+    auto& aiming = m_registry.get<PlayerAiming>(entity).value;
+    aiming.weapon = protocol::Weapon::Rifle;
+    aiming.spreadRadians = m_gameServer.m_gameConfig.rifle.aim.hipSpreadRadians;
     auto& ammo = m_registry.emplace<Ammo>(entity);
     ammo.add(AmmoType::LIGHT,
              m_gameServer.m_gameConfig.loadout.rifleReserveAmmo);

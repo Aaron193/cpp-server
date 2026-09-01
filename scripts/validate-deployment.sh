@@ -133,8 +133,8 @@ require_pattern nginx.conf 'proxy_read_timeout 75s;' \
 
 require_pattern docker-compose.yml 'SERVER_BUILD_ID:.*\?SERVER_BUILD_ID is required' \
     "Compose requires a shared server/client build ID"
-require_pattern docker-compose.yml 'SERVER_PROTOCOL_VERSION: "9"' \
-    "Compose supplies protocol v9"
+require_pattern docker-compose.yml 'SERVER_PROTOCOL_VERSION: "10"' \
+    "Compose supplies protocol v10"
 require_pattern docker-compose.yml 'JOIN_TICKET_SECRET:.*\?JOIN_TICKET_SECRET is required' \
     "Compose requires the shared join-ticket signing secret"
 require_pattern docker-compose.yml 'SERVER_MAP_ID:.*\$\{SERVER_MAP_ID:-graybox-arena\}' \
@@ -183,10 +183,10 @@ for (const mapId of ['graybox-arena', 'copper-yard']) {
     if (typeof asset !== 'string' || !fs.existsSync(path.join(path.dirname(manifestPath), asset))) throw new Error(`missing ${mapId} asset: ${asset}`)
   }
 }
-if (schema.version !== 9) throw new Error(`protocol schema is v${schema.version}, expected v9`)
+if (schema.version !== 10) throw new Error(`protocol schema is v${schema.version}, expected v10`)
 NODE
     then
-        pass "map v2 package paths/hash metadata and protocol v9 agree"
+        pass "map v2 package paths/hash metadata and protocol v10 agree"
     else
         fail "map package paths/hash metadata or protocol version is invalid"
     fi

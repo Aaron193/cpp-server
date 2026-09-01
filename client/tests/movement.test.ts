@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { MovementMode, Stance } from '../src/protocol/generated'
+import { MovementMode, Stance, Weapon } from '../src/protocol/generated'
 import { DEFAULT_MOVEMENT_TUNING, FixedStepAccumulator, createMovementState, stepMovementState, stepMovementVelocity } from '../src/foundation/physics/Movement'
 
 describe('fixed-step local movement motor', () => {
@@ -60,6 +60,15 @@ describe('fixed-step local movement motor', () => {
         expect(rejected.state.mode).toBe(MovementMode.Normal)
         result = stepMovementState(createMovementState(), { forward: 0, right: 0, jump: true, yaw: 0, dash: true, mantleTarget: { x: 0, y: 1, z: -.5 } }, { grounded: false, position, horizontalSpeed: 0 }, dt)
         expect(result.state.mode).toBe(MovementMode.Mantling)
+    })
+
+    it('gives ADS precedence over sprint and applies the predicted weapon speed scale', () => {
+        const result = stepMovementState(createMovementState(), {
+            forward: 1, right: 0, jump: false, yaw: 0, sprint: true, ads: true,
+            selectedWeapon: Weapon.Rifle, aimProgress: .5, adsMoveMultiplier: .78,
+        }, { grounded: true, position: { x: 0, y: 0, z: 0 }, horizontalSpeed: 5.5 }, 1 / 60)
+        expect(result.state.mode).toBe(MovementMode.Normal)
+        expect(Math.hypot(result.desiredHorizontal.x, result.desiredHorizontal.z)).toBeCloseTo(5.5 * .89)
     })
 
     it('retries blocked expansion and preserves prone until standing clearance exists', () => {

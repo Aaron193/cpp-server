@@ -78,6 +78,7 @@ if(BUILD_TESTING)
         tests/ProtocolTests.cpp
         tests/JoinTicketValidatorTests.cpp
         tests/CombatGeometryTests.cpp
+        tests/AimingTests.cpp
         src/maps/MapPackage.cpp
         src/security/JoinTicketValidator.cpp
     )

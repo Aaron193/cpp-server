@@ -9,6 +9,7 @@
 #include <glm/vec3.hpp>
 
 #include "common/enums.hpp"
+#include "combat/Aiming.hpp"
 #include "ecs/EntityManager.hpp"
 #include "protocol/generated.hpp"
 
@@ -71,6 +72,7 @@ struct PlayerInput {
     bool crouchHeld = false;
     bool pronePressed = false;
     bool dashPressed = false;
+    bool adsHeld = false;
     int8_t switchSlot = -1;
     std::uint32_t clientTick = 0;
     std::uint32_t inputSequence = 0;
@@ -191,6 +193,10 @@ struct Gun {
 
 struct PlayerCombat {
     bool triggerWasDown = false;
+};
+
+struct PlayerAiming {
+    Aiming::State value{};
 };
 
 struct InventorySlot {

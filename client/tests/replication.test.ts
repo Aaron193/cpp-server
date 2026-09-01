@@ -7,7 +7,7 @@ const local = {
     position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 },
     bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, health: 100,
     movementState: { stance: Stance.Standing, mode: MovementMode.Normal, modeTimeRemaining: 0, dashCooldownRemaining: 0, slideCooldownRemaining: 0, weaponLockRemaining: 0, stanceExpansionPending: false, dashDirection: { x: 0, y: 0, z: -1 }, mantleStart: { x: 0, y: 0, z: 0 }, mantleTarget: { x: 0, y: 0, z: 0 } },
-    weaponState: { selected: Weapon.Rifle, magazineAmmo: 30, reserveAmmo: 90, stateFlags: 0 },
+    weaponState: { selected: Weapon.Rifle, magazineAmmo: 30, reserveAmmo: 90, stateFlags: 0, aimProgress: 0, spreadRadians: .012, recoilPitch: 0, recoilYaw: 0, recoilSequence: 0 },
 } as const
 const publicState = (slot: number, generation: number, x = 0) => ({
     handle: { slot, generation }, kind: 1,

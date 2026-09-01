@@ -1,32 +1,9 @@
-export interface GameConfig {
-    weapons: {
-        pistol: WeaponConfig
-        rifle: WeaponConfig
-        shotgun: WeaponConfig
-    }
-}
-
-export interface WeaponConfig {
-    fireMode: 'hitscan' | 'projectile'
-    ammoType: 'light' | 'heavy' | 'shell' | 'rocket'
-    magazineSize: number
-    ammoPerShot: number
-    fireRate: number
-    reloadTime: number
-    damage: number
-    range: number
-    spread: number
-    pellets: number
-    barrelLength: number
-    projectileSpeed: number
-    projectileLifetime: number
-    automatic: boolean
-}
+import type { ValidatedGameConfiguration } from './foundation/networking/Handshake'
 
 export class ConfigManager {
-    private static config: GameConfig | null = null
+    private static config: ValidatedGameConfiguration | null = null
 
-    static setConfig(config: GameConfig): void {
+    static setConfig(config: ValidatedGameConfiguration): void {
         if (ConfigManager.config) {
             throw new Error('GameConfig already set')
         }
@@ -36,7 +13,7 @@ export class ConfigManager {
     static resetConfig(): void {
         ConfigManager.config = null
     }
-    static getConfig(): GameConfig {
+    static getConfig(): ValidatedGameConfiguration {
         if (!ConfigManager.config) {
             throw new Error('GameConfig not initialized')
         }

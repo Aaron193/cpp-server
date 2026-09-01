@@ -76,7 +76,7 @@ describe('NetworkingModule integration lifecycle', () => {
             local: { handle: { slot: 7, generation: 0 }, position: local.position, velocity: local.velocity,
                 bodyYaw: local.bodyYaw, aimPitch: local.aimPitch, grounded: local.grounded,
                 stateFlags: local.stateFlags, health: 90, movementState,
-                weaponState: { selected: Weapon.Shotgun, magazineAmmo: 0, reserveAmmo: 20, stateFlags: 0 } },
+                weaponState: { selected: Weapon.Shotgun, magazineAmmo: 0, reserveAmmo: 20, stateFlags: 0, aimProgress: 0, spreadRadians: .055, recoilPitch: 0, recoilYaw: 0, recoilSequence: 0 } },
             created: [{ state: { handle: { slot: 9, generation: 0 }, kind: remote.kind,
                 position: remote.position, velocity: remote.velocity, bodyYaw: remote.bodyYaw,
                 aimPitch: remote.aimPitch, grounded: remote.grounded, stateFlags: remote.stateFlags, stance: remote.stance, movementMode: remote.movementMode,
@@ -116,7 +116,7 @@ describe('NetworkingModule integration lifecycle', () => {
             local: { handle: { slot: 8, generation: 0 }, position: local.position, velocity: local.velocity,
                 bodyYaw: local.bodyYaw, aimPitch: local.aimPitch, grounded: local.grounded,
                 stateFlags: local.stateFlags, health: 100, movementState,
-                weaponState: { selected: Weapon.Rifle, magazineAmmo: 30, reserveAmmo: 90, stateFlags: 0 } },
+                weaponState: { selected: Weapon.Rifle, magazineAmmo: 30, reserveAmmo: 90, stateFlags: 0, aimProgress: 0, spreadRadians: .012, recoilPitch: 0, recoilYaw: 0, recoilSequence: 0 } },
             created: [], updated: [], removed: [],
         } }))
         await vi.waitFor(() => expect(module.combat.localPlayer.playerId).toBe(8))

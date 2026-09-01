@@ -1,6 +1,6 @@
 import { ChatChannel, EntityKind, LIMITS, MessageType, MovementMode, PROTOCOL_VERSION, Stance, Weapon, decodeEnvelope, encodeMessage, type Configuration, type EntityRecord, type InputCommand, type MovementState, type Snapshot, type SnapshotDelta, type Welcome } from '../../protocol/generated'
 import type { ClientModule, ClientModuleContext, FrameUpdate } from '../lifecycle'
-import { ARENA, ENTITY_VIEWS, INPUT, NETWORKING, PHYSICS } from '../services'
+import { AIMING, ARENA, ENTITY_VIEWS, INPUT, NETWORKING, PHYSICS } from '../services'
 import { FixedStepAccumulator, createMovementState } from '../physics/Movement'
 import { validateConfiguration, validateWelcome, type ServerDiscoveryDescriptor } from './Handshake'
 import { AdaptiveInterpolationDelay, NetworkClock, PredictionHistory, RemoteTimelineSet, isSequenceNewer, type RemoteSample } from './Synchronization'
@@ -8,6 +8,7 @@ import { BrowserWebSocketTransport, type NetworkTransport, type SyntheticImpairm
 import { CombatPresentationState, alignClientTick } from '../combat/CombatState'
 import { RingBuffer } from '../performance/RingBuffer'
 import { SnapshotDeltaBaseline, entityHandleKey, publicStateToEntityRecord } from './Replication'
+import { ConfigManager } from '../../ConfigManager'
 
 export type ConnectionStatus = 'offline' | 'connecting' | 'handshaking' | 'connected' | 'reconnecting' | 'rejected' | 'disconnected'
 export type HardSyncReason =
@@ -49,6 +50,7 @@ const SPRINT_BUTTON = 1 << 3
 const CROUCH_BUTTON = 1 << 4
 const PRONE_BUTTON = 1 << 5
 const DASH_BUTTON = 1 << 6
+const ADS_BUTTON = 1 << 7
 const PING_INTERVAL_MS = 500
 export const DEFAULT_RECONCILIATION_TUNING: ReconciliationTuning = Object.freeze({
     horizontalHardSnapMeters: 0.6,
@@ -131,6 +133,7 @@ export class NetworkingModule implements ClientModule {
         this.context = context
         context.services.provide(NETWORKING, this)
         if (this.options.server) context.services.get(PHYSICS).setExternalDrive(true)
+        else this.combat.initializeOffline()
     }
     start(): void { if (this.options.server) this.connect() }
 
@@ -140,7 +143,9 @@ export class NetworkingModule implements ClientModule {
         this.decayVisualResidual(frame.deltaSeconds)
         this.transport.update(now)
         if (this.status === 'reconnecting' && now >= this.reconnectAtMs) this.connect()
-        if (!this.context || this.status !== 'connected' || !this.welcome) return
+        if (!this.context) return
+        if (this.status === 'offline') { this.updateOffline(now); return }
+        if (this.status !== 'connected' || !this.welcome) return
         this.sendPingIfDue(now)
         if (!this.clientTickAligned) {
             for (const text of this.context.services.get(INPUT).consumeChatMessages()) this.sendChat(text)
@@ -160,14 +165,14 @@ export class NetworkingModule implements ClientModule {
             let fireActionId = 0, reloadActionId = 0
             const physics = this.context.services.get(PHYSICS)
             if (snapshot.fire && physics.canFire && this.combat.canLocalFire(selectedWeapon) && now - this.lastLocalFireAtMs >= cosmeticInterval) {
-                this.lastLocalFireAtMs = now; fireActionId = this.nextActionId(); this.combat.localFire(fireActionId, sequence, selectedWeapon, now)
+                this.lastLocalFireAtMs = now; fireActionId = this.nextActionId(); this.combat.localFire(fireActionId, sequence, selectedWeapon, now); this.context.services.optional(AIMING)?.predictShot(fireActionId)
             }
             if (snapshot.reload) { reloadActionId = this.nextActionId(); this.combat.localReload(reloadActionId, sequence, selectedWeapon, now) }
             const command: InputCommand = {
                 sequence,
                 clientTick: this.clientTick = (this.clientTick + 1) >>> 0,
                 moveX: snapshot.right * scale, moveY: -snapshot.forward * scale,
-                buttonFlags: (snapshot.jump ? JUMP_BUTTON : 0) | (fireActionId ? FIRE_BUTTON : 0) | (reloadActionId ? RELOAD_BUTTON : 0) | (snapshot.sprint ? SPRINT_BUTTON : 0) | (snapshot.crouch ? CROUCH_BUTTON : 0) | (snapshot.prone ? PRONE_BUTTON : 0) | (snapshot.dash ? DASH_BUTTON : 0),
+                buttonFlags: (snapshot.jump ? JUMP_BUTTON : 0) | (fireActionId ? FIRE_BUTTON : 0) | (reloadActionId ? RELOAD_BUTTON : 0) | (snapshot.sprint ? SPRINT_BUTTON : 0) | (snapshot.crouch ? CROUCH_BUTTON : 0) | (snapshot.prone ? PRONE_BUTTON : 0) | (snapshot.dash ? DASH_BUTTON : 0) | (input.aiming ? ADS_BUTTON : 0),
                 fireActionId, reloadActionId,
                 yaw: input.angles.yaw, pitch: input.angles.pitch, selectedWeapon,
             }
@@ -187,6 +192,22 @@ export class NetworkingModule implements ClientModule {
         }
         for (const text of this.context.services.get(INPUT).consumeChatMessages()) this.sendChat(text)
         this.updateRemoteViews(now)
+    }
+
+    private updateOffline(now: number): void {
+        if (!this.context) return
+        const input = this.context.services.get(INPUT)
+        const weapon = input.selectedWeapon === 2 ? Weapon.Shotgun : Weapon.Rifle
+        this.combat.selectOfflineWeapon(weapon)
+        const interval = weapon === Weapon.Shotgun ? 700 : 100
+        if (!input.firing || !this.context.services.get(PHYSICS).canFire || now - this.lastLocalFireAtMs < interval) return
+        this.lastLocalFireAtMs = now
+        const actionId = this.nextActionId(), sequence = this.sequence = (this.sequence + 1) >>> 0
+        if (this.combat.offlineFire(actionId, sequence, weapon, now)) {
+            const aiming = this.context.services.optional(AIMING)
+            aiming?.predictShot(actionId)
+            aiming?.resolveShot(actionId, true)
+        }
     }
 
     reconnect(): void {
@@ -323,6 +344,7 @@ export class NetworkingModule implements ClientModule {
                 validateWelcome(message.payload, { clientBuildId: this.options.clientBuildId ?? 'dev', discovery: this.options.server, manifest })
                 this.welcome = message.payload
                 this.combat.setPlayerId(message.payload.playerId)
+                this.context?.services.optional(AIMING)?.setPlayerId(message.payload.playerId)
                 this.timelines = new RemoteTimelineSet(message.payload.tickRate)
                 this.clock = new NetworkClock(message.payload.tickRate)
                 this.interpolationDelay = new AdaptiveInterpolationDelay(message.payload.snapshotRate)
@@ -341,7 +363,7 @@ export class NetworkingModule implements ClientModule {
                 case MessageType.Spawn: this.acceptEntity(message.payload.serverTick, publicStateToEntityRecord(message.payload.entity)); break
                 case MessageType.Remove: this.removeRemote(entityHandleKey(message.payload.handle)); break
                 case MessageType.ShotConfirmed: this.combat.shot(message.payload); break
-                case MessageType.ActionResult: this.combat.actionResult(message.payload); break
+                case MessageType.ActionResult: this.combat.actionResult(message.payload); if (message.payload.kind === 1) this.context?.services.optional(AIMING)?.resolveShot(message.payload.actionId, message.payload.accepted); break
                 case MessageType.Impact: this.combat.impact(message.payload); break
                 case MessageType.Damage: this.combat.damage(message.payload); break
                 case MessageType.Death: this.combat.death(message.payload); break
@@ -364,6 +386,8 @@ export class NetworkingModule implements ClientModule {
         const tuning = await validateConfiguration(configuration, this.welcome)
         if (generation !== this.sessionGeneration) return
         await this.context.services.get(PHYSICS).applyAuthoritativeTuning(tuning)
+        this.context.services.optional(AIMING)?.configure(tuning.aiming)
+        ConfigManager.resetConfig(); ConfigManager.setConfig(tuning)
         if (generation !== this.sessionGeneration) return
         this.status = 'connected'
         this.detail = `Connected · player ${this.welcome.playerId}`
@@ -415,6 +439,7 @@ export class NetworkingModule implements ClientModule {
             this.context.services.get(INPUT).angles.set(snapshot.local.bodyYaw, snapshot.local.aimPitch)
         }
         this.combat.acceptAuthoritative(snapshot.local, snapshot.match)
+        this.context.services.optional(AIMING)?.reconcile(snapshot.local.weaponState)
         const authoritative: EntityRecord = {
             entityId: entityHandleKey(snapshot.local.handle), kind: EntityKind.Player,
             position: snapshot.local.position, velocity: snapshot.local.velocity,
@@ -501,7 +526,10 @@ export class NetworkingModule implements ClientModule {
     }
 
     private movementCommand(command: InputCommand) {
-        return { forward: -command.moveY, right: command.moveX, jump: Boolean(command.buttonFlags & JUMP_BUTTON), yaw: command.yaw, sprint: Boolean(command.buttonFlags & SPRINT_BUTTON), crouch: Boolean(command.buttonFlags & CROUCH_BUTTON), prone: Boolean(command.buttonFlags & PRONE_BUTTON), dash: Boolean(command.buttonFlags & DASH_BUTTON) }
+        const aim = this.context?.services.optional(AIMING)?.snapshot
+        return { forward: -command.moveY, right: command.moveX, jump: Boolean(command.buttonFlags & JUMP_BUTTON), yaw: command.yaw,
+            sprint: Boolean(command.buttonFlags & SPRINT_BUTTON), crouch: Boolean(command.buttonFlags & CROUCH_BUTTON), prone: Boolean(command.buttonFlags & PRONE_BUTTON), dash: Boolean(command.buttonFlags & DASH_BUTTON),
+            ads: Boolean(command.buttonFlags & ADS_BUTTON), selectedWeapon: command.selectedWeapon, aimProgress: aim?.aimProgress ?? 0, adsMoveMultiplier: aim?.adsMoveMultiplier ?? 1 }
     }
 
     private hardSyncState(position: { x: number; y: number; z: number }, velocity: { x: number; y: number; z: number }, reason: HardSyncReason, movementState: MovementState = createMovementState()): void {
@@ -593,6 +621,7 @@ export class NetworkingModule implements ClientModule {
         this.pendingHardSyncReason = undefined; this.clearVisualResidual(); this.replaySteps = 0; this.replayTimeMs = 0
         if (reason) this.recordHardSync(reason)
         this.context?.services.get(ENTITY_VIEWS).clearAndDispose(); this.accumulator.reset()
+        ConfigManager.resetConfig()
     }
     stop(): void { this.intentionalClose = true; this.transport.close(1000, 'client stopped'); this.resetSession() }
     dispose(): void { this.stop(); this.context?.services.get(PHYSICS).setExternalDrive(false); this.context?.services.remove(NETWORKING); this.context = undefined }

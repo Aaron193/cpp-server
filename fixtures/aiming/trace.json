@@ -1,0 +1,24 @@
+{
+  "weapon": "rifle",
+  "player": 17,
+  "steps": [
+    { "dt": 0.0166666667, "intent": true, "eligible": true, "speedRatio": 0.0, "grounded": true, "stance": 0, "shot": false },
+    { "dt": 0.0166666667, "intent": true, "eligible": true, "speedRatio": 0.5, "grounded": true, "stance": 0, "shot": false },
+    { "dt": 0.0166666667, "intent": true, "eligible": true, "speedRatio": 0.5, "grounded": true, "stance": 1, "shot": true },
+    { "dt": 0.05, "intent": true, "eligible": true, "speedRatio": 0.2, "grounded": false, "stance": 0, "shot": true },
+    { "dt": 0.1, "intent": true, "eligible": false, "speedRatio": 0.0, "grounded": true, "stance": 0, "shot": false },
+    { "dt": 0.08, "intent": true, "eligible": true, "speedRatio": 0.0, "grounded": true, "stance": 2, "shot": false },
+    { "dt": 0.1, "intent": false, "eligible": true, "speedRatio": 1.0, "grounded": true, "stance": 0, "shot": false },
+    { "dt": 0.1, "intent": false, "eligible": true, "speedRatio": 0.0, "grounded": true, "stance": 0, "shot": false }
+  ],
+  "expected": [
+    { "aimProgress": 0.1010101012, "bloomRadians": 0.0, "spreadRadians": 0.0110404040, "recoilPitch": 0.0, "recoilYaw": 0.0, "recoilSequence": 0, "patternIndex": 0 },
+    { "aimProgress": 0.2020202024, "bloomRadians": 0.0, "spreadRadians": 0.0131262626, "recoilPitch": 0.0, "recoilYaw": 0.0, "recoilSequence": 0, "patternIndex": 0 },
+    { "aimProgress": 0.3030303036, "bloomRadians": 0.0022, "spreadRadians": 0.0095515151, "recoilPitch": 0.0110993350, "recoilYaw": -0.0011294453, "recoilSequence": 1, "patternIndex": 1 },
+    { "aimProgress": 0.6060606067, "bloomRadians": 0.0044, "spreadRadians": 0.0437842424, "recoilPitch": 0.0228025019, "recoilYaw": 0.0003051574, "recoilSequence": 2, "patternIndex": 2 },
+    { "aimProgress": 0.0, "bloomRadians": 0.0009, "spreadRadians": 0.0129, "recoilPitch": 0.0092708054, "recoilYaw": 0.0001240677, "recoilSequence": 2, "patternIndex": 2 },
+    { "aimProgress": 0.4848484848, "bloomRadians": 0.0, "spreadRadians": 0.0048060606, "recoilPitch": 0.0045125855, "recoilYaw": 0.0000603903, "recoilSequence": 2, "patternIndex": 2 },
+    { "aimProgress": 0.0, "bloomRadians": 0.0, "spreadRadians": 0.026, "recoilPitch": 0.0018346803, "recoilYaw": 0.0000245528, "recoilSequence": 2, "patternIndex": 2 },
+    { "aimProgress": 0.0, "bloomRadians": 0.0, "spreadRadians": 0.012, "recoilPitch": 0.0007459254, "recoilYaw": 0.0000099824, "recoilSequence": 2, "patternIndex": 0 }
+  ]
+}

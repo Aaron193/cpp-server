@@ -20,11 +20,12 @@ import { PostProcessingModule } from './rendering/PostProcessingModule'
 import { FirstPersonCameraModule } from './camera/FirstPersonCameraModule'
 import { MapModule } from './gameplay/MapModule'
 import type { MovementTuning } from './physics/Movement'
-import { ARENA, ASSETS, ENTITY_VIEWS, ENVIRONMENT, NETWORKING, PHYSICS, POST_PROCESSING, RENDER_QUALITY, SCENE } from './services'
+import { AIMING, ARENA, ASSETS, ENTITY_VIEWS, ENVIRONMENT, INPUT, NETWORKING, PHYSICS, POST_PROCESSING, RENDER_QUALITY, SCENE } from './services'
 import { CombatPresentationModule } from './combat/CombatPresentationModule'
 import { PerformanceModule } from './performance/PerformanceModule'
 import { isDevelopment } from '../utils/environment'
 import { KillcamModule } from './replay/KillcamModule'
+import { AimingModule } from './aiming/AimingModule'
 
 export interface FoundationClientOptions {
     readonly canvas: HTMLCanvasElement
@@ -64,6 +65,7 @@ export class FoundationClient {
             new MapModule(options.mapRoot),
             new EntityViewsModule(),
             new NetworkingModule(options.networking),
+            new AimingModule(),
             new FirstPersonCameraModule({ fieldOfViewRadians: options.camera?.fieldOfViewRadians }),
             new PostProcessingModule(),
             new AudioModule(),
@@ -97,6 +99,7 @@ export class FoundationClient {
         readonly remotePlayers: number
         readonly localWeapon: number
         readonly localMovement: { readonly stance: number; readonly mode: number; readonly grounded: boolean }
+        readonly input: { readonly pointerLocked: boolean; readonly firing: boolean; readonly aiming: boolean; readonly yaw: number; readonly pitch: number; readonly aimProgress: number }
         readonly remoteActors: ReturnType<EntityViewsModule['debugActorStates']>
         readonly rendering: {
             readonly quality: ReturnType<FoundationClient['renderingSnapshot']>['quality']
@@ -110,6 +113,7 @@ export class FoundationClient {
         const scene = this.services.get(SCENE)
         const camera = scene.activeCamera
         const networking = this.services.get(NETWORKING)
+        const input = this.services.get(INPUT)
         return {
             networkStatus: networking.status,
             remotePlayers: networking.metrics.remotePlayers,
@@ -118,6 +122,14 @@ export class FoundationClient {
                 stance: this.services.get(PHYSICS).movementState.stance,
                 mode: this.services.get(PHYSICS).movementState.mode,
                 grounded: this.services.get(PHYSICS).grounded,
+            },
+            input: {
+                pointerLocked: input.hasPointerLock,
+                firing: input.firing,
+                aiming: input.aiming,
+                yaw: input.angles.yaw,
+                pitch: input.angles.pitch,
+                aimProgress: this.services.get(AIMING).snapshot.aimProgress,
             },
             remoteActors: this.services.get(ENTITY_VIEWS).debugActorStates(),
             rendering: this.renderingSnapshot(),

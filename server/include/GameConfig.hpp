@@ -5,10 +5,38 @@
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "common/enums.hpp"
 
 struct WeaponConfig {
+    struct AimProfile {
+        float aimInSeconds;
+        float aimOutSeconds;
+        float adsFovRadians;
+        float adsMoveMultiplier;
+        float hipSpreadRadians;
+        float adsSpreadRadians;
+        float hipMoveSpreadRadians;
+        float adsMoveSpreadRadians;
+        float airborneSpreadRadians;
+        float crouchMultiplier;
+        float proneMultiplier;
+        float bloomPerShotRadians;
+        float bloomMaxRadians;
+        float bloomDelaySeconds;
+        float bloomRecoveryRadiansPerSecond;
+        float recoilResetSeconds;
+        float recoilRecoveryDelaySeconds;
+        float recoilRecoveryRate;
+        float adsRecoilMultiplier;
+        std::vector<float> recoilPitchDegrees;
+        std::vector<float> recoilYawDegrees;
+        float recoilVariationPitchDegrees;
+        float recoilVariationYawDegrees;
+        float reticleArmLengthPx;
+        float reticleMinGapPx;
+    } aim;
     GunFireMode fireMode;
     AmmoType ammoType;
     int magazineSize;
@@ -325,14 +353,45 @@ struct GameConfig {
         config.pellets = j.at("pellets").get<int>();
         config.barrelLength = j.at("barrelLength").get<float>();
         config.automatic = j.at("automatic").get<bool>();
+        const auto& aim = j.at("aim");
+        config.aim = {
+            positiveFloat(aim, "aimInSeconds"), positiveFloat(aim, "aimOutSeconds"),
+            positiveFloat(aim, "adsFovRadians"), positiveFloat(aim, "adsMoveMultiplier"),
+            positiveFloat(aim, "hipSpreadRadians", true), positiveFloat(aim, "adsSpreadRadians", true),
+            positiveFloat(aim, "hipMoveSpreadRadians", true), positiveFloat(aim, "adsMoveSpreadRadians", true),
+            positiveFloat(aim, "airborneSpreadRadians", true), positiveFloat(aim, "crouchMultiplier"),
+            positiveFloat(aim, "proneMultiplier"), positiveFloat(aim, "bloomPerShotRadians", true),
+            positiveFloat(aim, "bloomMaxRadians", true), positiveFloat(aim, "bloomDelaySeconds", true),
+            positiveFloat(aim, "bloomRecoveryRadiansPerSecond"), positiveFloat(aim, "recoilResetSeconds"),
+            positiveFloat(aim, "recoilRecoveryDelaySeconds", true), positiveFloat(aim, "recoilRecoveryRate"),
+            positiveFloat(aim, "adsRecoilMultiplier"), aim.at("recoilPitchDegrees").get<std::vector<float>>(),
+            aim.at("recoilYawDegrees").get<std::vector<float>>(), positiveFloat(aim, "recoilVariationPitchDegrees", true),
+            positiveFloat(aim, "recoilVariationYawDegrees", true), positiveFloat(aim, "reticleArmLengthPx"),
+            positiveFloat(aim, "reticleMinGapPx")};
         if (config.magazineSize <= 0 || config.ammoPerShot <= 0 ||
             config.ammoPerShot > config.magazineSize || config.fireRate <= 0.0F ||
             config.reloadTime < 0.0F || config.damage < 0.0F ||
             config.range <= 0.0F || config.spread < 0.0F ||
             config.spread > 0.5F || config.pellets <= 0 ||
             config.pellets > 32 ||
-            config.fireMode != GunFireMode::FIRE_HITSCAN)
+            config.fireMode != GunFireMode::FIRE_HITSCAN ||
+            config.aim.aimInSeconds > 2.0F || config.aim.aimOutSeconds > 2.0F ||
+            config.aim.adsFovRadians < 0.4F || config.aim.adsFovRadians > 1.8F ||
+            config.aim.adsMoveMultiplier > 1.0F || config.aim.hipSpreadRadians > 0.5F ||
+            config.aim.adsSpreadRadians > config.aim.hipSpreadRadians ||
+            config.aim.bloomPerShotRadians > config.aim.bloomMaxRadians ||
+            config.aim.crouchMultiplier > 1.0F || config.aim.proneMultiplier > 1.0F ||
+            config.aim.adsRecoilMultiplier > 1.0F ||
+            config.aim.recoilPitchDegrees.empty() || config.aim.recoilYawDegrees.empty())
             throw std::runtime_error("Invalid weapon configuration: " + key);
+        const auto finiteDegrees = [](const std::vector<float>& values) {
+            return std::all_of(values.begin(), values.end(), [](float value) {
+                return std::isfinite(value) && std::abs(value) <= 10.0F;
+            });
+        };
+        if (!finiteDegrees(config.aim.recoilPitchDegrees) ||
+            !finiteDegrees(config.aim.recoilYawDegrees))
+            throw std::runtime_error("Invalid weapon recoil pattern: " + key);
         return config;
     }
 
@@ -350,6 +409,20 @@ struct GameConfig {
         j["pellets"] = weapon.pellets;
         j["barrelLength"] = weapon.barrelLength;
         j["automatic"] = weapon.automatic;
+        j["aim"] = {
+            {"aimInSeconds", weapon.aim.aimInSeconds}, {"aimOutSeconds", weapon.aim.aimOutSeconds},
+            {"adsFovRadians", weapon.aim.adsFovRadians}, {"adsMoveMultiplier", weapon.aim.adsMoveMultiplier},
+            {"hipSpreadRadians", weapon.aim.hipSpreadRadians}, {"adsSpreadRadians", weapon.aim.adsSpreadRadians},
+            {"hipMoveSpreadRadians", weapon.aim.hipMoveSpreadRadians}, {"adsMoveSpreadRadians", weapon.aim.adsMoveSpreadRadians},
+            {"airborneSpreadRadians", weapon.aim.airborneSpreadRadians}, {"crouchMultiplier", weapon.aim.crouchMultiplier},
+            {"proneMultiplier", weapon.aim.proneMultiplier}, {"bloomPerShotRadians", weapon.aim.bloomPerShotRadians},
+            {"bloomMaxRadians", weapon.aim.bloomMaxRadians}, {"bloomDelaySeconds", weapon.aim.bloomDelaySeconds},
+            {"bloomRecoveryRadiansPerSecond", weapon.aim.bloomRecoveryRadiansPerSecond}, {"recoilResetSeconds", weapon.aim.recoilResetSeconds},
+            {"recoilRecoveryDelaySeconds", weapon.aim.recoilRecoveryDelaySeconds}, {"recoilRecoveryRate", weapon.aim.recoilRecoveryRate},
+            {"adsRecoilMultiplier", weapon.aim.adsRecoilMultiplier}, {"recoilPitchDegrees", weapon.aim.recoilPitchDegrees},
+            {"recoilYawDegrees", weapon.aim.recoilYawDegrees}, {"recoilVariationPitchDegrees", weapon.aim.recoilVariationPitchDegrees},
+            {"recoilVariationYawDegrees", weapon.aim.recoilVariationYawDegrees}, {"reticleArmLengthPx", weapon.aim.reticleArmLengthPx},
+            {"reticleMinGapPx", weapon.aim.reticleMinGapPx}};
         return j;
     }
 };

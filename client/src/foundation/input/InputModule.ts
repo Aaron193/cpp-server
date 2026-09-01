@@ -26,11 +26,12 @@ export class InputModule implements ClientModule {
         window.addEventListener('keydown', this.onKeyDown)
         window.addEventListener('keyup', this.onKeyUp)
         window.addEventListener('blur', this.clear)
-        document.addEventListener('mousemove', this.onMouseMove)
+        document.addEventListener('pointermove', this.onPointerMove, true)
+        document.addEventListener('pointerdown', this.onPointerButtonsChanged, true)
+        document.addEventListener('pointerup', this.onPointerButtonsChanged, true)
         document.addEventListener('pointerlockchange', this.onPointerLockChange)
         this.context?.canvas.addEventListener('click', this.requestPointerLock)
-        this.context?.canvas.addEventListener('pointerdown', this.onPointerDown)
-        window.addEventListener('pointerup', this.onPointerUp)
+        this.context?.canvas.addEventListener('contextmenu', this.onContextMenu)
         document.getElementById('chat_input')?.addEventListener('keydown', this.onChatKeyDown)
     }
 
@@ -39,11 +40,12 @@ export class InputModule implements ClientModule {
         window.removeEventListener('keydown', this.onKeyDown)
         window.removeEventListener('keyup', this.onKeyUp)
         window.removeEventListener('blur', this.clear)
-        document.removeEventListener('mousemove', this.onMouseMove)
+        document.removeEventListener('pointermove', this.onPointerMove, true)
+        document.removeEventListener('pointerdown', this.onPointerButtonsChanged, true)
+        document.removeEventListener('pointerup', this.onPointerButtonsChanged, true)
         document.removeEventListener('pointerlockchange', this.onPointerLockChange)
         this.context?.canvas.removeEventListener('click', this.requestPointerLock)
-        this.context?.canvas.removeEventListener('pointerdown', this.onPointerDown)
-        window.removeEventListener('pointerup', this.onPointerUp)
+        this.context?.canvas.removeEventListener('contextmenu', this.onContextMenu)
         document.getElementById('chat_input')?.removeEventListener('keydown', this.onChatKeyDown)
         this.state.clear()
     }
@@ -67,6 +69,9 @@ export class InputModule implements ClientModule {
 
     consumeChatMessages(): readonly string[] { return this.chatMessages.splice(0) }
     get showScoreboard(): boolean { return this.state.scoreboardVisible }
+    get firing(): boolean { return this.isAllowed() && this.state.firingHeld }
+    get aiming(): boolean { return this.isAllowed() && this.state.aiming }
+    get selectedWeapon(): 1 | 2 { return this.state.selectedWeapon }
 
     consumeCollisionDebugToggle(): boolean {
         const value = this.collisionDebugRequested
@@ -84,8 +89,20 @@ export class InputModule implements ClientModule {
         void this.context.canvas.requestPointerLock()
     }
 
-    private readonly onMouseMove = (event: MouseEvent): void => {
+    private readonly onPointerMove = (event: PointerEvent): void => {
+        // Pointer Events keep delivering relative motion while multiple mouse
+        // buttons are held. A button transition is also represented as a
+        // pointermove and has button !== -1; only those transition records may
+        // update held state. Some pointer-lock implementations report buttons=0
+        // on ordinary motion even while RMB is physically held.
+        if (event.button !== -1) {
+            this.state.pointerButtons(event.buttons, this.isAllowed())
+            return
+        }
         if (this.isAllowed()) this.angles.applyMouseDelta(event.movementX, event.movementY)
+    }
+    private readonly onPointerButtonsChanged = (event: PointerEvent): void => {
+        this.state.pointerButtons(event.buttons, this.isAllowed())
     }
 
     private readonly onKeyDown = (event: KeyboardEvent): void => {
@@ -116,12 +133,7 @@ export class InputModule implements ClientModule {
         if (!this.hasPointerLock) this.state.clear()
     }
 
-    private readonly onPointerDown = (event: PointerEvent): void => {
-        if (event.button === 0) this.state.pointerButton(true, this.isAllowed())
-    }
-    private readonly onPointerUp = (event: PointerEvent): void => {
-        if (event.button === 0) this.state.pointerButton(false, this.isAllowed())
-    }
+    private readonly onContextMenu = (event: Event): void => { if (this.hasPointerLock) event.preventDefault() }
 
     private readonly onChatKeyDown = (event: Event): void => {
         const keyboardEvent = event as KeyboardEvent

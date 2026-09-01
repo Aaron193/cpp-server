@@ -40,7 +40,64 @@ async function openPlayer(context: BrowserContext): Promise<Page> {
     return page
 }
 
+async function openOfflinePractice(context: BrowserContext): Promise<Page> {
+    const page = await context.newPage()
+    await page.route('http://localhost:3000/servers', (route) =>
+        route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ servers: [] }) }))
+    await page.route('http://localhost:3000/auth/me', (route) =>
+        route.fulfill({ status: 401, contentType: 'application/json', body: '{}' }))
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Practice Offline' }).click()
+    await expect.poll(async () => (await page.evaluate(() => window.__gameDebug?.()))?.localWeapon, { timeout: 15_000 }).toBe(1)
+    return page
+}
+
+test('offline localhost practice supports ADS, held-button look, and firing', async ({ browser }) => {
+    const context = await browser.newContext()
+    const page = await openOfflinePractice(context)
+    await page.locator('#game_canvas').click()
+    await expect.poll(async () => (await page.evaluate(() => window.__gameDebug?.()))?.input.pointerLocked).toBe(true)
+    await page.mouse.down({ button: 'right' })
+    await expect.poll(async () => (await page.evaluate(() => window.__gameDebug?.()))?.input.aimProgress).toBeGreaterThan(.5)
+    const before = await page.evaluate(() => window.__gameDebug?.()?.input)
+    await page.mouse.down({ button: 'left' })
+    await expect.poll(async () => (await page.evaluate(() => window.__gameDebug?.()))?.input.firing).toBe(true)
+    await page.mouse.move(700, 390, { steps: 2 })
+    await expect.poll(async () => {
+        const input = await page.evaluate(() => window.__gameDebug?.()?.input)
+        return input && before ? Math.abs(input.yaw - before.yaw) + Math.abs(input.pitch - before.pitch) : 0
+    }).toBeGreaterThan(.01)
+    await expect.poll(async () => (await page.evaluate(() => window.__gameDebug?.()))?.meshes.some((mesh) => mesh.name.startsWith('tracer/') && mesh.enabled)).toBe(true)
+    await page.mouse.up({ button: 'left' })
+    await expect.poll(async () => (await page.evaluate(() => window.__gameDebug?.()))?.input).toMatchObject({ firing: false, aiming: true })
+    await page.mouse.up({ button: 'right' })
+    await context.close()
+})
+
+test('online quick play supports ADS, held-button look, and server-backed firing', async ({ browser }) => {
+    const context = await browser.newContext()
+    const page = await openPlayer(context)
+    await page.locator('#game_canvas').click()
+    await expect.poll(async () => (await page.evaluate(() => window.__gameDebug?.()))?.input.pointerLocked).toBe(true)
+    await page.mouse.down({ button: 'right' })
+    await expect.poll(async () => (await page.evaluate(() => window.__gameDebug?.()))?.input.aimProgress).toBeGreaterThan(.5)
+    const before = await page.evaluate(() => window.__gameDebug?.()?.input)
+    await page.mouse.down({ button: 'left' })
+    await expect.poll(async () => (await page.evaluate(() => window.__gameDebug?.()))?.input.firing).toBe(true)
+    await page.mouse.move(700, 390, { steps: 2 })
+    await expect.poll(async () => {
+        const input = await page.evaluate(() => window.__gameDebug?.()?.input)
+        return input && before ? Math.abs(input.yaw - before.yaw) + Math.abs(input.pitch - before.pitch) : 0
+    }).toBeGreaterThan(.01)
+    await expect.poll(async () => (await page.evaluate(() => window.__gameDebug?.()))?.meshes.some((mesh) => mesh.name.startsWith('tracer/') && mesh.enabled)).toBe(true)
+    await page.mouse.up({ button: 'left' })
+    await expect.poll(async () => (await page.evaluate(() => window.__gameDebug?.()))?.input).toMatchObject({ firing: false, aiming: true })
+    await page.mouse.up({ button: 'right' })
+    await context.close()
+})
+
 test('renders both players, stance-correct remote movement, weapons, and shot feedback', async ({ browser }, testInfo) => {
+    test.setTimeout(60_000)
     const firstContext = await browser.newContext()
     const secondContext = await browser.newContext()
     const first = await openPlayer(firstContext)
@@ -80,13 +137,24 @@ test('renders both players, stance-correct remote movement, weapons, and shot fe
     await first.keyboard.press('z')
     await expect.poll(async () => (await second.evaluate(() => window.__gameDebug?.()))?.remoteActors[0]?.stance).toBe(2)
     await expect.poll(async () => (await second.evaluate(() => window.__gameDebug?.()))?.remoteActors[0]?.calibrationY).toBeLessThan(-.6)
-    await first.mouse.down()
+    await first.mouse.down({ button: 'right' })
+    await expect.poll(async () => (await first.evaluate(() => window.__gameDebug?.()))?.input.aiming).toBe(true)
+    const anglesBeforeFire = await first.evaluate(() => window.__gameDebug?.()?.input)
+    await first.mouse.down({ button: 'left' })
+    await expect.poll(async () => (await first.evaluate(() => window.__gameDebug?.()))?.input.firing).toBe(true)
+    await first.mouse.move(700, 390, { steps: 2 })
+    await expect.poll(async () => {
+        const input = await first.evaluate(() => window.__gameDebug?.()?.input)
+        return input && anglesBeforeFire ? Math.abs(input.yaw - anglesBeforeFire.yaw) + Math.abs(input.pitch - anglesBeforeFire.pitch) : 0
+    }).toBeGreaterThan(.01)
     await expect.poll(async () => {
         const debug = await first.evaluate(() => window.__gameDebug?.())
         return debug?.meshes.some((mesh) => mesh.name.startsWith('tracer/') && mesh.enabled && mesh.inFrustum)
     }).toBe(true)
     await first.screenshot({ path: testInfo.outputPath('two-player-combat.png') })
-    await first.mouse.up()
+    await first.mouse.up({ button: 'left' })
+    await expect.poll(async () => (await first.evaluate(() => window.__gameDebug?.()))?.input).toMatchObject({ firing: false, aiming: true })
+    await first.mouse.up({ button: 'right' })
 
     await firstContext.close()
     await secondContext.close()

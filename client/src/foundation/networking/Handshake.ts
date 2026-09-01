@@ -1,6 +1,7 @@
 import { PROTOCOL_VERSION, type Configuration, type MapDescriptor, type Welcome } from '../../protocol/generated'
 import type { ClientMapManifest } from '../assets/MapManifest'
 import type { MovementTuning } from '../physics/Movement'
+import { DEFAULT_AIM_PROFILES, type AimProfile, type AimProfiles } from '../aiming/AimModel'
 
 export interface ServerDiscoveryDescriptor {
     readonly websocketUrl: string
@@ -103,9 +104,56 @@ export function parseMovementTuning(configurationJson: string): MovementTuning {
     return tuning
 }
 
-export async function validateConfiguration(configuration: Configuration, welcome: Welcome): Promise<MovementTuning> {
+const aimNumber = (record: Record<string, unknown>, name: keyof AimProfile, allowZero = false): number => {
+    const value = record[name]
+    if (typeof value !== 'number' || !Number.isFinite(value) || (allowZero ? value < 0 : value <= 0)) throw new Error(`Configuration weapon aim.${name} is invalid`)
+    return value
+}
+const aimPattern = (record: Record<string, unknown>, name: 'recoilPitchDegrees' | 'recoilYawDegrees'): readonly number[] => {
+    const value = record[name]
+    if (!Array.isArray(value) || value.length === 0 || value.some((item) => typeof item !== 'number' || !Number.isFinite(item) || Math.abs(item) > 10)) throw new Error(`Configuration weapon aim.${name} is invalid`)
+    return Object.freeze([...value] as number[])
+}
+function parseAimProfile(value: unknown): AimProfile {
+    if (!value || typeof value !== 'object') throw new Error('Configuration weapon is missing aim tuning')
+    const record = value as Record<string, unknown>
+    const profile: AimProfile = {
+        aimInSeconds: aimNumber(record, 'aimInSeconds'), aimOutSeconds: aimNumber(record, 'aimOutSeconds'),
+        adsFovRadians: aimNumber(record, 'adsFovRadians'), adsMoveMultiplier: aimNumber(record, 'adsMoveMultiplier'),
+        hipSpreadRadians: aimNumber(record, 'hipSpreadRadians', true), adsSpreadRadians: aimNumber(record, 'adsSpreadRadians', true),
+        hipMoveSpreadRadians: aimNumber(record, 'hipMoveSpreadRadians', true), adsMoveSpreadRadians: aimNumber(record, 'adsMoveSpreadRadians', true),
+        airborneSpreadRadians: aimNumber(record, 'airborneSpreadRadians', true), crouchMultiplier: aimNumber(record, 'crouchMultiplier'), proneMultiplier: aimNumber(record, 'proneMultiplier'),
+        bloomPerShotRadians: aimNumber(record, 'bloomPerShotRadians', true), bloomMaxRadians: aimNumber(record, 'bloomMaxRadians', true),
+        bloomDelaySeconds: aimNumber(record, 'bloomDelaySeconds', true), bloomRecoveryRadiansPerSecond: aimNumber(record, 'bloomRecoveryRadiansPerSecond'),
+        recoilResetSeconds: aimNumber(record, 'recoilResetSeconds'), recoilRecoveryDelaySeconds: aimNumber(record, 'recoilRecoveryDelaySeconds', true), recoilRecoveryRate: aimNumber(record, 'recoilRecoveryRate'),
+        adsRecoilMultiplier: aimNumber(record, 'adsRecoilMultiplier'), recoilPitchDegrees: aimPattern(record, 'recoilPitchDegrees'), recoilYawDegrees: aimPattern(record, 'recoilYawDegrees'),
+        recoilVariationPitchDegrees: aimNumber(record, 'recoilVariationPitchDegrees', true), recoilVariationYawDegrees: aimNumber(record, 'recoilVariationYawDegrees', true),
+        reticleArmLengthPx: aimNumber(record, 'reticleArmLengthPx'), reticleMinGapPx: aimNumber(record, 'reticleMinGapPx'),
+    }
+    if (profile.aimInSeconds > 2 || profile.aimOutSeconds > 2 || profile.adsFovRadians < .4 || profile.adsFovRadians > 1.8 || profile.adsMoveMultiplier > 1 || profile.adsSpreadRadians > profile.hipSpreadRadians || profile.bloomPerShotRadians > profile.bloomMaxRadians || profile.crouchMultiplier > 1 || profile.proneMultiplier > 1 || profile.adsRecoilMultiplier > 1) throw new Error('Configuration weapon aim tuning is outside supported bounds')
+    return Object.freeze(profile)
+}
+
+export function parseAimProfiles(configurationJson: string): AimProfiles {
+    let parsed: unknown
+    try { parsed = JSON.parse(configurationJson) } catch { throw new Error('Configuration JSON is malformed') }
+    const root = parsed as Record<string, unknown>
+    const weapons = root?.weapons as Record<string, unknown> | undefined
+    // Test/offline movement-only configurations retain production defaults.
+    if (!weapons) return DEFAULT_AIM_PROFILES
+    const rifle = (weapons.rifle as Record<string, unknown> | undefined)?.aim
+    const shotgun = (weapons.shotgun as Record<string, unknown> | undefined)?.aim
+    const combat = root.combat as Record<string, unknown> | undefined
+    const seed = combat?.serverSeed
+    if (!Number.isSafeInteger(seed) || (seed as number) < 0 || (seed as number) > 0xffffffff) throw new Error('Configuration combat.serverSeed is invalid')
+    return Object.freeze({ rifle: parseAimProfile(rifle), shotgun: parseAimProfile(shotgun), serverSeed: seed as number })
+}
+
+export type ValidatedGameConfiguration = MovementTuning & { readonly aiming: AimProfiles }
+
+export async function validateConfiguration(configuration: Configuration, welcome: Welcome): Promise<ValidatedGameConfiguration> {
     if (configuration.protocolVersion !== welcome.protocolVersion || configuration.serverBuildId !== welcome.serverBuildId || !sameMap(configuration.map, welcome.map) || configuration.configurationHash !== welcome.configurationHash) throw new Error('Configuration metadata does not match Welcome')
     const actualHash = await sha256Identifier(configuration.configurationJson)
     if (actualHash !== configuration.configurationHash) throw new Error('Configuration SHA-256 verification failed')
-    return parseMovementTuning(configuration.configurationJson)
+    return Object.freeze({ ...parseMovementTuning(configuration.configurationJson), aiming: parseAimProfiles(configuration.configurationJson) })
 }

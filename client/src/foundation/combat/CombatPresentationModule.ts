@@ -7,7 +7,7 @@ import type { Mesh } from '@babylonjs/core/Meshes/mesh.js'
 import { PointLight } from '@babylonjs/core/Lights/pointLight.js'
 import { ImpactMaterial, Weapon, type Vec3 } from '../../protocol/generated'
 import type { ClientModule, ClientModuleContext, FrameUpdate } from '../lifecycle'
-import { AUDIO, CAMERA, CAMERA_RIG, COMBAT_PRESENTATION, ENTITY_VIEWS, HUD, NETWORKING, PHYSICS, SCENE, SIMULATION_AIM } from '../services'
+import { AIMING, AUDIO, CAMERA, CAMERA_RIG, COMBAT_PRESENTATION, ENTITY_VIEWS, HUD, NETWORKING, PHYSICS, SCENE, SIMULATION_AIM } from '../services'
 import { BoundedEffectFamily, DecalBudget, type EffectSlot } from './BoundedEffects'
 import { sampleTracerMotion, tracerTravelDurationMs, TRACER_FADE_MS } from './TracerMotion'
 import { ViewmodelController } from './ViewmodelController'
@@ -118,13 +118,14 @@ export class CombatPresentationModule implements ClientModule {
             this.shotTracers.clear()
             this.scheduledImpacts.length = 0
         }
-        this.viewmodel.update(local.weapon, local.dead, local.reloading, Math.hypot(physics.velocity.x, physics.velocity.z), physics.grounded, now, frame.deltaSeconds, physics.movementState)
+        const aiming = this.context.services.get(AIMING).snapshot
+        this.viewmodel.update(local.weapon, local.dead, local.reloading, Math.hypot(physics.velocity.x, physics.velocity.z), physics.grounded, now, frame.deltaSeconds, physics.movementState, aiming.aimProgress)
         networking.combat.forEachEventAfter(this.eventCursor, (event) => {
             this.eventCursor = event.id
             switch (event.kind) {
                 case 'local-fire': {
                     this.viewmodel?.fire(now)
-                    this.context?.services.get(CAMERA_RIG).addRecoil(event.weapon === Weapon.Shotgun ? .065 : .035, (event.actionId & 1 ? 1 : -1) * .004)
+                    this.context?.services.get(CAMERA_RIG).addRecoil(event.weapon === Weapon.Shotgun ? .012 : .006, (event.actionId & 1 ? 1 : -1) * .0015)
                     const muzzle = this.viewmodel?.muzzlePosition() ?? this.context?.services.get(CAMERA).globalPosition
                     const direction = this.context?.services.get(SIMULATION_AIM).direction()
                     if (!muzzle || !direction) break

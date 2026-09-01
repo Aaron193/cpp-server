@@ -9,6 +9,7 @@ export interface CameraRigInput {
     readonly simulationYaw: number
     readonly simulationPitch: number
     readonly movementTilt?: number
+    readonly aimProgress?: number
 }
 export interface CameraRigPose { readonly position: Vec3; readonly yaw: number; readonly pitch: number; readonly roll: number; readonly fov: number }
 
@@ -59,7 +60,7 @@ export class CameraRigController {
         this.currentFov += (this.targetFov - this.currentFov) * (1 - Math.exp(-safeDt * 9))
         this.currentEyeHeight ??= input.eyeHeight
         this.currentEyeHeight += (input.eyeHeight - this.currentEyeHeight) * (1 - Math.exp(-safeDt * 12))
-        const bobWeight = input.grounded ? Math.min(1, horizontalSpeed / 3.4) : 0
+        const bobWeight = (input.grounded ? Math.min(1, horizontalSpeed / 3.4) : 0) * (1 - .82 * (input.aimProgress ?? 0))
         const bobY = Math.abs(Math.sin(this.bobPhase)) * .024 * bobWeight
         const bobX = Math.cos(this.bobPhase * .5) * .015 * bobWeight
         return {

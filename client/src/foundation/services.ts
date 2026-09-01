@@ -18,6 +18,7 @@ import type { PostProcessingModule } from './rendering/PostProcessingModule'
 import type { CameraRigController } from './camera/CameraRig'
 import type { SimulationAim } from './camera/SimulationAim'
 import type { KillcamModule } from './replay/KillcamModule'
+import type { AimingModule } from './aiming/AimingModule'
 import { createServiceToken } from './lifecycle'
 
 export const ENGINE = createServiceToken<AbstractEngine>('rendering.engine')
@@ -42,3 +43,4 @@ export const ENTITY_VIEWS =
 export const COMBAT_PRESENTATION = createServiceToken<CombatPresentationModule>('combat.presentation')
 export const PERFORMANCE = createServiceToken<PerformanceModule>('performance')
 export const KILLCAM = createServiceToken<KillcamModule>('presentation.killcam')
+export const AIMING = createServiceToken<AimingModule>('gameplay.aiming')

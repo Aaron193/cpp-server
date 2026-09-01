@@ -29,6 +29,7 @@ export interface ActorPose {
     readonly hitWeight: number
     readonly respawnWeight: number
     readonly reloadWeight: number
+    readonly adsWeight: number
     readonly wallTuckWeight: number
 }
 
@@ -86,6 +87,7 @@ export function evaluateActorPose(
         hitWeight: oneShotWeight(nowMs, oneShots.hit ?? -Infinity, 260),
         respawnWeight: oneShotWeight(nowMs, oneShots.respawn ?? -Infinity, 520),
         reloadWeight: (entity.stateFlags & 4) !== 0 ? 1 : 0,
+        adsWeight: (entity.stateFlags & 2) !== 0 ? 1 : 0,
         wallTuckWeight: Math.max(0, Math.min(1, wallTuckWeight)),
     }
 }

@@ -1,4 +1,4 @@
-import { MovementMode, Stance, type MovementState, type Vec3 } from '../../protocol/generated'
+import { MovementMode, Stance, Weapon, type MovementState, type Vec3 } from '../../protocol/generated'
 
 export interface MovementTuning {
     readonly capsuleRadius: number
@@ -102,6 +102,10 @@ export interface MovementCommand {
     readonly crouch?: boolean
     readonly prone?: boolean
     readonly dash?: boolean
+    readonly ads?: boolean
+    readonly selectedWeapon?: Weapon
+    readonly aimProgress?: number
+    readonly adsMoveMultiplier?: number
     /** A bounded Jolt probe may attach a valid target to an airborne jump edge. */
     readonly mantleTarget?: Vec3
 }
@@ -232,13 +236,17 @@ export function stepMovementState(
         else if (state.stance === Stance.Crouched && canAdopt(Stance.Standing)) state.stance = Stance.Standing
     }
     if (command.jump && context.grounded && state.stance !== Stance.Prone) { jump = true; state.mode = MovementMode.Normal }
-    const sprint = tuning.sprintEnabled && !jump && state.stance === Stance.Standing && context.grounded && command.sprint && input.forward > .1
+    const sprint = tuning.sprintEnabled && !jump && state.stance === Stance.Standing && context.grounded && command.sprint && !command.ads && input.forward > .1
     if (sprint) state.mode = MovementMode.Sprinting
     else if (state.mode === MovementMode.Sprinting) { state.mode = MovementMode.Normal; state.weaponLockRemaining = Math.max(state.weaponLockRemaining, tuning.sprintToFireDelay) }
 
-    const speed = state.stance === Stance.Prone ? tuning.proneSpeed : state.stance === Stance.Crouched ? tuning.crouchSpeed : state.mode === MovementMode.Sprinting ? tuning.sprintSpeed : tuning.groundSpeed
+    let speed = state.stance === Stance.Prone ? tuning.proneSpeed : state.stance === Stance.Crouched ? tuning.crouchSpeed : state.mode === MovementMode.Sprinting ? tuning.sprintSpeed : tuning.groundSpeed
+    if (state.mode !== MovementMode.Sprinting && command.selectedWeapon !== Weapon.None)
+        speed *= mix(1, command.adsMoveMultiplier ?? 1, command.aimProgress ?? 0)
     return { state, desiredHorizontal: { x: input.x * speed, y: 0, z: input.z * speed }, jump }
 }
+
+const mix = (first: number, second: number, amount: number): number => first + (second - first) * Math.max(0, Math.min(1, amount))
 
 export function eyeHeightForStance(stance: Stance, tuning: MovementTuning = DEFAULT_MOVEMENT_TUNING): number {
     return stance === Stance.Prone ? tuning.proneEyeHeight : stance === Stance.Crouched ? tuning.crouchEyeHeight : tuning.eyeHeight

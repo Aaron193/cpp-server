@@ -12,7 +12,16 @@
       "spread": 0.0,
       "pellets": 1,
       "barrelLength": 0.7,
-      "automatic": true
+      "automatic": true,
+      "aim": {
+        "aimInSeconds": 0.165, "aimOutSeconds": 0.13, "adsFovRadians": 1.0471975512, "adsMoveMultiplier": 0.78,
+        "hipSpreadRadians": 0.012, "adsSpreadRadians": 0.0025, "hipMoveSpreadRadians": 0.014, "adsMoveSpreadRadians": 0.005,
+        "airborneSpreadRadians": 0.035, "crouchMultiplier": 0.8, "proneMultiplier": 0.65,
+        "bloomPerShotRadians": 0.0022, "bloomMaxRadians": 0.018, "bloomDelaySeconds": 0.08, "bloomRecoveryRadiansPerSecond": 0.035,
+        "recoilResetSeconds": 0.35, "recoilRecoveryDelaySeconds": 0.08, "recoilRecoveryRate": 9.0, "adsRecoilMultiplier": 0.82,
+        "recoilPitchDegrees": [0.68, 0.75, 0.82, 0.9, 0.98, 1.06, 1.12, 1.15], "recoilYawDegrees": [-0.1, 0.08, -0.14, 0.16, -0.18, 0.2, -0.14, 0.1],
+        "recoilVariationPitchDegrees": 0.02, "recoilVariationYawDegrees": 0.035, "reticleArmLengthPx": 6.0, "reticleMinGapPx": 4.0
+      }
     },
     "shotgun": {
       "fireMode": "hitscan",
@@ -26,7 +35,16 @@
       "spread": 0.0,
       "pellets": 1,
       "barrelLength": 0.65,
-      "automatic": false
+      "automatic": false,
+      "aim": {
+        "aimInSeconds": 0.22, "aimOutSeconds": 0.17, "adsFovRadians": 1.1868238914, "adsMoveMultiplier": 0.86,
+        "hipSpreadRadians": 0.055, "adsSpreadRadians": 0.045, "hipMoveSpreadRadians": 0.012, "adsMoveSpreadRadians": 0.007,
+        "airborneSpreadRadians": 0.025, "crouchMultiplier": 0.85, "proneMultiplier": 0.75,
+        "bloomPerShotRadians": 0.008, "bloomMaxRadians": 0.016, "bloomDelaySeconds": 0.18, "bloomRecoveryRadiansPerSecond": 0.04,
+        "recoilResetSeconds": 0.35, "recoilRecoveryDelaySeconds": 0.12, "recoilRecoveryRate": 7.0, "adsRecoilMultiplier": 0.88,
+        "recoilPitchDegrees": [3.2], "recoilYawDegrees": [0.0], "recoilVariationPitchDegrees": 0.0, "recoilVariationYawDegrees": 0.3,
+        "reticleArmLengthPx": 8.0, "reticleMinGapPx": 8.0
+      }
     }
   },
   "movement": {

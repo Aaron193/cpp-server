@@ -2,10 +2,18 @@ import { describe, expect, it } from 'vitest'
 import { ChatChannel, ImpactMaterial, MatchPhase, MovementMode, RoundTransitionKind, Stance, Weapon, type LocalAuthoritativeState } from '../src/protocol/generated'
 import { CombatPresentationState, alignClientTick } from '../src/foundation/combat/CombatState'
 
-const local = (health: number, ammo = 10): LocalAuthoritativeState => ({ handle: { slot: 7, generation: 0 }, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, health, movementState: { stance: Stance.Standing, mode: MovementMode.Normal, modeTimeRemaining: 0, dashCooldownRemaining: 0, slideCooldownRemaining: 0, weaponLockRemaining: 0, stanceExpansionPending: false, dashDirection: { x: 0, y: 0, z: -1 }, mantleStart: { x: 0, y: 0, z: 0 }, mantleTarget: { x: 0, y: 0, z: 0 } }, weaponState: { selected: Weapon.Shotgun, magazineAmmo: ammo, reserveAmmo: 20, stateFlags: 1 } })
+const local = (health: number, ammo = 10): LocalAuthoritativeState => ({ handle: { slot: 7, generation: 0 }, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, bodyYaw: 0, aimPitch: 0, grounded: true, stateFlags: 0, health, movementState: { stance: Stance.Standing, mode: MovementMode.Normal, modeTimeRemaining: 0, dashCooldownRemaining: 0, slideCooldownRemaining: 0, weaponLockRemaining: 0, stanceExpansionPending: false, dashDirection: { x: 0, y: 0, z: -1 }, mantleStart: { x: 0, y: 0, z: 0 }, mantleTarget: { x: 0, y: 0, z: 0 } }, weaponState: { selected: Weapon.Shotgun, magazineAmmo: ammo, reserveAmmo: 20, stateFlags: 1, aimProgress: 0, spreadRadians: .055, recoilPitch: 0, recoilYaw: 0, recoilSequence: 0 } })
 const match = { phase: MatchPhase.Active, roundNumber: 2, phaseEndsAtTick: 700 }
 
 describe('authoritative combat presentation model', () => {
+    it('supports local weapon and fire presentation in offline practice', () => {
+        const state = new CombatPresentationState(); state.initializeOffline()
+        expect(state.localPlayer).toMatchObject({ weapon: Weapon.Rifle, magazineAmmo: 30, health: 100 })
+        expect(state.offlineFire(7, 1, Weapon.Rifle, 100)).toBe(true)
+        expect(state.localPlayer.magazineAmmo).toBe(29)
+        expect(state.eventsAfter(0)).toContainEqual(expect.objectContaining({ kind: 'local-fire', actionId: 7 }))
+        expect(state.pendingActionCount).toBe(0)
+    })
     it('updates local HUD values only from authoritative snapshots', () => {
         const state = new CombatPresentationState(); state.setPlayerId(7); state.acceptAuthoritative(local(83, 4), match)
         expect(state.localPlayer).toMatchObject({ health: 83, weapon: Weapon.Shotgun, magazineAmmo: 4, reserveAmmo: 20, reloading: true })

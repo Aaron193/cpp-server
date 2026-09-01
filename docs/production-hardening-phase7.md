@@ -100,7 +100,7 @@ and minimap privacy. These are software fallback facts, not hardware GPU data.
 
 - Map v1 loaders were removed: every in-repository producer and consumer is v2,
   both packages pass reproducibility/hash gates, and deployment pins map v2.
-- Legacy full `Snapshot` message ID 5 remains in protocol v9. Phase 0 fixture
+- Legacy full `Snapshot` message ID 5 remains in protocol v10. Phase 0 fixture
   lock and prediction reconciliation tests still use it. Remove it only in the
   a future schema after those tests emit `SnapshotDelta`, all golden vectors are
   regenerated in TS/C++, and a release search finds no ID-5 producer/consumer.
@@ -133,7 +133,7 @@ and minimap privacy. These are software fallback facts, not hardware GPU data.
 - Browser: all five Playwright tests passed under headless Chrome/SwiftShader,
   including two-player combat, three DPR/aspect captures, explicit WebGPU
   unavailable UI, stepped UX facts, and the existing render profile.
-- Deployment static/Compose validation passed, including protocol v9, both map
+- Deployment static/Compose validation passed, including protocol v10, both map
   packages, private services, WSS/CSP/cache rules, non-root images, map root,
   and secret seams. The checked local `.env` is intentionally not production
   complete: it lacks `JOIN_TICKET_SECRET`, `CLIENT_ORIGIN`, `SERVER_BUILD_ID`,

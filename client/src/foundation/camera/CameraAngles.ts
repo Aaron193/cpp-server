@@ -21,6 +21,7 @@ export function wrapAngle(angle: number): number {
 export class CameraAngles {
     yaw = 0
     pitch = 0
+    private sensitivityScale = 1
 
     constructor(private readonly options: CameraAngleOptions = DEFAULT_CAMERA_ANGLES) {
         if (!(options.sensitivity > 0) || options.minPitch >= options.maxPitch) throw new TypeError('Invalid camera angle configuration')
@@ -35,8 +36,10 @@ export class CameraAngles {
     applyMouseDelta(movementX: number, movementY: number): void {
         if (!Number.isFinite(movementX) || !Number.isFinite(movementY)) return
         this.set(
-            this.yaw + movementX * this.options.sensitivity,
-            this.pitch - movementY * this.options.sensitivity
+            this.yaw + movementX * this.options.sensitivity * this.sensitivityScale,
+            this.pitch - movementY * this.options.sensitivity * this.sensitivityScale
         )
     }
+    setSensitivityScale(scale: number): void { if (Number.isFinite(scale)) this.sensitivityScale = clamp(scale, .1, 1) }
+    get currentSensitivityScale(): number { return this.sensitivityScale }
 }

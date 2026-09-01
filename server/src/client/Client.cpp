@@ -19,7 +19,8 @@ constexpr std::uint16_t kSprint = 1U << 3U;
 constexpr std::uint16_t kCrouch = 1U << 4U;
 constexpr std::uint16_t kProne = 1U << 5U;
 constexpr std::uint16_t kDash = 1U << 6U;
-constexpr std::uint16_t kKnownButtons = kJump | kFire | kReload | kSprint | kCrouch | kProne | kDash;
+constexpr std::uint16_t kAds = 1U << 7U;
+constexpr std::uint16_t kKnownButtons = kJump | kFire | kReload | kSprint | kCrouch | kProne | kDash | kAds;
 constexpr std::size_t kMaxPendingInputs = 128U;
 // 20% burst headroom prevents legitimate 60 Hz timer jitter from grazing a
 // rolling one-second boundary. Command rate and pending backlog stay bounded.
@@ -389,6 +390,7 @@ void Client::handleInputBatch(const protocol::InputBatch& batch, double now) {
         input.crouchHeld = (command.buttonFlags & kCrouch) != 0U;
         input.pronePressed = (command.buttonFlags & kProne) != 0U;
         input.dashPressed = (command.buttonFlags & kDash) != 0U;
+        input.adsHeld = (command.buttonFlags & kAds) != 0U;
         input.fireActionId = command.fireActionId;
         input.reloadActionId = command.reloadActionId;
         input.clientTick = command.clientTick;
