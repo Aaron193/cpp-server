@@ -95,6 +95,21 @@ TEST_CASE(crouch_presses_lower_stance_and_sprint_returns_to_standing) {
     EXPECT_EQ(registry.get<Components::MovementState>(player).stance,
               protocol::Stance::Prone);
 
+    server.queueValidatedInput(player, input);
+    server.simulateOneTick();
+    EXPECT_EQ(registry.get<Components::MovementState>(player).stance,
+              protocol::Stance::Standing);
+
+    server.queueValidatedInput(player, input);
+    server.simulateOneTick();
+    EXPECT_EQ(registry.get<Components::MovementState>(player).stance,
+              protocol::Stance::Crouched);
+
+    server.queueValidatedInput(player, input);
+    server.simulateOneTick();
+    EXPECT_EQ(registry.get<Components::MovementState>(player).stance,
+              protocol::Stance::Prone);
+
     input.crouchPressed = false;
     input.sprintHeld = true;
     server.queueValidatedInput(player, input);

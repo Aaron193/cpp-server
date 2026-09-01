@@ -410,11 +410,16 @@ void GameServer::updateCharacterMotors(float delta) {
             }
         } else if (input.crouchPressed) {
             if (movement.stance == protocol::Stance::Standing && tuning.crouchEnabled) {
-                if (stance(protocol::Stance::Crouched)) movement.stanceExpansionPending = false;
+                if (stance(protocol::Stance::Crouched)) {
+                    movement.stanceExpansionPending = false;
+                }
             } else if (movement.stance == protocol::Stance::Crouched && tuning.proneEnabled) {
                 if (stance(protocol::Stance::Prone)) ++combatMetrics_.proneActivations;
                 movement.stanceExpansionPending = false;
                 movement.mode = protocol::MovementMode::Normal;
+            } else if (movement.stance == protocol::Stance::Prone) {
+                if (stance(protocol::Stance::Standing)) movement.stanceExpansionPending = false;
+                else movement.stanceExpansionPending = true;
             }
         }
         const bool jump = input.jump && physical.grounded && movement.stance != protocol::Stance::Prone;

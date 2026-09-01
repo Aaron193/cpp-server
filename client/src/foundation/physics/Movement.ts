@@ -241,7 +241,11 @@ export function stepMovementState(
         if (state.stance === Stance.Standing && tuning.crouchEnabled) {
             state.stance = Stance.Crouched; state.stanceExpansionPending = false
         } else if (state.stance === Stance.Crouched && tuning.proneEnabled) {
-            state.stance = Stance.Prone; state.stanceExpansionPending = false; state.mode = MovementMode.Normal
+            state.stance = Stance.Prone; state.stanceExpansionPending = false
+            state.mode = MovementMode.Normal
+        } else if (state.stance === Stance.Prone) {
+            if (canAdopt(Stance.Standing)) { state.stance = Stance.Standing; state.stanceExpansionPending = false }
+            else state.stanceExpansionPending = true
         }
     }
     if (command.jump && context.grounded && state.stance !== Stance.Prone) { jump = true; state.mode = MovementMode.Normal }

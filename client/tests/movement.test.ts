@@ -71,13 +71,19 @@ describe('fixed-step local movement motor', () => {
         expect(Math.hypot(result.desiredHorizontal.x, result.desiredHorizontal.z)).toBeCloseTo(5.5 * .89)
     })
 
-    it('lowers stance on successive C presses and stands on sprint intent', () => {
+    it('cycles stance on C presses and stands on sprint intent', () => {
         const context = { grounded: true, position: { x: 0, y: 0, z: 0 }, horizontalSpeed: 0 }
         const idle = { forward: 0, right: 0, jump: false, yaw: 0 }
         let state = stepMovementState(createMovementState(), { ...idle, crouch: true }, context, 1 / 60).state
         expect(state.stance).toBe(Stance.Crouched)
         state = stepMovementState(state, idle, context, 1 / 60).state
         expect(state.stance).toBe(Stance.Crouched)
+        state = stepMovementState(state, { ...idle, crouch: true }, context, 1 / 60).state
+        expect(state.stance).toBe(Stance.Prone)
+        state = stepMovementState(state, idle, context, 1 / 60).state
+        state = stepMovementState(state, { ...idle, crouch: true }, context, 1 / 60).state
+        expect(state.stance).toBe(Stance.Standing)
+        state = stepMovementState(state, { ...idle, crouch: true }, context, 1 / 60).state
         state = stepMovementState(state, { ...idle, crouch: true }, context, 1 / 60).state
         expect(state.stance).toBe(Stance.Prone)
         state = stepMovementState(state, { ...idle, sprint: true }, context, 1 / 60).state
