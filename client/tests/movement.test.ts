@@ -71,14 +71,28 @@ describe('fixed-step local movement motor', () => {
         expect(Math.hypot(result.desiredHorizontal.x, result.desiredHorizontal.z)).toBeCloseTo(5.5 * .89)
     })
 
-    it('retries blocked expansion and preserves prone until standing clearance exists', () => {
+    it('lowers stance on successive C presses and stands on sprint intent', () => {
+        const context = { grounded: true, position: { x: 0, y: 0, z: 0 }, horizontalSpeed: 0 }
+        const idle = { forward: 0, right: 0, jump: false, yaw: 0 }
+        let state = stepMovementState(createMovementState(), { ...idle, crouch: true }, context, 1 / 60).state
+        expect(state.stance).toBe(Stance.Crouched)
+        state = stepMovementState(state, idle, context, 1 / 60).state
+        expect(state.stance).toBe(Stance.Crouched)
+        state = stepMovementState(state, { ...idle, crouch: true }, context, 1 / 60).state
+        expect(state.stance).toBe(Stance.Prone)
+        state = stepMovementState(state, { ...idle, sprint: true }, context, 1 / 60).state
+        expect(state.stance).toBe(Stance.Standing)
+    })
+
+    it('retries a sprint-requested expansion until standing clearance exists', () => {
         let clear = false
-        let state = stepMovementState(createMovementState(), { forward: 0, right: 0, jump: false, yaw: 0, prone: true }, { grounded: true, position: { x: 0, y: 0, z: 0 }, horizontalSpeed: 0 }, 1 / 60).state
+        const context = { grounded: true, position: { x: 0, y: 0, z: 0 }, horizontalSpeed: 0, canAdoptStance: () => clear }
+        let state = { ...createMovementState(), stance: Stance.Prone }
+        state = stepMovementState(state, { forward: 0, right: 0, jump: false, yaw: 0, sprint: true }, context, 1 / 60).state
         expect(state.stance).toBe(Stance.Prone)
-        state = stepMovementState(state, { forward: 0, right: 0, jump: false, yaw: 0, prone: true }, { grounded: true, position: { x: 0, y: 0, z: 0 }, horizontalSpeed: 0, canAdoptStance: () => clear }, 1 / 60).state
-        expect(state.stance).toBe(Stance.Prone)
+        expect(state.stanceExpansionPending).toBe(true)
         clear = true
-        state = stepMovementState(state, { forward: 0, right: 0, jump: false, yaw: 0, prone: false }, { grounded: true, position: { x: 0, y: 0, z: 0 }, horizontalSpeed: 0, canAdoptStance: () => clear }, 1 / 60).state
+        state = stepMovementState(state, { forward: 0, right: 0, jump: false, yaw: 0 }, context, 1 / 60).state
         expect(state.stance).toBe(Stance.Standing)
     })
 
@@ -98,7 +112,7 @@ describe('fixed-step local movement motor', () => {
         expect(jumped.state.mode).toBe(MovementMode.Normal)
         expect(jumped.jump).toBe(true)
 
-        const expired = stepMovementState({ ...sliding, modeTimeRemaining: dt / 2 }, { forward: 0, right: 0, jump: false, yaw: 0, crouch: true }, { grounded: true, position, horizontalSpeed: 3.1 }, dt)
+        const expired = stepMovementState({ ...sliding, modeTimeRemaining: dt / 2 }, { forward: 0, right: 0, jump: false, yaw: 0 }, { grounded: true, position, horizontalSpeed: 3.1 }, dt)
         expect(expired.state).toMatchObject({ mode: MovementMode.Normal, stance: Stance.Crouched })
         const airborne = stepMovementState(createMovementState(), { forward: 1, right: 0, jump: false, yaw: 0, sprint: true, dash: true }, { grounded: false, position, horizontalSpeed: 5.5 }, dt)
         expect(airborne.state.mode).toBe(MovementMode.Normal)

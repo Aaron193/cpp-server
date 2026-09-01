@@ -263,7 +263,7 @@ void GameServer::updateCharacterMotors(float delta) {
             m_physicsWorld.setCharacterVelocity(controller.adapterId,
                                                 {0.0F, 0.0F, 0.0F});
             input.jump = false;
-            input.pronePressed = input.dashPressed = false;
+            input.crouchPressed = input.pronePressed = input.dashPressed = false;
             movement = Components::MovementState{};
             continue;
         }
@@ -271,7 +271,7 @@ void GameServer::updateCharacterMotors(float delta) {
             m_physicsWorld.setCharacterVelocity(controller.adapterId,
                                                 {0.0F, 0.0F, 0.0F});
             input.jump = false;
-            input.pronePressed = input.dashPressed = false;
+            input.crouchPressed = input.pronePressed = input.dashPressed = false;
             movement.mode = protocol::MovementMode::Normal;
             movement.modeTimeRemaining = 0.0F;
             movement.weaponLockRemaining = 0.0F;
@@ -310,7 +310,7 @@ void GameServer::updateCharacterMotors(float delta) {
                 authored.y += std::sin(progress * 3.14159265359F) * 0.12F;
                 m_physicsWorld.setCharacterPosition(controller.adapterId, authored);
                 m_physicsWorld.setCharacterVelocity(controller.adapterId, {0.0F, 0.0F, 0.0F});
-                input.jump = input.pronePressed = input.dashPressed = false;
+                input.jump = input.crouchPressed = input.pronePressed = input.dashPressed = false;
                 continue;
             }
             movement.mode = protocol::MovementMode::Normal;
@@ -320,7 +320,7 @@ void GameServer::updateCharacterMotors(float delta) {
             if (movement.modeTimeRemaining > 0.0F) {
                 m_physicsWorld.updateCharacter(controller.adapterId, delta,
                     movement.dashDirection * tuning.dashSpeed, false);
-                input.jump = input.pronePressed = input.dashPressed = false;
+                input.jump = input.crouchPressed = input.pronePressed = input.dashPressed = false;
                 continue;
             }
             movement.mode = protocol::MovementMode::Normal;
@@ -339,7 +339,7 @@ void GameServer::updateCharacterMotors(float delta) {
                     movement.dashDirection = {std::sin(currentYaw + steer), 0.0F, -std::cos(currentYaw + steer)};
                 }
                 m_physicsWorld.updateCharacter(controller.adapterId, delta, movement.dashDirection * speed, false);
-                input.jump = input.pronePressed = input.dashPressed = false;
+                input.jump = input.crouchPressed = input.pronePressed = input.dashPressed = false;
                 continue;
             } else movement.mode = protocol::MovementMode::Normal;
         }
@@ -357,7 +357,7 @@ void GameServer::updateCharacterMotors(float delta) {
                 movement.mantleStart = physical.position;
                 movement.mantleTarget = *target;
                 m_physicsWorld.setCharacterVelocity(controller.adapterId, {0.0F, 0.0F, 0.0F});
-                input.jump = input.pronePressed = input.dashPressed = false;
+                input.jump = input.crouchPressed = input.pronePressed = input.dashPressed = false;
                 continue;
             }
             ++combatMetrics_.mantleFailures;
@@ -373,15 +373,15 @@ void GameServer::updateCharacterMotors(float delta) {
             movement.weaponLockRemaining = tuning.dashDuration;
             ++combatMetrics_.dashActivations;
             m_physicsWorld.updateCharacter(controller.adapterId, delta, movement.dashDirection * tuning.dashSpeed, false);
-            input.jump = input.pronePressed = input.dashPressed = false;
+            input.jump = input.crouchPressed = input.pronePressed = input.dashPressed = false;
             continue;
         }
         const float horizontalSpeed = std::hypot(physical.velocity.x, physical.velocity.z);
-        if (input.crouchHeld && physical.grounded &&
+        if (input.crouchPressed && physical.grounded &&
             movement.mode == protocol::MovementMode::Sprinting &&
             horizontalSpeed >= tuning.groundSpeed && movement.slideCooldownRemaining > 0.0F)
             ++combatMetrics_.cooldownRejections;
-        if (tuning.slideEnabled && input.crouchHeld && physical.grounded &&
+        if (tuning.slideEnabled && input.crouchPressed && physical.grounded &&
             movement.slideCooldownRemaining <= 0.0F &&
             movement.mode == protocol::MovementMode::Sprinting && horizontalSpeed >= tuning.groundSpeed) {
             stance(protocol::Stance::Crouched);
@@ -391,12 +391,15 @@ void GameServer::updateCharacterMotors(float delta) {
             movement.slideCooldownRemaining = tuning.slideCooldown;
             ++combatMetrics_.slideActivations;
             m_physicsWorld.updateCharacter(controller.adapterId, delta, movement.dashDirection * tuning.slideStartSpeed, false);
-            input.jump = input.pronePressed = input.dashPressed = false;
+            input.jump = input.crouchPressed = input.pronePressed = input.dashPressed = false;
             continue;
         }
-        if (movement.stance == protocol::Stance::Prone && movement.stanceExpansionPending &&
+        if (movement.stance != protocol::Stance::Standing && movement.stanceExpansionPending &&
             stance(protocol::Stance::Standing)) movement.stanceExpansionPending = false;
-        if (tuning.proneEnabled && input.pronePressed) {
+        if (input.sprintHeld && movement.stance != protocol::Stance::Standing) {
+            if (stance(protocol::Stance::Standing)) movement.stanceExpansionPending = false;
+            else movement.stanceExpansionPending = true;
+        } else if (tuning.proneEnabled && input.pronePressed) {
             if (movement.stance == protocol::Stance::Prone) {
                 if (stance(protocol::Stance::Standing)) movement.stanceExpansionPending = false;
                 else movement.stanceExpansionPending = true;
@@ -405,9 +408,14 @@ void GameServer::updateCharacterMotors(float delta) {
                 movement.stanceExpansionPending = false;
                 movement.mode = protocol::MovementMode::Normal;
             }
-        } else if (movement.stance != protocol::Stance::Prone && tuning.crouchEnabled) {
-            if (input.crouchHeld) stance(protocol::Stance::Crouched);
-            else if (movement.stance == protocol::Stance::Crouched) stance(protocol::Stance::Standing);
+        } else if (input.crouchPressed) {
+            if (movement.stance == protocol::Stance::Standing && tuning.crouchEnabled) {
+                if (stance(protocol::Stance::Crouched)) movement.stanceExpansionPending = false;
+            } else if (movement.stance == protocol::Stance::Crouched && tuning.proneEnabled) {
+                if (stance(protocol::Stance::Prone)) ++combatMetrics_.proneActivations;
+                movement.stanceExpansionPending = false;
+                movement.mode = protocol::MovementMode::Normal;
+            }
         }
         const bool jump = input.jump && physical.grounded && movement.stance != protocol::Stance::Prone;
         const bool sprint = tuning.sprintEnabled && !jump && movement.stance == protocol::Stance::Standing &&
@@ -436,6 +444,7 @@ void GameServer::updateCharacterMotors(float delta) {
         m_physicsWorld.updateCharacter(controller.adapterId, delta, desired,
                                        jump);
         input.jump = false;
+        input.crouchPressed = false;
         input.pronePressed = false;
         input.dashPressed = false;
     }

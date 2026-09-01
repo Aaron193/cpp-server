@@ -73,11 +73,15 @@ describe('offline gameplay input gating', () => {
         expect(state.aiming).toBe(false)
     })
 
-    it('holds sprint/crouch and consumes prone/dash edges once', () => {
+    it('holds sprint and consumes C stance/dash edges once', () => {
         const state = new InputState()
-        for (const code of ['ShiftLeft', 'ControlLeft', 'KeyZ', 'KeyQ']) state.keyDown(code, true)
-        expect(state.snapshot(true)).toMatchObject({ sprint: true, crouch: true, prone: true, dash: true })
-        expect(state.snapshot(true)).toMatchObject({ sprint: true, crouch: true, prone: false, dash: false })
+        for (const code of ['ShiftLeft', 'KeyC', 'KeyQ']) state.keyDown(code, true)
+        expect(state.snapshot(true)).toMatchObject({ sprint: true, crouch: true, prone: false, dash: true })
+        expect(state.snapshot(true)).toMatchObject({ sprint: true, crouch: false, prone: false, dash: false })
+        expect(state.keyDown('KeyC', true, true)).toBe(true)
+        expect(state.snapshot(true).crouch).toBe(false)
+        expect(state.keyDown('ControlLeft', true)).toBe(false)
+        expect(state.keyDown('KeyZ', true)).toBe(false)
     })
 
     it('tracks RMB + LMB chords without treating button transitions as camera movement', () => {

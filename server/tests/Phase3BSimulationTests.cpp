@@ -78,6 +78,31 @@ TEST_CASE(player_input_moves_in_yaw_relative_xz_space) {
     EXPECT_TRUE(velocity.x < server.m_gameConfig.movement.groundSpeed);
 }
 
+TEST_CASE(crouch_presses_lower_stance_and_sprint_returns_to_standing) {
+    GameServer server;
+    const auto player = server.m_entityManager.createPlayer();
+    auto& registry = server.m_entityManager.getRegistry();
+
+    Components::PlayerInput input;
+    input.crouchPressed = true;
+    server.queueValidatedInput(player, input);
+    server.simulateOneTick();
+    EXPECT_EQ(registry.get<Components::MovementState>(player).stance,
+              protocol::Stance::Crouched);
+
+    server.queueValidatedInput(player, input);
+    server.simulateOneTick();
+    EXPECT_EQ(registry.get<Components::MovementState>(player).stance,
+              protocol::Stance::Prone);
+
+    input.crouchPressed = false;
+    input.sprintHeld = true;
+    server.queueValidatedInput(player, input);
+    server.simulateOneTick();
+    EXPECT_EQ(registry.get<Components::MovementState>(player).stance,
+              protocol::Stance::Standing);
+}
+
 TEST_CASE(player_spawns_with_two_weapon_slots_and_reserve_ammo) {
     GameServer server;
     const auto player = server.m_entityManager.createPlayer();

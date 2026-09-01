@@ -387,7 +387,7 @@ void Client::handleInputBatch(const protocol::InputBatch& batch, double now) {
         input.dirtyClick = input.mouseIsDown;
         input.reloadRequested = (command.buttonFlags & kReload) != 0U;
         input.sprintHeld = (command.buttonFlags & kSprint) != 0U;
-        input.crouchHeld = (command.buttonFlags & kCrouch) != 0U;
+        input.crouchPressed = (command.buttonFlags & kCrouch) != 0U;
         input.pronePressed = (command.buttonFlags & kProne) != 0U;
         input.dashPressed = (command.buttonFlags & kDash) != 0U;
         input.adsHeld = (command.buttonFlags & kAds) != 0U;

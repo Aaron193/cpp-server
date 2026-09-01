@@ -222,18 +222,27 @@ export function stepMovementState(
         return { state, desiredHorizontal: { x: state.dashDirection.x * tuning.slideStartSpeed, y: 0, z: state.dashDirection.z * tuning.slideStartSpeed }, jump: false }
     }
 
-    if (state.stance === Stance.Prone && state.stanceExpansionPending && canAdopt(Stance.Standing)) {
+    if (state.stance !== Stance.Standing && state.stanceExpansionPending && canAdopt(Stance.Standing)) {
         state.stance = Stance.Standing; state.stanceExpansionPending = false
     }
-    if (tuning.proneEnabled && command.prone) {
+    // Sprint intent has stance priority even when there is not enough forward
+    // input to enter the actual sprinting movement mode.
+    if (command.sprint && state.stance !== Stance.Standing) {
+        if (canAdopt(Stance.Standing)) { state.stance = Stance.Standing; state.stanceExpansionPending = false }
+        else state.stanceExpansionPending = true
+    } else if (tuning.proneEnabled && command.prone) {
+        // Retain the protocol's legacy direct-prone action for old command traces.
         if (state.stance === Stance.Prone) {
             if (canAdopt(Stance.Standing)) { state.stance = Stance.Standing; state.stanceExpansionPending = false }
             else state.stanceExpansionPending = true
         }
         else { state.stance = Stance.Prone; state.stanceExpansionPending = false; state.mode = MovementMode.Normal }
-    } else if (state.stance !== Stance.Prone && tuning.crouchEnabled) {
-        if (command.crouch) state.stance = Stance.Crouched
-        else if (state.stance === Stance.Crouched && canAdopt(Stance.Standing)) state.stance = Stance.Standing
+    } else if (command.crouch) {
+        if (state.stance === Stance.Standing && tuning.crouchEnabled) {
+            state.stance = Stance.Crouched; state.stanceExpansionPending = false
+        } else if (state.stance === Stance.Crouched && tuning.proneEnabled) {
+            state.stance = Stance.Prone; state.stanceExpansionPending = false; state.mode = MovementMode.Normal
+        }
     }
     if (command.jump && context.grounded && state.stance !== Stance.Prone) { jump = true; state.mode = MovementMode.Normal }
     const sprint = tuning.sprintEnabled && !jump && state.stance === Stance.Standing && context.grounded && command.sprint && !command.ads && input.forward > .1

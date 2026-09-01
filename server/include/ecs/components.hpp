@@ -69,7 +69,7 @@ struct PlayerInput {
     bool dirtyClick = false;
     bool reloadRequested = false;
     bool sprintHeld = false;
-    bool crouchHeld = false;
+    bool crouchPressed = false;
     bool pronePressed = false;
     bool dashPressed = false;
     bool adsHeld = false;
