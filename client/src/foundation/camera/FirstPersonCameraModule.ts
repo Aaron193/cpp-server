@@ -44,12 +44,13 @@ export class FirstPersonCameraModule implements ClientModule {
         const movementFov = movement.mode === MovementMode.Sprinting ? .075 : movement.mode === MovementMode.Dashing ? .11 : movement.mode === MovementMode.Sliding ? .035 : 0
         this.rig.setFovTarget(aiming.currentFovRadians + movementFov * (1 - aiming.aimProgress))
         const correction = this.context.services.optional(NETWORKING)?.visualCorrection ?? { x: 0, y: 0, z: 0 }
-        const pose = this.rig.update({ predictedFeet: position, correctionResidual: correction, eyeHeight: eyeHeightForStance(movement.stance, physics.tuning), velocity, grounded: physics.grounded, simulationYaw: angles.yaw + aiming.recoilYaw, simulationPitch: angles.pitch + aiming.recoilPitch, movementTilt: movement.mode === MovementMode.Sliding ? .08 : 0, aimProgress: aiming.aimProgress }, frame.deltaSeconds)
+        const pose = this.rig.update({ predictedFeet: position, correctionResidual: correction, eyeHeight: eyeHeightForStance(movement.stance, physics.tuning), velocity, grounded: physics.grounded, simulationYaw: angles.yaw + aiming.recoilYaw, simulationPitch: angles.pitch + aiming.recoilPitch, aimProgress: aiming.aimProgress }, frame.deltaSeconds)
         this.camera.position.copyFromFloats(pose.position.x, pose.position.y, pose.position.z); this.camera.fov = pose.fov
         const cosine = Math.cos(pose.pitch)
         this.target.set(pose.position.x + Math.sin(pose.yaw) * cosine, pose.position.y + Math.sin(pose.pitch), pose.position.z - Math.cos(pose.yaw) * cosine)
         this.camera.setTarget(this.target)
-        this.camera.rotation.z = pose.roll
+        // Player movement and stance transitions must never roll the horizon.
+        this.camera.rotation.z = 0
     }
     dispose(): void {
         this.camera?.dispose(); this.context?.services.remove(CAMERA); this.context?.services.remove(CAMERA_RIG); this.context?.services.remove(SIMULATION_AIM)

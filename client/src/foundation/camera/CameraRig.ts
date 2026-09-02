@@ -8,10 +8,9 @@ export interface CameraRigInput {
     readonly grounded: boolean
     readonly simulationYaw: number
     readonly simulationPitch: number
-    readonly movementTilt?: number
     readonly aimProgress?: number
 }
-export interface CameraRigPose { readonly position: Vec3; readonly yaw: number; readonly pitch: number; readonly roll: number; readonly fov: number }
+export interface CameraRigPose { readonly position: Vec3; readonly yaw: number; readonly pitch: number; readonly fov: number }
 
 /** Render-only feel state. Its output type is deliberately absent from input/protocol code. */
 export class CameraRigController {
@@ -71,7 +70,6 @@ export class CameraRigController {
             },
             yaw: input.simulationYaw + this.damageYaw + this.recoilYaw,
             pitch: input.simulationPitch + this.damagePitch + this.recoilPitch + this.movementPitch,
-            roll: input.movementTilt ?? 0,
             fov: this.currentFov,
         }
     }

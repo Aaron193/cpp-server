@@ -37,7 +37,7 @@ describe('Phase 6 bounded character, camera and UX presentation', () => {
         const aim = new SimulationAim(); aim.set(.4, -.2); const before = aim.direction()
         const rig = new CameraRigController(1.1); rig.addRecoil(.1); rig.addDamage(.5); rig.setFovTarget(.8)
         const pose = rig.update({ predictedFeet: { x: 2, y: 1, z: 3 }, correctionResidual: { x: .1, y: 0, z: -.1 }, eyeHeight: 1.62, velocity: { x: 4, y: 0, z: 0 }, grounded: true, simulationYaw: .4, simulationPitch: -.2 }, 1 / 60)
-        expect(pose.position.x).not.toBe(2); expect(pose.pitch).not.toBe(-.2); expect(aim.direction()).toEqual(before)
+        expect(pose.position.x).not.toBe(2); expect(pose.pitch).not.toBe(-.2); expect(pose).not.toHaveProperty('roll'); expect(aim.direction()).toEqual(before)
         rig.hardReset(); const reset = rig.update({ predictedFeet: { x: 0, y: 0, z: 0 }, correctionResidual: { x: 0, y: 0, z: 0 }, eyeHeight: 1.6, velocity: { x: 0, y: 0, z: 0 }, grounded: true, simulationYaw: 0, simulationPitch: 0 }, 0)
         expect(reset).toMatchObject({ yaw: 0, pitch: 0, fov: 1.1 })
     })

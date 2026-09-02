@@ -13,6 +13,8 @@ import { ACTOR_SOCKET_LOCAL, evaluateActorPose, type ActorOneShot } from './Acto
 
 export type GameplayEntityId = number
 export function serverYawToBabylonVisualYaw(bodyYaw: number): number { return -bodyYaw }
+// Both the protocol and Babylon's right-handed -Z-forward actor rig use positive pitch for looking up.
+export function serverPitchToBabylonVisualPitch(aimPitch: number): number { return aimPitch }
 
 interface ActorRig {
     readonly root: TransformNode
@@ -85,19 +87,20 @@ export class EntityViewsModule implements ClientModule {
         const now = frame.elapsedSeconds * 1000
         for (const actor of this.actors.values()) {
             const pose = evaluateActorPose(actor.record, frame.elapsedSeconds, actor.oneShots, actor.wallTuckWeight, now)
+            const visualAimPitch = serverPitchToBabylonVisualPitch(pose.aimPitch)
             const swing = Math.sin(pose.gaitPhase) * .58 * pose.gaitWeight
             actor.leftLeg.rotation.x = swing; actor.rightLeg.rotation.x = -swing
             actor.leftArm.rotation.x = -swing * .48 - .72 - pose.recoilWeight * .12 - pose.mantleWeight * 1.25 - pose.adsWeight * .16
             actor.rightArm.rotation.x = swing * .48 - .78 - pose.recoilWeight * .18 - pose.mantleWeight * .95 - pose.adsWeight * .2
             actor.leftArm.rotation.z = -.18 - pose.reloadWeight * .55
             actor.rightArm.rotation.z = .18 + pose.reloadWeight * .32
-            actor.torso.rotation.x = -pose.aimPitch * .42 - pose.wallTuckWeight * .25 + pose.slideWeight * .32 + pose.proneWeight * 1.15
+            actor.torso.rotation.x = visualAimPitch * .42 - pose.wallTuckWeight * .25 + pose.slideWeight * .32 + pose.proneWeight * 1.15
             actor.torso.rotation.z = pose.hitWeight * .13 + pose.deadWeight * 1.25 + pose.dashWeight * .12
-            actor.head.rotation.x = -pose.aimPitch * .55
+            actor.head.rotation.x = visualAimPitch * .55
             actor.calibration.position.y = -.34 * pose.crouchWeight - .67 * pose.proneWeight - .12 * pose.slideWeight + .03 * Math.sin(pose.gaitPhase * 2) * pose.gaitWeight
             actor.calibration.scaling.y = 1 - .12 * pose.crouchWeight - .2 * pose.proneWeight
             actor.calibration.scaling.x = actor.calibration.scaling.z = .88 + .12 * pose.respawnWeight
-            actor.weapon.rotation.x = -actor.record.aimPitch - pose.wallTuckWeight * .55
+            actor.weapon.rotation.x = visualAimPitch - pose.wallTuckWeight * .55
             actor.weapon.position.z = pose.wallTuckWeight * .32 + pose.recoilWeight * .08 + pose.mantleWeight * .28 - pose.adsWeight * .06
         }
     }
