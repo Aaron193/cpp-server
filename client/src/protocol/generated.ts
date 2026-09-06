@@ -1,5 +1,5 @@
 // Generated from protocol/schema.json by protocol/generate.mjs. DO NOT EDIT.
-export const PROTOCOL_VERSION = 10 as const
+export const PROTOCOL_VERSION = 11 as const
 
 export const LIMITS = {
     "maxEnvelopeBytes": 61443,
@@ -17,7 +17,9 @@ export const LIMITS = {
     "maxSnapshotEntities": 512,
     "maxSnapshotCreated": 512,
     "maxSnapshotUpdated": 512,
-    "maxSnapshotRemoved": 512
+    "maxSnapshotRemoved": 512,
+    "maxObjectives": 8,
+    "maxTeamMembers": 128
 } as const
 
 export enum MessageType {
@@ -41,6 +43,8 @@ export enum MessageType {
     Pong = 18,
     SnapshotDelta = 19,
     ActionResult = 20,
+    ConquestState = 21,
+    Deploy = 22,
 }
 
 export enum RejectReason {
@@ -254,6 +258,19 @@ export interface EntityRecord {
     readonly equippedWeapon: Weapon
 }
 
+export interface ObjectiveState {
+    readonly id: string
+    readonly owner: number
+    readonly capturing: number
+    readonly progress: number
+    readonly contested: boolean
+}
+
+export interface TeamMember {
+    readonly playerId: number
+    readonly team: number
+}
+
 export interface Hello {
     readonly protocolVersion: number
     readonly clientBuildId: string
@@ -409,6 +426,21 @@ export interface ActionResult {
     readonly authoritativeReserveAmmo: number
 }
 
+export interface ConquestState {
+    readonly serverTick: number
+    readonly westTickets: number
+    readonly eastTickets: number
+    readonly localTeam: number
+    readonly deployReady: boolean
+    readonly objectives: ReadonlyArray<ObjectiveState>
+    readonly roster: ReadonlyArray<TeamMember>
+}
+
+export interface Deploy {
+    readonly spawnId: string
+    readonly weapon: Weapon
+}
+
 export type Message =
     | { readonly type: MessageType.Hello; readonly payload: Hello }
     | { readonly type: MessageType.Welcome; readonly payload: Welcome }
@@ -430,6 +462,8 @@ export type Message =
     | { readonly type: MessageType.Pong; readonly payload: Pong }
     | { readonly type: MessageType.SnapshotDelta; readonly payload: SnapshotDelta }
     | { readonly type: MessageType.ActionResult; readonly payload: ActionResult }
+    | { readonly type: MessageType.ConquestState; readonly payload: ConquestState }
+    | { readonly type: MessageType.Deploy; readonly payload: Deploy }
 
 export type DecodedEnvelope =
     | { readonly known: true; readonly messageType: MessageType; readonly payloadLength: number; readonly message: Message; readonly nextOffset: number }
@@ -823,6 +857,34 @@ function readEntityRecord(reader: Reader): EntityRecord {
     }
 }
 
+function writeObjectiveState(writer: Writer, value: ObjectiveState): void {
+    writer.string(value.id, LIMITS.maxMapIdBytes)
+    writer.u8(value.owner)
+    writer.u8(value.capturing)
+    writer.f32(value.progress)
+    writer.bool(value.contested)
+}
+function readObjectiveState(reader: Reader): ObjectiveState {
+    return {
+        id: reader.string(LIMITS.maxMapIdBytes),
+        owner: reader.u8(),
+        capturing: reader.u8(),
+        progress: reader.f32(),
+        contested: reader.bool(),
+    }
+}
+
+function writeTeamMember(writer: Writer, value: TeamMember): void {
+    writer.u32(value.playerId)
+    writer.u8(value.team)
+}
+function readTeamMember(reader: Reader): TeamMember {
+    return {
+        playerId: reader.u32(),
+        team: reader.u8(),
+    }
+}
+
 function writeHello(writer: Writer, value: Hello): void {
     writer.u16(value.protocolVersion)
     writer.string(value.clientBuildId, LIMITS.maxBuildIdBytes)
@@ -1186,6 +1248,44 @@ function readActionResult(reader: Reader): ActionResult {
     }
 }
 
+function writeConquestState(writer: Writer, value: ConquestState): void {
+    writer.u32(value.serverTick)
+    writer.u16(value.westTickets)
+    writer.u16(value.eastTickets)
+    writer.u8(value.localTeam)
+    writer.bool(value.deployReady)
+    writer.length(value.objectives.length, 0, LIMITS.maxObjectives)
+    for (const item of value.objectives) {
+        writeObjectiveState(writer, item)
+    }
+    writer.length(value.roster.length, 0, LIMITS.maxTeamMembers)
+    for (const item of value.roster) {
+        writeTeamMember(writer, item)
+    }
+}
+function readConquestState(reader: Reader): ConquestState {
+    return {
+        serverTick: reader.u32(),
+        westTickets: reader.u16(),
+        eastTickets: reader.u16(),
+        localTeam: reader.u8(),
+        deployReady: reader.bool(),
+        objectives: Array.from({ length: reader.length(0, LIMITS.maxObjectives) }, () => readObjectiveState(reader)),
+        roster: Array.from({ length: reader.length(0, LIMITS.maxTeamMembers) }, () => readTeamMember(reader)),
+    }
+}
+
+function writeDeploy(writer: Writer, value: Deploy): void {
+    writer.string(value.spawnId, LIMITS.maxMapIdBytes)
+    writeWeapon(writer, value.weapon)
+}
+function readDeploy(reader: Reader): Deploy {
+    return {
+        spawnId: reader.string(LIMITS.maxMapIdBytes),
+        weapon: readWeapon(reader),
+    }
+}
+
 export function encodeMessage(message: Message): Uint8Array {
     const payloadWriter = new Writer()
     switch (message.type) {
@@ -1209,6 +1309,8 @@ export function encodeMessage(message: Message): Uint8Array {
         case MessageType.Pong: writePong(payloadWriter, message.payload); break
         case MessageType.SnapshotDelta: writeSnapshotDelta(payloadWriter, message.payload); break
         case MessageType.ActionResult: writeActionResult(payloadWriter, message.payload); break
+        case MessageType.ConquestState: writeConquestState(payloadWriter, message.payload); break
+        case MessageType.Deploy: writeDeploy(payloadWriter, message.payload); break
         default: throw new ProtocolError('unknown message type')
     }
     const payload = payloadWriter.bytes()
@@ -1247,6 +1349,8 @@ export function decodeEnvelope(data: Uint8Array, offset = 0): DecodedEnvelope {
         case MessageType.Pong: message = { type: MessageType.Pong, payload: readPong(reader) }; break
         case MessageType.SnapshotDelta: message = { type: MessageType.SnapshotDelta, payload: readSnapshotDelta(reader) }; break
         case MessageType.ActionResult: message = { type: MessageType.ActionResult, payload: readActionResult(reader) }; break
+        case MessageType.ConquestState: message = { type: MessageType.ConquestState, payload: readConquestState(reader) }; break
+        case MessageType.Deploy: message = { type: MessageType.Deploy, payload: readDeploy(reader) }; break
         default: return { known: false, messageType, payloadLength, nextOffset }
     }
     if (reader.remaining() !== 0) throw new ProtocolError('payload has trailing bytes')

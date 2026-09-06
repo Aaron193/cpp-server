@@ -1,3 +1,4 @@
+import { openSettings } from './frontend/SettingsPanel'
 import { isDevelopment } from './utils/environment'
 import { PROTOCOL_VERSION } from './protocol/generated'
 
@@ -83,70 +84,16 @@ export class HomeScreen {
 
     private setupUI(): void {
         this.container.innerHTML = `
-            <div class="home-content">
-                <!-- Header -->
-                <header class="header">
-                    <h1 class="game-title">Game.io</h1>
-                    <p class="game-subtitle">Authoritative 3D Arena</p>
-                </header>
-
-                <!-- Player Identity Section -->
-                <section class="player-section">
-                    <div class="player-name-group">
-                        <label class="input-label" for="player-name">Your Name</label>
-                        <input 
-                            type="text" 
-                            id="player-name" 
-                            class="player-name-input" 
-                            placeholder="Enter your name..."
-                            maxlength="16"
-                            value="${this.escapeHtml(this.playerName)}"
-                        />
-                    </div>
-                    <div class="auth-buttons" id="auth-buttons">
-                        <!-- Auth buttons populated dynamically -->
-                    </div>
-                </section>
-
-                <!-- Quick Play -->
-                <section class="quick-play-section">
-                    <button id="quick-play-btn" class="btn btn-success btn-lg quick-play-btn">
-                        ▶ Quick Play
-                    </button>
-                    <button id="offline-play-btn" class="btn btn-ghost offline-play-btn">
-                        Practice Offline
-                    </button>
-                </section>
-
-                <!-- Navigation Tabs -->
-                <nav class="nav-tabs">
-                    <button id="leaderboard-btn" class="btn btn-ghost">
-                        🏆 Leaderboard
-                    </button>
-                    <button id="changelog-btn" class="btn btn-ghost">
-                        📜 Changelog
-                    </button>
-                </nav>
-
-                <!-- Server List -->
-                <section class="server-section">
-                    <div class="section-header">
-                        <h2 class="section-title">Servers</h2>
-                        <button id="refresh-btn" class="btn btn-ghost">↻ Refresh</button>
-                    </div>
-                    <div id="server-list" class="server-list">
-                        <div class="no-servers">
-                            <p>Loading servers...</p>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Footer -->
-                <footer class="home-footer">
-                    <a href="#" class="footer-link">Discord</a>
-                    <a href="#" class="footer-link">Twitter</a>
-                    <a href="#" class="footer-link">GitHub</a>
-                </footer>
+            <div class="front-atmosphere" aria-hidden="true"></div>
+            <div class="home-content military-front">
+                <header class="front-header"><a class="front-brand" href="#">IRON / FRONT</a><span class="front-build">MULTIPLAYER OPERATIONS <i></i> CONQUEST</span><div id="auth-buttons" class="auth-buttons"></div></header>
+                <nav class="front-nav" aria-label="Main navigation"><button id="nav-play" class="active">PLAY</button><button id="nav-servers">SERVERS</button><button id="nav-loadout">LOADOUT</button><button id="nav-settings">SETTINGS</button></nav>
+                <main class="front-main"><div class="front-eyebrow"><span>01</span> EASTERN THEATRE / INDUSTRIAL SECTOR</div><h1 class="game-title">HOLD THE<br><em>LINE.</em></h1><p class="front-description">The factory has fallen silent.<br>The fight for it has just begun.</p>
+                <section class="front-operation"><small>FEATURED OPERATION</small><h2>IRONWORKS</h2><p>CONQUEST &nbsp; / &nbsp; 5 OBJECTIVES &nbsp; / &nbsp; INFANTRY</p><div class="front-actions"><button id="quick-play-btn" class="btn btn-success">FIND A MATCH <span>↗</span></button><button id="offline-play-btn" class="btn btn-ghost">EXPLORE THE BATTLEFIELD</button></div></section>
+                <div class="player-section"><label for="player-name">CALLSIGN</label><input type="text" id="player-name" maxlength="16" placeholder="Anonymous" value="${this.escapeHtml(this.playerName)}"></div></main>
+                <aside class="front-brief"><small>OPERATIONAL BRIEF / 031</small><div class="front-map-preview"></div><h3>CONTROL THE COMPLEX</h3><p>Secure the railhead. Push through the assembly halls. Cut off the enemy reserves.</p><span>56° 17′ N &nbsp; 37° 42′ E</span></aside>
+                <section id="front-servers" class="server-section"><div class="section-header"><h2 class="section-title">ACTIVE OPERATIONS</h2><button id="refresh-btn" class="btn btn-ghost">REFRESH ↻</button></div><div id="server-list" class="server-list"><div class="no-servers">Establishing uplink…</div></div></section>
+                <footer class="home-footer"><span>ORIGINAL BROWSER-NATIVE COMBAT</span><div><button id="leaderboard-btn">SERVICE RECORD</button><button id="changelog-btn">FIELD REPORTS</button><button id="nav-credits">CREDITS</button></div><span>BUILD / 11</span></footer>
             </div>
         `
 
@@ -155,6 +102,35 @@ export class HomeScreen {
     }
 
     private attachEventListeners(): void {
+        document
+            .getElementById('nav-settings')
+            ?.addEventListener('click', openSettings)
+        document
+            .getElementById('nav-servers')
+            ?.addEventListener('click', () =>
+                document
+                    .getElementById('front-servers')
+                    ?.scrollIntoView({ behavior: 'smooth' })
+            )
+        document
+            .getElementById('nav-play')
+            ?.addEventListener('click', () =>
+                this.container.scrollTo({ top: 0, behavior: 'smooth' })
+            )
+        document
+            .getElementById('nav-loadout')
+            ?.addEventListener('click', () =>
+                this.showModal(
+                    `<div class="modal-header"><h3 class="modal-title">INFANTRY LOADOUT</h3></div><div class="modal-body"><h2>AR-28 / ASSAULT RIFLE</h2><p>30-round magazine · Automatic · 620 m/s muzzle velocity</p><hr><h2>SG-12 / BREACHER</h2><p>Close quarters · Buckshot · Pump action</p><p>Choose your primary weapon on the deployment map. Press 1 / 2 in the field to switch.</p></div>`
+                )
+            )
+        document
+            .getElementById('nav-credits')
+            ?.addEventListener('click', () =>
+                this.showModal(
+                    `<div class="modal-header"><h3 class="modal-title">IRON / FRONT</h3></div><div class="modal-body"><p>An original browser multiplayer FPS by the cpp-server contributors.</p><p>Babylon.js · Jolt Physics · uWebSockets</p><p>Ironworks geometry, surface textures and procedural sound are original project assets. Menu concept artwork was generated for this project. Barlow typography by Jeremy Tribby is distributed under the SIL Open Font License. No EA or DICE assets are used.</p></div>`
+                )
+            )
         // Player name input
         const nameInput = document.getElementById(
             'player-name'
@@ -174,7 +150,9 @@ export class HomeScreen {
 
         const offlinePlayBtn = document.getElementById('offline-play-btn')
         if (offlinePlayBtn) {
-            offlinePlayBtn.addEventListener('click', () => this.onServerSelect(null))
+            offlinePlayBtn.addEventListener('click', () =>
+                this.onServerSelect(null)
+            )
         }
 
         // Refresh button
@@ -217,7 +195,7 @@ export class HomeScreen {
         } else {
             authButtons.innerHTML = `
                 <button id="login-btn" class="btn btn-secondary">
-                    <span>🔐</span> Login
+                    SIGN IN
                 </button>
             `
             const loginBtn = document.getElementById('login-btn')
@@ -740,10 +718,20 @@ export class HomeScreen {
 
     private quickPlay(): void {
         const server = this.servers
-            .filter((candidate) => candidate.isOnline && this.isCompatible(candidate))
-            .sort((left, right) => left.currentPlayers - right.currentPlayers)[0]
+            .filter(
+                (candidate) =>
+                    candidate.isOnline && this.isCompatible(candidate)
+            )
+            .filter(
+                (candidate) => candidate.currentPlayers < candidate.maxPlayers
+            )
+            .sort(
+                (left, right) => right.currentPlayers - left.currentPlayers
+            )[0]
         if (!server) {
-            this.showError('No compatible game server is available. Start the web discovery service and native server, then refresh the server list.')
+            this.showError(
+                'No compatible game server is available. Start the web discovery service and native server, then refresh the server list.'
+            )
             return
         }
         this.onServerSelect(server)
@@ -835,7 +823,7 @@ export class HomeScreen {
                 <div class="server-status-dot ${statusClass}"></div>
                 <div class="server-info">
                     <span class="server-name">${this.escapeHtml(server.region)}</span>
-                    <span class="server-host">${this.escapeHtml(server.websocketUrl)} · ${this.escapeHtml(server.mapId)} · ${this.escapeHtml(server.mode)}</span>
+                    <span class="server-host">${this.escapeHtml(server.mapId).toUpperCase()} · ${this.escapeHtml(server.mode).toUpperCase()}</span>
                 </div>
                 <div class="server-players">
                     <span>${server.currentPlayers}/${server.maxPlayers}</span>
@@ -867,7 +855,12 @@ export class HomeScreen {
 
     private isCompatible(server: GameServer): boolean {
         const clientBuild = import.meta.env.VITE_CLIENT_BUILD_ID || 'dev'
-        return server.protocolVersion === PROTOCOL_VERSION && server.buildId === clientBuild && /^[a-z][a-z0-9-]{0,63}$/.test(server.mapId) && /^wss?:\/\//.test(server.websocketUrl)
+        return (
+            server.protocolVersion === PROTOCOL_VERSION &&
+            server.buildId === clientBuild &&
+            /^[a-z][a-z0-9-]{0,63}$/.test(server.mapId) &&
+            /^wss?:\/\//.test(server.websocketUrl)
+        )
     }
 
     // Public method to get the player name

@@ -1,0 +1,696 @@
+{
+  "format": "cpp-server-map-gameplay",
+  "formatVersion": 2,
+  "mapId": "ironworks",
+  "spawnPoints": [
+    {
+      "id": "a-railhead-spawn-0",
+      "position": [
+        -108,
+        0.08,
+        83
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": null,
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "a-railhead-spawn-1",
+      "position": [
+        -103,
+        0.08,
+        83
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": null,
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "a-railhead-spawn-2",
+      "position": [
+        -98,
+        0.08,
+        83
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": null,
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "b-assembly-spawn-0",
+      "position": [
+        -47,
+        0.08,
+        26
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": null,
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "b-assembly-spawn-1",
+      "position": [
+        -42,
+        0.08,
+        26
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": null,
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "b-assembly-spawn-2",
+      "position": [
+        -37,
+        0.08,
+        26
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": null,
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "c-forge-spawn-0",
+      "position": [
+        37,
+        0.08,
+        -10
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": null,
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "c-forge-spawn-1",
+      "position": [
+        42,
+        0.08,
+        -10
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": null,
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "c-forge-spawn-2",
+      "position": [
+        47,
+        0.08,
+        -10
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": null,
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "d-storage-spawn-0",
+      "position": [
+        123,
+        0.08,
+        61
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": null,
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "d-storage-spawn-1",
+      "position": [
+        128,
+        0.08,
+        61
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": null,
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "d-storage-spawn-2",
+      "position": [
+        133,
+        0.08,
+        61
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": null,
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "e-boiler-spawn-0",
+      "position": [
+        -5,
+        0.08,
+        -118
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": null,
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "e-boiler-spawn-1",
+      "position": [
+        0,
+        0.08,
+        -118
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": null,
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "e-boiler-spawn-2",
+      "position": [
+        5,
+        0.08,
+        -118
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": null,
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "east-hq-0",
+      "position": [
+        198,
+        0.08,
+        -21
+      ],
+      "yaw": -1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": "east",
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "east-hq-1",
+      "position": [
+        193,
+        0.08,
+        -21
+      ],
+      "yaw": -1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": "east",
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "east-hq-2",
+      "position": [
+        198,
+        0.08,
+        -7
+      ],
+      "yaw": -1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": "east",
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "east-hq-3",
+      "position": [
+        193,
+        0.08,
+        -7
+      ],
+      "yaw": -1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": "east",
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "east-hq-4",
+      "position": [
+        198,
+        0.08,
+        7
+      ],
+      "yaw": -1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": "east",
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "east-hq-5",
+      "position": [
+        193,
+        0.08,
+        7
+      ],
+      "yaw": -1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": "east",
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "east-hq-6",
+      "position": [
+        198,
+        0.08,
+        21
+      ],
+      "yaw": -1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": "east",
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "east-hq-7",
+      "position": [
+        193,
+        0.08,
+        21
+      ],
+      "yaw": -1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": "east",
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "west-hq-0",
+      "position": [
+        -198,
+        0.08,
+        -21
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": "west",
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "west-hq-1",
+      "position": [
+        -193,
+        0.08,
+        -21
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": "west",
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "west-hq-2",
+      "position": [
+        -198,
+        0.08,
+        -7
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": "west",
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "west-hq-3",
+      "position": [
+        -193,
+        0.08,
+        -7
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": "west",
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "west-hq-4",
+      "position": [
+        -198,
+        0.08,
+        7
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": "west",
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "west-hq-5",
+      "position": [
+        -193,
+        0.08,
+        7
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": "west",
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "west-hq-6",
+      "position": [
+        -198,
+        0.08,
+        21
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": "west",
+      "weight": 1,
+      "clearanceRadius": 0.45
+    },
+    {
+      "id": "west-hq-7",
+      "position": [
+        -193,
+        0.08,
+        21
+      ],
+      "yaw": 1.5707963267948966,
+      "modes": [
+        "ffa",
+        "conquest"
+      ],
+      "team": "west",
+      "weight": 1,
+      "clearanceRadius": 0.45
+    }
+  ],
+  "markers": [
+    {
+      "id": "a-railhead",
+      "type": "objective",
+      "position": [
+        -103,
+        0.1,
+        75
+      ]
+    },
+    {
+      "id": "assembly-hall",
+      "type": "landmark",
+      "position": [
+        -42,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "b-assembly",
+      "type": "objective",
+      "position": [
+        -42,
+        0.1,
+        18
+      ]
+    },
+    {
+      "id": "c-forge",
+      "type": "objective",
+      "position": [
+        42,
+        0.1,
+        -18
+      ]
+    },
+    {
+      "id": "d-storage",
+      "type": "objective",
+      "position": [
+        128,
+        0.1,
+        53
+      ]
+    },
+    {
+      "id": "e-boiler",
+      "type": "objective",
+      "position": [
+        0,
+        0.1,
+        -126
+      ]
+    },
+    {
+      "id": "forge-hall",
+      "type": "landmark",
+      "position": [
+        42,
+        0,
+        0
+      ]
+    }
+  ],
+  "zones": [
+    {
+      "id": "a-railhead-capture",
+      "type": "objective",
+      "min": [
+        -115,
+        -0.5,
+        63
+      ],
+      "max": [
+        -91,
+        4.5,
+        87
+      ]
+    },
+    {
+      "id": "assembly-interior",
+      "type": "reverb",
+      "min": [
+        -67.5,
+        0,
+        -43
+      ],
+      "max": [
+        -16.5,
+        8,
+        43
+      ]
+    },
+    {
+      "id": "b-assembly-capture",
+      "type": "objective",
+      "min": [
+        -54,
+        -0.5,
+        6
+      ],
+      "max": [
+        -30,
+        4.5,
+        30
+      ]
+    },
+    {
+      "id": "c-forge-capture",
+      "type": "objective",
+      "min": [
+        30,
+        -0.5,
+        -30
+      ],
+      "max": [
+        54,
+        4.5,
+        -6
+      ]
+    },
+    {
+      "id": "d-storage-capture",
+      "type": "objective",
+      "min": [
+        116,
+        -0.5,
+        41
+      ],
+      "max": [
+        140,
+        4.5,
+        65
+      ]
+    },
+    {
+      "id": "e-boiler-capture",
+      "type": "objective",
+      "min": [
+        -12,
+        -0.5,
+        -138
+      ],
+      "max": [
+        12,
+        4.5,
+        -114
+      ]
+    },
+    {
+      "id": "forge-interior",
+      "type": "reverb",
+      "min": [
+        16.5,
+        0,
+        -43
+      ],
+      "max": [
+        67.5,
+        8,
+        43
+      ]
+    },
+    {
+      "id": "gallery-reverb",
+      "type": "reverb",
+      "min": [
+        -83,
+        -3,
+        -4
+      ],
+      "max": [
+        83,
+        0,
+        4
+      ]
+    },
+    {
+      "id": "operational-area",
+      "type": "playable",
+      "min": [
+        -220,
+        -4,
+        -164
+      ],
+      "max": [
+        220,
+        24,
+        164
+      ]
+    }
+  ]
+}

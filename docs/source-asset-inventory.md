@@ -1,6 +1,6 @@
 # Source, asset, and attribution inventory
 
-Status date: 2026-08-28. This is an engineering provenance control, not legal
+Status date: 2026-09-05. This is an engineering provenance control, not legal
 advice. The repository is distributed under GPL-3.0 via `LICENSE`; the empty
 `author` and `ISC` fields in the two npm package manifests are historical
 package metadata and must not be treated as a separate grant for project code.
@@ -33,7 +33,7 @@ particular:
 | uWebSockets, EnTT, GLM, cpp-httplib, nlohmann/json | Native server | Direct vcpkg inputs in `server/vcpkg.json`; upstream terms are respectively Apache-2.0, MIT, MIT, MIT, and MIT | Preserve vcpkg-generated copyright/SPDX data in release compliance output. |
 | Fastify and plugins, argon2, dotenv, Drizzle ORM, fastify-type-provider-zod, jsonwebtoken, pg, zod | Web production image | Direct versions and declared licenses are locked in `web/package-lock.json` (MIT, BSD-2-Clause, or Apache-2.0 as recorded there) | Lockfile is the complete npm package/version inventory; ship collected package notices. |
 | Vite build/runtime dependencies and test/dev tools | Build/test environments; some Vite runtime helpers enter browser bundle | Complete versions and declared licenses in `client/package-lock.json` | Treat lockfile/SBOM as authoritative transitive inventory; MPL-2.0 Lightning CSS binaries require their notices/source-offer obligations to remain intact where distributed. |
-| Orbitron and Inter web fonts | Fetched at runtime from Google Fonts by `client/index.html`; not stored in this repository | Both font families are offered under SIL Open Font License 1.1 by Google Fonts | External runtime dependency. For self-hosting, add exact font files/hashes and OFL text here first. |
+| Historical Orbitron/Inter references | Removed from current HTML; legacy CSS uses system fallbacks | No font files copied | No production font request remains. |
 | Phase 6 articulated operator and viewmodel | Browser production bundle in `EntityViewsModule.ts`, `ActorPresentation.ts`, and `ViewmodelController.ts` | Original code-authored geometry, rig calibration, sockets, and animation created for this repository; no external mesh, rig, animation, or texture input | Approved project input under root GPL-3.0. Source code is the reproducible asset source. |
 | Phase 6 WAV registry (`client/public/audio/*.wav`) | Browser production audio | Original deterministic PCM synthesis authored for this repository by `scripts/generate-phase6-audio.mjs`; no samples, recordings, model outputs, or external media | Approved project input under root GPL-3.0. Regenerate with the checked-in script; runtime oscillator synthesis is not used. |
 | `node:20.19.5-alpine`, `node:20.19.5-bullseye[-slim]`, `nginx:1.27.5-alpine`, `ubuntu:22.04`, `postgres:16-alpine` | Builder/production/container deployment | Pinned image tags in Dockerfiles/Compose; each image is an aggregate with multiple licenses | Generate and archive an image SBOM/notices at release time; digest-pin for release reproducibility. |
@@ -67,3 +67,32 @@ supplier, author/owner, exact version or content hash, license identifier and
 license text location, required attribution, modified/unmodified status, and
 the production surfaces that distribute it. Unknown-license inputs remain
 quarantined and cannot enter runtime packages.
+
+## Iron Front additions (2026-09-05)
+
+- **Ironworks**: `client/tools/map-authoring/ironworks.ts` and
+  `client/tools/map-compiler/procedural-materials.ts` author the geometry, material
+  maps and radar deterministically. No third-party map/texture/media input.
+  Distributed as `client/maps/ironworks.gltf` and `client/public/maps/ironworks/`.
+- **Operator and first-person weapons**: original generated geometry in
+  `client/tools/assets/operator.ts` and `client/src/foundation/combat/WeaponModel.ts`.
+  No third-party mesh, animation, scan or game extraction.
+- **Wind, footsteps and convolution tail**: original deterministic synthesis in
+  `client/src/foundation/audio/ProceduralAudio.ts`; existing gunfire WAV provenance
+  remains the original audio generator documented above.
+- **Barlow Regular / Barlow Condensed SemiBold**, Jeremy Tribby, unmodified TTFs
+  downloaded from [Google Fonts Barlow](https://github.com/google/fonts/tree/main/ofl/barlow)
+  and [Barlow Condensed](https://github.com/google/fonts/tree/main/ofl/barlowcondensed).
+  SIL Open Font License 1.1, full texts in `client/public/fonts/OFL-Barlow.txt` and
+  `OFL-BarlowCondensed.txt`; shipped in the static client. File hashes:
+  `95aa02c7c43096e0dd44d787ba6216864a67157e402adab59b35572e0c1577ea` and
+  `7b619d14bc2327509a9ef32b0890f709626f7ecc9ff61191c2a4314c5499d2d9`.
+- **Menu key art**, generated specifically for this project with the built-in
+  image-generation tool. No input reference image, copied game asset or logo.
+  Saved unmodified to `client/public/images/ironworks-keyart.png`, SHA-256
+  `a4f4086849207bd3bf49332cf69fa91bb838dad9f44d4d3a31b468862e18a7ed`.
+  This is concept artwork, not a screenshot or third-party CC0 claim.
+
+Key-art generation prompt:
+
+> Use case: stylized-concept. Asset type: original cinematic key art background for a military FPS main menu named Iron Front, no text baked in. Create an ultra-wide landscape 16:9 photorealistic abandoned Eastern European armored vehicle factory: two huge weathered brick and concrete assembly halls with shattered clerestory glass, overhead pipes, gantry cranes, rusted rail cars, wet cracked asphalt, weeds, birch trees and pine forest in distant haze. Original industrial design and layout. Camera at human height, looking toward the factory from the rail yard. Factory buildings and a striking rusted smokestack concentrated in the right two thirds of the composition, left third darker atmospheric negative space for menu text. Cool blue-grey early morning haze, oblique warm muted sun shafts, drifting dust and industrial steam, believable rich material detail and strong layered depth, subtle film grain, realistic desaturated color grade. No people, no weapons in foreground, no HUD, no text, no logos, no watermarks. Do not reproduce any existing game's exact map geometry or assets. This is menu concept artwork, not a gameplay screenshot.

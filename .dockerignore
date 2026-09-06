@@ -10,3 +10,7 @@ web/coverage
 server/coverage
 *.log
 *.gif
+
+client/artifacts
+client/test-results
+client/playwright-report

@@ -179,10 +179,10 @@ start_stack() {
     (cd "$ROOT/server" && ./build.sh --release)
     start_managed game "$ROOT/server" env \
         SERVER_ID=server-1 SERVER_HOST=localhost SERVER_PORT="$DEV_GAME_PORT" SERVER_REGION=local \
-        MAX_PLAYERS=12 SERVER_MODE=ffa SERVER_BUILD_ID=dev \
+        MAX_PLAYERS=12 SERVER_MODE=conquest SERVER_BUILD_ID=dev \
         SERVER_WEBSOCKET_URL="ws://127.0.0.1:${DEV_GAME_PORT}/" \
-        GAME_CONFIG_PATH="$ROOT/server/game_config.json" \
-        MAP_PACKAGE_DIR="$ROOT/client/public/maps/graybox-arena" \
+        GAME_CONFIG_PATH="$ROOT/server/infantry_config.json" \
+        MAP_PACKAGE_DIR="$ROOT/client/public/maps/ironworks" \
         WEB_API_URL="http://127.0.0.1:${DEV_WEB_PORT}" SERVER_SHARED_SECRET="$SERVER_SHARED_SECRET" \
         JOIN_TICKET_SECRET="$JOIN_TICKET_SECRET" JOIN_TICKET_AUDIENCE="$JOIN_TICKET_AUDIENCE" \
         "$SERVER_BUILD_ROOT/release/server"

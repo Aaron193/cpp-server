@@ -8,12 +8,18 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
-#include "common/enums.hpp"
 #include "combat/Aiming.hpp"
+#include "common/enums.hpp"
 #include "ecs/EntityManager.hpp"
 #include "protocol/generated.hpp"
 
 namespace Components {
+struct Team {
+    std::uint8_t value = 0;
+    std::string selectedSpawn;
+    bool deployRequested = false;
+    protocol::Weapon weapon = protocol::Weapon::Rifle;
+};
 
 struct Client {
     uint32_t id;
@@ -173,7 +179,7 @@ struct Gun {
     int ammoInMag = 12;
     int ammoPerShot = 1;
 
-    float fireRate = 6.0f;  // shots per second
+    float fireRate = 6.0f;    // shots per second
     float reloadTime = 1.5f;  // seconds
     float reloadRemaining = 0.0f;
 

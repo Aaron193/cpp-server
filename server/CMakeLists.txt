@@ -126,9 +126,12 @@ if(BUILD_TESTING)
             tests/Phase3BSimulationTests.cpp
             tests/ServerSessionTests.cpp
             tests/CombatSimulationTests.cpp
+            tests/ConquestTests.cpp
             tests/GameConfigPathTests.cpp
             tests/ObservabilitySecurityTests.cpp
             src/GameServer.cpp
+            src/combat/Conquest.cpp
+            src/combat/Projectiles.cpp
             src/ServerRegistration.cpp
             src/security/JoinTicketValidator.cpp
             src/client/Client.cpp
@@ -156,6 +159,8 @@ if(BUILD_TESTING)
         add_executable(server_load_benchmark
             tests/ServerLoadBenchmark.cpp
             src/GameServer.cpp
+            src/combat/Conquest.cpp
+            src/combat/Projectiles.cpp
             src/ServerRegistration.cpp
             src/security/JoinTicketValidator.cpp
             src/client/Client.cpp

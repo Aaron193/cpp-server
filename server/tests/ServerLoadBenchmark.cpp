@@ -1,5 +1,6 @@
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <nlohmann/json.hpp>
@@ -31,8 +32,9 @@ class CountingTransport final : public PeerTransport {
         totals_->bytes += bytes.size();
         ++totals_->messages;
         const auto envelope = protocol::decodeEnvelope(bytes);
-        if (envelope.known && envelope.messageType ==
-                                  static_cast<std::uint8_t>(protocol::MessageType::Chat))
+        if (envelope.known &&
+            envelope.messageType ==
+                static_cast<std::uint8_t>(protocol::MessageType::Chat))
             totals_->reliableChatOrder.push_back(
                 std::get<protocol::Chat>(envelope.message).text);
     }
@@ -50,6 +52,8 @@ std::string bytes(const std::vector<std::uint8_t>& value) {
 
 int main() {
     GameServer server;
+    if (const char* mode = std::getenv("BENCHMARK_MODE"))
+        server.m_sessionConfiguration.mode = mode;
     server.setMetricsSink({});
     std::vector<std::unique_ptr<Client>> clients;
     std::vector<std::shared_ptr<WireTotals>> wires;
@@ -61,13 +65,19 @@ int main() {
         auto client = std::make_unique<Client>(
             server, std::make_unique<CountingTransport>(wire), id);
         server.m_clients.emplace(id, client.get());
-        const auto hello = protocol::encode(protocol::Hello{
-            SessionConfiguration::ProtocolVersion,
-            server.m_sessionConfiguration.buildId,
-            static_cast<std::uint16_t>(
-                server.m_mapPackage.manifest.formatVersion),
-            std::nullopt});
+        const auto hello = protocol::encode(
+            protocol::Hello{SessionConfiguration::ProtocolVersion,
+                            server.m_sessionConfiguration.buildId,
+                            static_cast<std::uint16_t>(
+                                server.m_mapPackage.manifest.formatVersion),
+                            std::nullopt});
         client->onMessageAt(bytes(hello), 0.0);
+        if (server.isConquest()) {
+            const auto& spawn = server.selectSpawnPoint(client->m_entity);
+            client->onMessageAt(bytes(protocol::encode(protocol::Deploy{
+                                    spawn.id, protocol::Weapon::Rifle})),
+                                .1);
+        }
         clients.push_back(std::move(client));
         wires.push_back(std::move(wire));
     }
@@ -85,12 +95,10 @@ int main() {
         // coalesced into an independently decodable baseline reset.
         if (tick == 600U) {
             wires.front()->buffered = 200U * 1024U;
-            clients.front()->queueChat({std::nullopt,
-                                        protocol::ChatChannel::System,
-                                        "pressure-one"});
-            clients.front()->queueChat({std::nullopt,
-                                        protocol::ChatChannel::System,
-                                        "pressure-two"});
+            clients.front()->queueChat(
+                {std::nullopt, protocol::ChatChannel::System, "pressure-one"});
+            clients.front()->queueChat(
+                {std::nullopt, protocol::ChatChannel::System, "pressure-two"});
             clients.front()->queueChat({std::nullopt,
                                         protocol::ChatChannel::System,
                                         "pressure-three"});
@@ -98,20 +106,27 @@ int main() {
         if (tick == 900U) wires.front()->buffered = 0U;
         const double now = 1.0 + static_cast<double>(tick) / 60.0;
         for (std::size_t index = 0; index < kPlayers; ++index) {
-            const float phase = static_cast<float>((tick + index * 11U) % 240U) /
-                                240.0F;
+            const float phase =
+                static_cast<float>((tick + index * 11U) % 240U) / 240.0F;
             const float moveX = std::sin(phase * 6.28318530718F) * 0.7F;
             const float moveY = std::cos(phase * 6.28318530718F) * 0.7F;
             protocol::InputCommand command{
-                ++sequences[index], tick, moveX, moveY, 1U << 1U,
-                sequences[index], 0U,
-                static_cast<float>(index) * 0.35F - 1.9F, 0.0F,
+                ++sequences[index],
+                tick,
+                moveX,
+                moveY,
+                1U << 1U,
+                sequences[index],
+                0U,
+                static_cast<float>(index) * 0.35F - 1.9F,
+                0.0F,
                 protocol::Weapon::Rifle};
             const auto encoded =
                 protocol::encode(protocol::InputBatch{{command}});
             clients[index]->onMessageAt(bytes(encoded), now);
         }
-        if (server.advanceSimulation(FixedStepAccumulator::kStepSeconds) != 1U) {
+        if (server.advanceSimulation(FixedStepAccumulator::kStepSeconds) !=
+            1U) {
             std::cerr << "benchmark accumulator failed to advance one tick\n";
             return 1;
         }
@@ -131,6 +146,8 @@ int main() {
         static_cast<double>(kTicks) / GameServer::kTicksPerSecond;
     nlohmann::ordered_json report{
         {"event", "server_load_benchmark"},
+        {"mapId", server.m_mapPackage.manifest.mapId},
+        {"mode", server.m_sessionConfiguration.mode},
         {"buildMode",
 #ifdef NDEBUG
          "Release"
@@ -155,8 +172,7 @@ int main() {
          metrics.outboundBytes / simulatedSeconds / kPlayers},
         {"queuedInputHighWater", metrics.queuedInputHighWater},
         {"pendingInputHighWater", metrics.pendingClientInputHighWater},
-        {"allocationProxyPeakQueuedBytes",
-         metrics.outboundQueueBytesHighWater},
+        {"allocationProxyPeakQueuedBytes", metrics.outboundQueueBytesHighWater},
         {"transportBufferedBytesHighWater",
          metrics.transportBufferedBytesHighWater},
         {"coalescedSnapshots", metrics.coalescedSnapshots},
@@ -170,24 +186,24 @@ int main() {
         {"hits", metrics.pelletHits}};
     std::cout << report.dump() << '\n';
 
-    const std::vector<std::string> expectedOrder{
-        "pressure-one", "pressure-two", "pressure-three"};
-    bool valid = closes == 0U && metrics.playerCount == kPlayers &&
-                 metrics.maxStepsPerAdvance <= 1U &&
-                 metrics.droppedTimeSeconds == 0.0 &&
-                 metrics.queuedInputHighWater <= kPlayers &&
-                 metrics.pendingClientInputHighWater <= 1U &&
-                 metrics.outboundQueueBytesHighWater <= 256U * 1024U &&
-                 metrics.transportBufferedBytesHighWater == 200U * 1024U &&
-                 metrics.coalescedSnapshots > 0U &&
-                 wires.front()->reliableChatOrder == expectedOrder &&
-                 metrics.snapshotBytes.p95 <= 1024.0 &&
-                 metrics.outboundBytes / simulatedSeconds / kPlayers <=
-                     16U * 1024U &&
-                 metrics.outboundBytes == wireBytes;
+    const std::vector<std::string> expectedOrder{"pressure-one", "pressure-two",
+                                                 "pressure-three"};
+    bool valid =
+        closes == 0U && metrics.playerCount == kPlayers &&
+        metrics.maxStepsPerAdvance <= 1U && metrics.droppedTimeSeconds == 0.0 &&
+        metrics.queuedInputHighWater <= kPlayers &&
+        metrics.pendingClientInputHighWater <= 1U &&
+        metrics.outboundQueueBytesHighWater <= 256U * 1024U &&
+        metrics.transportBufferedBytesHighWater == 200U * 1024U &&
+        metrics.coalescedSnapshots > 0U &&
+        wires.front()->reliableChatOrder == expectedOrder &&
+        metrics.snapshotBytes.p95 <= 1024.0 &&
+        metrics.outboundBytes / simulatedSeconds / kPlayers <= 16U * 1024U &&
+        metrics.outboundBytes == wireBytes;
 #ifdef NDEBUG
     valid = valid && metrics.tickMilliseconds.p95 < 10.0;
 #endif
+    if (server.isConquest()) valid = valid && metrics.shotsFired > 0;
     server.m_clients.clear();
     return valid ? 0 : 1;
 }

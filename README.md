@@ -6,15 +6,21 @@ multiplayer stack:
 - Babylon.js renders the Vite-built TypeScript client.
 - Jolt Physics powers the browser character controller and the authoritative
   C++17 simulation.
-- uWebSockets carries the generated protocol-v8 binary session protocol.
+- uWebSockets carries the generated protocol-v11 binary session protocol.
 - Fastify and PostgreSQL provide authentication, server registration, and
   discovery.
-- Map package v2 ships two original selectable maps (`graybox-arena` and
-  `copper-yard`) with PBR GLB render data, bounded collision, gameplay/nav/radar
+- Map package v2 ships three original selectable maps (`ironworks`,
+  `graybox-arena`, and `copper-yard`) with PBR GLB render data, bounded collision, gameplay/nav/radar
   metadata, per-asset hashes, and a canonical package hash.
 
 The active runtime is the Babylon/Jolt 3D path. PixiJS, Box2D, Webpack, and the
 old 2D world/sprite runtime are not part of the production build.
+
+The default operation is **Ironworks Conquest**: two teams, five objectives,
+500 tickets, manual deployment, and authoritative projectile rifles. The
+[overhaul implementation record](docs/iron-front-overhaul.md) explains the
+architecture, controls, asset sources, validation, and remaining production gaps.
+The front-end concept artwork is distinct from the rendered game environment.
 
 ## Repository layout
 
@@ -22,7 +28,7 @@ old 2D world/sprite runtime are not part of the production build.
 client/                         Babylon.js/Jolt browser client and Vite build
 client/maps/                    authored map sources
 client/public/maps/             committed deployable map packages
-protocol/                       protocol-v8 schema, generator, and fixtures
+protocol/                       protocol-v11 schema, generator, and fixtures
 server/                         native Jolt/uWebSockets authoritative server
 web/                            Fastify/PostgreSQL control plane
 Dockerfile.{client,server,web}  production images
@@ -124,7 +130,7 @@ The web container also runs migrations before serving, so the explicit
 migration command is useful as a controlled rollout gate but is idempotent.
 `SERVER_WEBSOCKET_URL` must be a complete externally reachable URL such as
 `wss://game.example.com/game/`; discovery returns this value verbatim. The
-server and client images must use the same `SERVER_BUILD_ID`, protocol v10, and
+server and client images must use the same `SERVER_BUILD_ID`, protocol v11, and
 discovery-selected map descriptor. Selection uses `SERVER_MAP_ID` without code
 changes per map.
 

@@ -9,7 +9,8 @@
 
 using namespace Components;
 
-EntityManager::EntityManager(GameServer& gameServer) : m_gameServer(gameServer) {
+EntityManager::EntityManager(GameServer& gameServer)
+    : m_gameServer(gameServer) {
     m_variants[BUSH] = 2;
     m_variants[ROCK] = 2;
     m_variants[CRATE] = 0;
@@ -27,7 +28,8 @@ uint8_t EntityManager::getVariantCount(EntityTypes type) {
 
 uint8_t EntityManager::getRandomVariant(EntityTypes type) {
     const uint8_t variants = getVariantCount(type);
-    return variants == 0 ? 0 : static_cast<uint8_t>((std::rand() % variants) + 1);
+    return variants == 0 ? 0
+                         : static_cast<uint8_t>((std::rand() % variants) + 1);
 }
 
 entt::entity EntityManager::createSpectator(entt::entity followee) {
@@ -41,7 +43,10 @@ entt::entity EntityManager::createSpectator(entt::entity followee) {
 entt::entity EntityManager::createPlayer() {
     const auto entity = m_registry.create();
     m_registry.emplace<EntityBase>(entity, PLAYER);
-    const auto& spawn = m_gameServer.selectSpawnPoint();
+    m_registry.emplace<Team>(entity).value =
+        m_gameServer.isConquest() ? m_gameServer.assignTeam() : 0;
+    const auto& spawn = m_gameServer.selectSpawnPoint(
+        m_gameServer.isConquest() ? entity : entt::null);
     auto& transform = m_registry.emplace<Transform3D>(entity);
     transform.position = spawn.position;
     transform.rotation = glm::angleAxis(spawn.yaw, glm::vec3{0.0F, 1.0F, 0.0F});
@@ -64,7 +69,8 @@ entt::entity EntityManager::createPlayer() {
     physicsConfig.crouchHalfHeight = movement.crouchCapsuleHalfHeight;
     physicsConfig.proneRadius = movement.proneCapsuleRadius;
     physicsConfig.proneHalfHeight = movement.proneCapsuleHalfHeight;
-    controller.adapterId = m_gameServer.m_physicsWorld.createCharacter(physicsConfig, transform.position);
+    controller.adapterId = m_gameServer.m_physicsWorld.createCharacter(
+        physicsConfig, transform.position);
     m_registry.emplace<NetworkReplicated>(entity);
     auto& input = m_registry.emplace<PlayerInput>(entity);
     m_registry.emplace<MovementState>(entity);
@@ -74,6 +80,11 @@ entt::entity EntityManager::createPlayer() {
     auto& life = m_registry.emplace<PlayerLife>(entity);
     life.spawnProtectionRemaining =
         m_gameServer.m_gameConfig.combat.spawnProtectionSeconds;
+    if (m_gameServer.isConquest()) {
+        life.dead = true;
+        life.deathPublished = true;
+        life.deathTick = m_gameServer.m_currentTick;
+    }
     m_registry.emplace<PlayerCombat>(entity);
     m_registry.emplace<PlayerAiming>(entity);
     m_registry.emplace<Score>(entity);
@@ -100,7 +111,8 @@ void EntityManager::scheduleForRemoval(entt::entity entity) {
 void EntityManager::removeEntities() {
     const auto view = m_registry.view<Removal>();
     for (const auto entity : view) {
-        if (const auto* controller = m_registry.try_get<CharacterController>(entity))
+        if (const auto* controller =
+                m_registry.try_get<CharacterController>(entity))
             m_gameServer.m_physicsWorld.destroyCharacter(controller->adapterId);
         if (const auto* body = m_registry.try_get<RigidBody>(entity))
             m_gameServer.m_physicsWorld.removeBody(body->adapterId);

@@ -1,0 +1,221 @@
+{
+  "format": "cpp-server-map-navigation",
+  "formatVersion": 2,
+  "mapId": "ironworks",
+  "nodes": [
+    {
+      "id": "nav-assembly",
+      "position": [
+        -42,
+        0.1,
+        18
+      ],
+      "links": [
+        "nav-west",
+        "nav-rail",
+        "nav-north",
+        "nav-forge",
+        "nav-south",
+        "nav-boiler"
+      ]
+    },
+    {
+      "id": "nav-boiler",
+      "position": [
+        0,
+        0.1,
+        -126
+      ],
+      "links": [
+        "nav-assembly",
+        "nav-forge",
+        "nav-south"
+      ]
+    },
+    {
+      "id": "nav-east",
+      "position": [
+        193,
+        0.1,
+        0
+      ],
+      "links": [
+        "nav-forge",
+        "nav-storage",
+        "nav-flank-east",
+        "nav-gallery-east-entry"
+      ]
+    },
+    {
+      "id": "nav-flank-east",
+      "position": [
+        175,
+        0.1,
+        100
+      ],
+      "links": [
+        "nav-storage",
+        "nav-east"
+      ]
+    },
+    {
+      "id": "nav-flank-west",
+      "position": [
+        -175,
+        0.1,
+        -100
+      ],
+      "links": [
+        "nav-west"
+      ]
+    },
+    {
+      "id": "nav-forge",
+      "position": [
+        42,
+        0.1,
+        -18
+      ],
+      "links": [
+        "nav-north",
+        "nav-assembly",
+        "nav-storage",
+        "nav-east",
+        "nav-south",
+        "nav-boiler"
+      ]
+    },
+    {
+      "id": "nav-gallery-center",
+      "position": [
+        0,
+        -2.9,
+        0
+      ],
+      "links": [
+        "nav-gallery-west",
+        "nav-gallery-east"
+      ]
+    },
+    {
+      "id": "nav-gallery-east",
+      "position": [
+        68,
+        -2.9,
+        0
+      ],
+      "links": [
+        "nav-gallery-center",
+        "nav-gallery-east-entry"
+      ]
+    },
+    {
+      "id": "nav-gallery-east-entry",
+      "position": [
+        86,
+        0.1,
+        0
+      ],
+      "links": [
+        "nav-east",
+        "nav-storage",
+        "nav-gallery-east"
+      ]
+    },
+    {
+      "id": "nav-gallery-west",
+      "position": [
+        -68,
+        -2.9,
+        0
+      ],
+      "links": [
+        "nav-gallery-west-entry",
+        "nav-gallery-center"
+      ]
+    },
+    {
+      "id": "nav-gallery-west-entry",
+      "position": [
+        -86,
+        0.1,
+        0
+      ],
+      "links": [
+        "nav-west",
+        "nav-rail",
+        "nav-gallery-west"
+      ]
+    },
+    {
+      "id": "nav-north",
+      "position": [
+        0,
+        0.1,
+        100
+      ],
+      "links": [
+        "nav-rail",
+        "nav-assembly",
+        "nav-forge",
+        "nav-storage"
+      ]
+    },
+    {
+      "id": "nav-rail",
+      "position": [
+        -101,
+        0.1,
+        75
+      ],
+      "links": [
+        "nav-west",
+        "nav-north",
+        "nav-assembly",
+        "nav-gallery-west-entry"
+      ]
+    },
+    {
+      "id": "nav-south",
+      "position": [
+        0,
+        0.1,
+        -100
+      ],
+      "links": [
+        "nav-assembly",
+        "nav-forge",
+        "nav-boiler"
+      ]
+    },
+    {
+      "id": "nav-storage",
+      "position": [
+        128,
+        0.1,
+        53
+      ],
+      "links": [
+        "nav-north",
+        "nav-forge",
+        "nav-east",
+        "nav-flank-east",
+        "nav-gallery-east-entry"
+      ]
+    },
+    {
+      "id": "nav-west",
+      "position": [
+        -193,
+        0.1,
+        0
+      ],
+      "links": [
+        "nav-rail",
+        "nav-assembly",
+        "nav-flank-west",
+        "nav-gallery-west-entry"
+      ]
+    }
+  ]
+}

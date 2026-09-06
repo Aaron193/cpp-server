@@ -7,8 +7,8 @@
 
 #include "GameServer.hpp"
 #include "ecs/components.hpp"
-#include "util/Sha256.hpp"
 #include "network/ReplicationProtocol.hpp"
+#include "util/Sha256.hpp"
 
 namespace {
 constexpr float kPi = 3.14159265358979323846F;
@@ -20,7 +20,8 @@ constexpr std::uint16_t kCrouch = 1U << 4U;
 constexpr std::uint16_t kProne = 1U << 5U;
 constexpr std::uint16_t kDash = 1U << 6U;
 constexpr std::uint16_t kAds = 1U << 7U;
-constexpr std::uint16_t kKnownButtons = kJump | kFire | kReload | kSprint | kCrouch | kProne | kDash | kAds;
+constexpr std::uint16_t kKnownButtons =
+    kJump | kFire | kReload | kSprint | kCrouch | kProne | kDash | kAds;
 constexpr std::size_t kMaxPendingInputs = 128U;
 // 20% burst headroom prevents legitimate 60 Hz timer jitter from grazing a
 // rolling one-second boundary. Command rate and pending backlog stay bounded.
@@ -56,31 +57,40 @@ protocol::UpdatedEntity deltaFor(const protocol::PublicEntityState& previous,
     protocol::UpdatedEntity delta{};
     delta.handle = current.handle;
     if (!sameVec(previous.position, current.position)) {
-        delta.changeMask |= 1U; delta.position = current.position;
+        delta.changeMask |= 1U;
+        delta.position = current.position;
     }
     if (!sameVec(previous.velocity, current.velocity)) {
-        delta.changeMask |= 2U; delta.velocity = current.velocity;
+        delta.changeMask |= 2U;
+        delta.velocity = current.velocity;
     }
     if (previous.bodyYaw != current.bodyYaw) {
-        delta.changeMask |= 4U; delta.bodyYaw = current.bodyYaw;
+        delta.changeMask |= 4U;
+        delta.bodyYaw = current.bodyYaw;
     }
     if (previous.aimPitch != current.aimPitch) {
-        delta.changeMask |= 8U; delta.aimPitch = current.aimPitch;
+        delta.changeMask |= 8U;
+        delta.aimPitch = current.aimPitch;
     }
     if (previous.grounded != current.grounded) {
-        delta.changeMask |= 16U; delta.grounded = current.grounded;
+        delta.changeMask |= 16U;
+        delta.grounded = current.grounded;
     }
     if (previous.stateFlags != current.stateFlags) {
-        delta.changeMask |= 32U; delta.stateFlags = current.stateFlags;
+        delta.changeMask |= 32U;
+        delta.stateFlags = current.stateFlags;
     }
     if (previous.equippedWeapon != current.equippedWeapon) {
-        delta.changeMask |= 64U; delta.equippedWeapon = current.equippedWeapon;
+        delta.changeMask |= 64U;
+        delta.equippedWeapon = current.equippedWeapon;
     }
     if (previous.stance != current.stance) {
-        delta.changeMask |= 128U; delta.stance = current.stance;
+        delta.changeMask |= 128U;
+        delta.stance = current.stance;
     }
     if (previous.movementMode != current.movementMode) {
-        delta.changeMask |= 256U; delta.movementMode = current.movementMode;
+        delta.changeMask |= 256U;
+        delta.movementMode = current.movementMode;
     }
     return delta;
 }
@@ -94,9 +104,12 @@ void prune(Queue& queue, double now, double window) {
 
 Client::Client(GameServer& server, std::unique_ptr<PeerTransport> transport,
                std::uint32_t id)
-    : m_id(id), m_entity(entt::null), m_gameServer(server),
+    : m_id(id),
+      m_entity(entt::null),
+      m_gameServer(server),
       transport_(std::move(transport)) {
-    if (!transport_) throw std::invalid_argument("client transport is required");
+    if (!transport_)
+        throw std::invalid_argument("client transport is required");
 }
 
 Client::~Client() = default;
@@ -109,8 +122,8 @@ void Client::queue(std::vector<std::uint8_t> bytes) {
     if (closing_) return;
     if (outgoing_.size() + (latestState_ ? 1U : 0U) >= kMaxOutgoingMessages ||
         transport_->bufferedBytes() >= kMaxOutgoingBytes ||
-        bytes.size() > kMaxOutgoingBytes -
-                           std::min(outgoingBytes_, kMaxOutgoingBytes)) {
+        bytes.size() >
+            kMaxOutgoingBytes - std::min(outgoingBytes_, kMaxOutgoingBytes)) {
         closing_ = true;
         outgoing_.clear();
         latestState_.reset();
@@ -132,8 +145,8 @@ void Client::queueState(std::vector<std::uint8_t> bytes) {
         ++coalescedSnapshots_;
         m_gameServer.recordCoalescedSnapshot();
     }
-    if (bytes.size() > kMaxOutgoingBytes -
-                           std::min(outgoingBytes_, kMaxOutgoingBytes)) {
+    if (bytes.size() >
+        kMaxOutgoingBytes - std::min(outgoingBytes_, kMaxOutgoingBytes)) {
         ++coalescedSnapshots_;
         m_gameServer.recordCoalescedSnapshot();
         return;
@@ -191,20 +204,23 @@ void Client::failProtocol(std::string_view reason, std::uint16_t code,
 
 void Client::onMessage(std::string_view message) {
     const auto now = std::chrono::duration<double>(
-        std::chrono::steady_clock::now().time_since_epoch()).count();
+                         std::chrono::steady_clock::now().time_since_epoch())
+                         .count();
     onMessageAt(message, now);
 }
 
 void Client::onMessageAt(std::string_view message, double monotonicSeconds) {
     m_gameServer.recordInboundMessage(message.size());
     if (closing_) return;
-    if (message.empty() || message.size() > protocol::Limits::MaxEnvelopeBytes) {
+    if (message.empty() ||
+        message.size() > protocol::Limits::MaxEnvelopeBytes) {
         failProtocol("invalid message size", 1009U,
                      ClientMessageMetric::Malformed);
         return;
     }
     try {
-        const auto* bytes = reinterpret_cast<const std::uint8_t*>(message.data());
+        const auto* bytes =
+            reinterpret_cast<const std::uint8_t*>(message.data());
         const auto decoded = protocol::decodeEnvelope(bytes, message.size());
         if (decoded.nextOffset != message.size()) {
             failProtocol("one protocol envelope is required per message", 1002U,
@@ -214,7 +230,8 @@ void Client::onMessageAt(std::string_view message, double monotonicSeconds) {
         // Unknown message types are forward-compatible. decodeEnvelope has
         // already validated and skipped their declared payload length.
         if (!decoded.known) {
-            m_gameServer.recordClientMessageMetric(ClientMessageMetric::Unknown);
+            m_gameServer.recordClientMessageMetric(
+                ClientMessageMetric::Unknown);
             return;
         }
         if (!m_active) {
@@ -226,12 +243,21 @@ void Client::onMessageAt(std::string_view message, double monotonicSeconds) {
             handleHello(std::get<protocol::Hello>(decoded.message));
             return;
         }
-        if (const auto* batch = std::get_if<protocol::InputBatch>(&decoded.message)) {
+        if (const auto* batch =
+                std::get_if<protocol::InputBatch>(&decoded.message)) {
             handleInputBatch(*batch, monotonicSeconds);
-        } else if (const auto* chat = std::get_if<protocol::Chat>(&decoded.message)) {
+        } else if (const auto* chat =
+                       std::get_if<protocol::Chat>(&decoded.message)) {
             handleChat(*chat, monotonicSeconds);
-        } else if (const auto* ping = std::get_if<protocol::Ping>(&decoded.message)) {
+        } else if (const auto* ping =
+                       std::get_if<protocol::Ping>(&decoded.message)) {
             handlePing(*ping, monotonicSeconds);
+        } else if (const auto* deploy =
+                       std::get_if<protocol::Deploy>(&decoded.message)) {
+            if (monotonicSeconds - lastDeployAt_ >= .25) {
+                lastDeployAt_ = monotonicSeconds;
+                m_gameServer.requestDeploy(m_entity, *deploy);
+            }
         } else {
             failProtocol("message is not valid from a welcomed client", 1002U,
                          ClientMessageMetric::Rejected);
@@ -248,15 +274,19 @@ void Client::onMessageAt(std::string_view message, double monotonicSeconds) {
 void Client::handleHello(const protocol::Hello& hello) {
     const auto& config = m_gameServer.m_sessionConfiguration;
     if (hello.protocolVersion != SessionConfiguration::ProtocolVersion) {
-        reject(protocol::RejectReason::VersionMismatch, "unsupported protocol version");
+        reject(protocol::RejectReason::VersionMismatch,
+               "unsupported protocol version");
         return;
     }
-    if (hello.supportedMapFormat != m_gameServer.m_mapPackage.manifest.formatVersion) {
-        reject(protocol::RejectReason::MapMismatch, "unsupported map package format");
+    if (hello.supportedMapFormat !=
+        m_gameServer.m_mapPackage.manifest.formatVersion) {
+        reject(protocol::RejectReason::MapMismatch,
+               "unsupported map package format");
         return;
     }
     if (hello.clientBuildId.empty()) {
-        reject(protocol::RejectReason::InvalidHello, "client build id is required");
+        reject(protocol::RejectReason::InvalidHello,
+               "client build id is required");
         return;
     }
     if (config.requireExactBuild && hello.clientBuildId != config.buildId) {
@@ -269,7 +299,8 @@ void Client::handleHello(const protocol::Hello& hello) {
         return;
     }
     if (!config.authenticate || !config.authenticate(hello.accessToken)) {
-        reject(protocol::RejectReason::Unauthorized, "credentials were not accepted");
+        reject(protocol::RejectReason::Unauthorized,
+               "credentials were not accepted");
         return;
     }
 
@@ -282,7 +313,8 @@ void Client::handleHello(const protocol::Hello& hello) {
 
     const protocol::MapDescriptor map{
         m_gameServer.m_mapPackage.manifest.mapId,
-        static_cast<std::uint16_t>(m_gameServer.m_mapPackage.manifest.formatVersion),
+        static_cast<std::uint16_t>(
+            m_gameServer.m_mapPackage.manifest.formatVersion),
         m_gameServer.m_mapPackage.manifest.contentHash};
     const std::string configurationJson =
         m_gameServer.m_gameConfig.toJsonString();
@@ -318,8 +350,7 @@ void Client::handlePing(const protocol::Ping& ping, double now) {
     const auto monotonicMilliseconds =
         static_cast<std::uint64_t>(std::floor(now * 1000.0));
     queue(protocol::encode(protocol::Pong{
-        ping.pingId,
-        static_cast<std::uint32_t>(m_gameServer.m_currentTick),
+        ping.pingId, static_cast<std::uint32_t>(m_gameServer.m_currentTick),
         static_cast<std::uint32_t>(monotonicMilliseconds & 0xFFFFFFFFULL)}));
 }
 
@@ -327,7 +358,8 @@ void Client::handleInputBatch(const protocol::InputBatch& batch, double now) {
     prune(inputBatchTimes_, now, 1.0);
     prune(inputCommandTimes_, now, 1.0);
     if (inputBatchTimes_.size() >= kInputBatchesPerSecond ||
-        inputCommandTimes_.size() + batch.commands.size() > kInputCommandsPerSecond ||
+        inputCommandTimes_.size() + batch.commands.size() >
+            kInputCommandsPerSecond ||
         pendingInputs_ + batch.commands.size() > kMaxPendingInputs) {
         failProtocol("input rate or backlog exceeded", 1008U,
                      ClientMessageMetric::RateLimited);
@@ -338,8 +370,8 @@ void Client::handleInputBatch(const protocol::InputBatch& batch, double now) {
     auto previousTick = lastReceivedClientTick_;
     auto previousAction = lastReceivedActionId_;
     for (const auto& command : batch.commands) {
-        const float magnitudeSquared = command.moveX * command.moveX +
-                                       command.moveY * command.moveY;
+        const float magnitudeSquared =
+            command.moveX * command.moveX + command.moveY * command.moveY;
         if (!std::isfinite(command.moveX) || !std::isfinite(command.moveY) ||
             !std::isfinite(command.yaw) || !std::isfinite(command.pitch) ||
             std::abs(command.moveX) > 1.0F || std::abs(command.moveY) > 1.0F ||
@@ -362,7 +394,8 @@ void Client::handleInputBatch(const protocol::InputBatch& batch, double now) {
                !isNewer(command.reloadActionId, command.fireActionId)) ||
               (command.fireActionId == 0U && previousAction &&
                !isNewer(command.reloadActionId, *previousAction)))) ||
-            (previousSequence && !isNewer(command.sequence, *previousSequence)) ||
+            (previousSequence &&
+             !isNewer(command.sequence, *previousSequence)) ||
             (previousTick && !isNewer(command.clientTick, *previousTick))) {
             failProtocol("invalid or non-monotonic input command", 1008U,
                          ClientMessageMetric::Rejected);
@@ -371,7 +404,8 @@ void Client::handleInputBatch(const protocol::InputBatch& batch, double now) {
         previousSequence = command.sequence;
         previousTick = command.clientTick;
         if (command.fireActionId != 0U) previousAction = command.fireActionId;
-        if (command.reloadActionId != 0U) previousAction = command.reloadActionId;
+        if (command.reloadActionId != 0U)
+            previousAction = command.reloadActionId;
     }
 
     inputBatchTimes_.push_back(now);
@@ -395,9 +429,12 @@ void Client::handleInputBatch(const protocol::InputBatch& batch, double now) {
         input.reloadActionId = command.reloadActionId;
         input.clientTick = command.clientTick;
         input.inputSequence = command.sequence;
-        if (command.selectedWeapon == protocol::Weapon::Rifle) input.switchSlot = 0;
-        else if (command.selectedWeapon == protocol::Weapon::Shotgun) input.switchSlot = 1;
-        m_gameServer.queueValidatedInput(m_id, m_entity, input, command.sequence);
+        if (command.selectedWeapon == protocol::Weapon::Rifle)
+            input.switchSlot = 0;
+        else if (command.selectedWeapon == protocol::Weapon::Shotgun)
+            input.switchSlot = 1;
+        m_gameServer.queueValidatedInput(m_id, m_entity, input,
+                                         command.sequence);
         ++pendingInputs_;
         m_gameServer.observePendingClientInputs(pendingInputs_);
     }
@@ -419,9 +456,9 @@ void Client::handleChat(const protocol::Chat& chat, double now) {
         return;
     }
     chatTimes_.push_back(now);
-    m_gameServer.broadcastChat(protocol::Chat{
-        static_cast<std::uint32_t>(m_entity), protocol::ChatChannel::Global,
-        chat.text});
+    m_gameServer.broadcastChat(
+        protocol::Chat{static_cast<std::uint32_t>(m_entity),
+                       protocol::ChatChannel::Global, chat.text});
 }
 
 void Client::writeGameState() {
@@ -440,11 +477,13 @@ void Client::writeGameState() {
         ++baselineRevision_;
         if (baselineRevision_ == 0U) ++baselineRevision_;
     }
-    snapshot.baselineSequence = snapshot.baselineReset
-        ? 0U : snapshot.snapshotSequence - 1U;
+    snapshot.baselineSequence =
+        snapshot.baselineReset ? 0U : snapshot.snapshotSequence - 1U;
     snapshot.baselineRevision = baselineRevision_;
-    snapshot.serverTick = static_cast<std::uint32_t>(m_gameServer.m_currentTick);
-    snapshot.lastProcessedInputSequence = lastProcessedInputSequence_.value_or(0U);
+    snapshot.serverTick =
+        static_cast<std::uint32_t>(m_gameServer.m_currentTick);
+    snapshot.lastProcessedInputSequence =
+        lastProcessedInputSequence_.value_or(0U);
     const auto match = m_gameServer.matchState();
     if (!baselineMatch_ || !sameMatch(*baselineMatch_, match)) {
         ++matchRevision_;
@@ -455,17 +494,16 @@ void Client::writeGameState() {
     snapshot.matchRevision = matchRevision_;
     snapshot.local = m_gameServer.makeLocalAuthoritativeState(m_entity);
     const auto& registry = m_gameServer.m_entityManager.getRegistry();
-    const auto players = registry.view<Components::EntityBase,
-                                       Components::Transform3D,
-                                       Components::Velocity3D,
-                                       Components::CharacterController,
-                                       Components::PlayerInput,
-                                       Components::PlayerLife>();
+    const auto players =
+        registry.view<Components::EntityBase, Components::Transform3D,
+                      Components::Velocity3D, Components::CharacterController,
+                      Components::PlayerInput, Components::PlayerLife>();
     std::unordered_map<std::uint64_t, protocol::PublicEntityState> nextBaseline;
     nextBaseline.reserve(players.size_hint());
     for (const auto entity : players) {
         if (entity == m_entity ||
-            players.get<Components::EntityBase>(entity).type != PLAYER) continue;
+            players.get<Components::EntityBase>(entity).type != PLAYER)
+            continue;
         auto state = m_gameServer.makePublicEntityState(entity);
         const auto key = handleKey(state.handle);
         nextBaseline.emplace(key, state);
@@ -475,7 +513,8 @@ void Client::writeGameState() {
             continue;
         }
         auto update = deltaFor(previous->second, state);
-        if (update.changeMask != 0U) snapshot.updated.push_back(std::move(update));
+        if (update.changeMask != 0U)
+            snapshot.updated.push_back(std::move(update));
     }
     for (const auto& previous : baseline_) {
         if (nextBaseline.count(previous.first) != 0U) continue;
@@ -489,11 +528,10 @@ void Client::writeGameState() {
     baselineInitialized_ = true;
     replication::validateSnapshotDelta(snapshot);
     auto encoded = protocol::encode(snapshot);
-    m_gameServer.observeSnapshot(
-        std::chrono::duration<double, std::milli>(
-            std::chrono::steady_clock::now() - started)
-            .count(),
-        encoded.size());
+    m_gameServer.observeSnapshot(std::chrono::duration<double, std::milli>(
+                                     std::chrono::steady_clock::now() - started)
+                                     .count(),
+                                 encoded.size());
     queueState(std::move(encoded));
 }
 
@@ -503,14 +541,13 @@ void Client::resetReplicationBaseline() {
     baselineMatch_.reset();
 }
 
-bool Client::spatiallyRelevant(protocol::EntityKind kind,
-                               float distanceSquared,
+bool Client::spatiallyRelevant(protocol::EntityKind kind, float distanceSquared,
                                bool previouslyRelevant) {
     // Players remain global for the current bounded twelve-player mode. The
     // same contract supports spatial props/spectators with leave hysteresis.
     if (kind == protocol::EntityKind::Player) return true;
-    const float radius = previouslyRelevant ? kSpatialLeaveMeters
-                                            : kSpatialEnterMeters;
+    const float radius =
+        previouslyRelevant ? kSpatialLeaveMeters : kSpatialEnterMeters;
     return std::isfinite(distanceSquared) && distanceSquared <= radius * radius;
 }
 
@@ -582,3 +619,7 @@ void Client::onClose() {
 }
 
 void Client::changeBody(entt::entity entity) { m_entity = entity; }
+
+void Client::queueConquestState(const protocol::ConquestState& message) {
+    if (m_active && !closing_) queue(protocol::encode(message));
+}

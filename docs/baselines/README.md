@@ -33,3 +33,9 @@ and hashes are deterministic; timing distributions are expected to vary.
 
 The committed report records the exact environment and honest limitations.
 No browser GPU timing is inferred from the Node run.
+
+The [Ironworks overhaul report](ironworks-overhaul.json) records the September 5
+Conquest validation, native benchmark and actual SwiftShader browser captures.
+It preserves this historical baseline and explicitly distinguishes different
+workloads, software rendering and live hardware qualification. See
+[the implementation record](../iron-front-overhaul.md) for remaining production gaps.

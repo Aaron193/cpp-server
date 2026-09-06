@@ -77,13 +77,14 @@ COPY --from=builder /build/build/server ./server
 
 # The server verifies and consumes the same committed package as the browser.
 COPY --from=builder /build/game_config.json ./game_config.json
+COPY --from=builder /build/infantry_config.json ./infantry_config.json
 COPY client/public/maps ./maps
 
 # Explicit runtime inputs. The server rejects an invalid config or map package
 # before opening its WebSocket listener.
-ENV GAME_CONFIG_PATH=/app/game_config.json \
+ENV GAME_CONFIG_PATH=/app/infantry_config.json \
     MAP_PACKAGE_ROOT=/app/maps \
-    SERVER_MAP_ID=graybox-arena \
+    SERVER_MAP_ID=ironworks \
     SERVER_PORT=9001
 
 # Copy any required runtime assets (if any)

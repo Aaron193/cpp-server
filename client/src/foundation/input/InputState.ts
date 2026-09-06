@@ -12,18 +12,48 @@ export interface InputSnapshot {
     readonly dash: boolean
 }
 
-const GAMEPLAY_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight', 'Space', 'KeyR', 'Digit1', 'Digit2', 'Tab', 'ShiftLeft', 'ShiftRight', 'KeyC', 'KeyQ'])
+const GAMEPLAY_CODES = new Set([
+    'KeyW',
+    'KeyA',
+    'KeyS',
+    'KeyD',
+    'ArrowUp',
+    'ArrowLeft',
+    'ArrowDown',
+    'ArrowRight',
+    'Space',
+    'KeyR',
+    'Digit1',
+    'Digit2',
+    'Tab',
+    'ShiftLeft',
+    'ShiftRight',
+    'KeyC',
+    'KeyQ',
+])
 
 export function isEditableElement(element: Element | null): boolean {
-    if (!element || typeof (element as Element).matches !== 'function') return false
+    if (!element || typeof (element as Element).matches !== 'function')
+        return false
     const htmlElement = element as HTMLElement
-    return Boolean(htmlElement.isContentEditable) || element.matches('input, textarea, select, button, [role="textbox"], [data-gameplay-input-blocking="true"]')
+    return (
+        Boolean(htmlElement.isContentEditable) ||
+        element.matches(
+            'input, textarea, select, button, [role="textbox"], [data-gameplay-input-blocking="true"]'
+        )
+    )
 }
 
-export function isGameplayInputAllowed(documentRef: Document, canvas: HTMLCanvasElement): boolean {
-    if (!documentRef.hasFocus() || documentRef.pointerLockElement !== canvas) return false
+export function isGameplayInputAllowed(
+    documentRef: Document,
+    canvas: HTMLCanvasElement
+): boolean {
+    if (!documentRef.hasFocus() || documentRef.pointerLockElement !== canvas)
+        return false
     if (isEditableElement(documentRef.activeElement)) return false
-    const modal = documentRef.querySelector('.modal-overlay:not(.hidden), [data-gameplay-input-blocking="true"]:not(.hidden)')
+    const modal = documentRef.querySelector(
+        '.modal-overlay:not(.hidden), [data-gameplay-input-blocking="true"]:not(.hidden):not([hidden])'
+    )
     return modal === null
 }
 
@@ -62,10 +92,26 @@ export class InputState {
     snapshot(allowed: boolean): InputSnapshot {
         if (!allowed) {
             this.clear()
-            return { forward: 0, right: 0, jump: false, fire: false, reload: false, selectedWeapon: this.weapon, scoreboard: false, sprint: false, crouch: false, prone: false, dash: false }
+            return {
+                forward: 0,
+                right: 0,
+                jump: false,
+                fire: false,
+                reload: false,
+                selectedWeapon: this.weapon,
+                scoreboard: false,
+                sprint: false,
+                crouch: false,
+                prone: false,
+                dash: false,
+            }
         }
-        const forward = Number(this.pressed.has('KeyW') || this.pressed.has('ArrowUp')) - Number(this.pressed.has('KeyS') || this.pressed.has('ArrowDown'))
-        const right = Number(this.pressed.has('KeyD') || this.pressed.has('ArrowRight')) - Number(this.pressed.has('KeyA') || this.pressed.has('ArrowLeft'))
+        const forward =
+            Number(this.pressed.has('KeyW') || this.pressed.has('ArrowUp')) -
+            Number(this.pressed.has('KeyS') || this.pressed.has('ArrowDown'))
+        const right =
+            Number(this.pressed.has('KeyD') || this.pressed.has('ArrowRight')) -
+            Number(this.pressed.has('KeyA') || this.pressed.has('ArrowLeft'))
         const jump = this.jumpQueued
         const reload = this.reloadQueued
         const crouch = this.crouchQueued
@@ -74,7 +120,20 @@ export class InputState {
         this.reloadQueued = false
         this.crouchQueued = false
         this.dashQueued = false
-        return { forward, right, jump, fire: this.firing, reload, selectedWeapon: this.weapon, scoreboard: this.pressed.has('Tab'), sprint: this.pressed.has('ShiftLeft') || this.pressed.has('ShiftRight'), crouch, prone: false, dash }
+        return {
+            forward,
+            right,
+            jump,
+            fire: this.firing,
+            reload,
+            selectedWeapon: this.weapon,
+            scoreboard: this.pressed.has('Tab'),
+            sprint:
+                this.pressed.has('ShiftLeft') || this.pressed.has('ShiftRight'),
+            crouch,
+            prone: false,
+            dash,
+        }
     }
 
     pointerButton(button: number, down: boolean, allowed: boolean): void {
@@ -85,10 +144,21 @@ export class InputState {
         this.firing = allowed && Boolean(buttons & 1)
         this.aimingHeld = allowed && Boolean(buttons & 2)
     }
-    get scoreboardVisible(): boolean { return this.pressed.has('Tab') }
-    get firingHeld(): boolean { return this.firing }
-    get aiming(): boolean { return this.aimingHeld }
-    get selectedWeapon(): 1 | 2 { return this.weapon }
+    get scoreboardVisible(): boolean {
+        return this.pressed.has('Tab')
+    }
+    get firingHeld(): boolean {
+        return this.firing
+    }
+    get aiming(): boolean {
+        return this.aimingHeld
+    }
+    selectWeapon(weapon: 1 | 2): void {
+        this.weapon = weapon
+    }
+    get selectedWeapon(): 1 | 2 {
+        return this.weapon
+    }
 
     clear(): void {
         this.pressed.clear()

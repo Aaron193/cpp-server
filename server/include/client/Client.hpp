@@ -2,14 +2,14 @@
 
 #include <chrono>
 #include <cstdint>
-#include <entt/entt.hpp>
 #include <deque>
+#include <entt/entt.hpp>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
 #include "network/PeerTransport.hpp"
 #include "observability/ServerMetrics.hpp"
@@ -49,6 +49,7 @@ class Client {
     void queueRespawn(const protocol::Respawn& message);
     void queueScoreChange(const protocol::ScoreChange& message);
     void queueRoundTransition(const protocol::RoundTransition& message);
+    void queueConquestState(const protocol::ConquestState& message);
     void queueActionResult(const protocol::ActionResult& message);
     void markInputProcessed(std::uint32_t sequence);
     void markInputDequeued();
@@ -61,7 +62,9 @@ class Client {
     std::size_t outgoingMessageCount() const {
         return outgoing_.size() + (latestState_ ? 1U : 0U);
     }
-    std::size_t transportBufferedBytes() const { return transport_->bufferedBytes(); }
+    std::size_t transportBufferedBytes() const {
+        return transport_->bufferedBytes();
+    }
     std::uint64_t coalescedSnapshotCount() const { return coalescedSnapshots_; }
     void resetReplicationBaseline();
     static bool spatiallyRelevant(protocol::EntityKind kind,
@@ -91,6 +94,7 @@ class Client {
     std::deque<double> inputCommandTimes_;
     std::deque<double> chatTimes_;
     std::deque<double> pingTimes_;
+    double lastDeployAt_ = -1000;
     std::unordered_map<std::uint64_t, protocol::PublicEntityState> baseline_;
     bool baselineInitialized_ = false;
     std::uint32_t snapshotSequence_ = 0U;

@@ -1,7 +1,7 @@
 #pragma once
 
-#include <fstream>
 #include <cmath>
+#include <fstream>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <string>
@@ -44,10 +44,12 @@ struct WeaponConfig {
     float fireRate;
     float reloadTime;
     float damage;
+    float muzzleVelocity = 0;  // zero selects the legacy hitscan ruleset
+    float projectileGravity = 9.81F;
     float range;  // in meters
     float spread;
     int pellets;
-    float barrelLength;        // in meters
+    float barrelLength;  // in meters
     bool automatic;
 };
 
@@ -133,7 +135,8 @@ struct GameConfig {
         if (!root.contains("weapons") || !root.contains("movement") ||
             !root.contains("loadout") || !root.contains("combat"))
             throw std::runtime_error(
-                "Config requires weapons, movement, loadout, and combat objects");
+                "Config requires weapons, movement, loadout, and combat "
+                "objects");
 
         const nlohmann::json& weapons = root.at("weapons");
         GameConfig config;
@@ -203,17 +206,23 @@ struct GameConfig {
             {"slideSteerRadiansPerSecond", movement.slideSteerRadiansPerSecond},
             {"slideCooldown", movement.slideCooldown},
             {"slideJumpCommitment", movement.slideJumpCommitment},
-            {"dashSpeed", movement.dashSpeed}, {"dashDuration", movement.dashDuration},
-            {"dashCooldown", movement.dashCooldown}, {"mantleMinHeight", movement.mantleMinHeight},
-            {"mantleMaxHeight", movement.mantleMaxHeight}, {"mantleReach", movement.mantleReach},
-            {"mantleDuration", movement.mantleDuration}, {"sprintToFireDelay", movement.sprintToFireDelay},
+            {"dashSpeed", movement.dashSpeed},
+            {"dashDuration", movement.dashDuration},
+            {"dashCooldown", movement.dashCooldown},
+            {"mantleMinHeight", movement.mantleMinHeight},
+            {"mantleMaxHeight", movement.mantleMaxHeight},
+            {"mantleReach", movement.mantleReach},
+            {"mantleDuration", movement.mantleDuration},
+            {"sprintToFireDelay", movement.sprintToFireDelay},
             {"slideSpreadMultiplier", movement.slideSpreadMultiplier},
-            {"sprintEnabled", movement.sprintEnabled}, {"crouchEnabled", movement.crouchEnabled},
-            {"proneEnabled", movement.proneEnabled}, {"slideEnabled", movement.slideEnabled},
-            {"dashEnabled", movement.dashEnabled}, {"mantleEnabled", movement.mantleEnabled}};
-        root["loadout"] = {
-            {"rifleReserveAmmo", loadout.rifleReserveAmmo},
-            {"shotgunReserveAmmo", loadout.shotgunReserveAmmo}};
+            {"sprintEnabled", movement.sprintEnabled},
+            {"crouchEnabled", movement.crouchEnabled},
+            {"proneEnabled", movement.proneEnabled},
+            {"slideEnabled", movement.slideEnabled},
+            {"dashEnabled", movement.dashEnabled},
+            {"mantleEnabled", movement.mantleEnabled}};
+        root["loadout"] = {{"rifleReserveAmmo", loadout.rifleReserveAmmo},
+                           {"shotgunReserveAmmo", loadout.shotgunReserveAmmo}};
         root["combat"] = {
             {"serverSeed", combat.serverSeed},
             {"maxLagCompensationMs", combat.maxLagCompensationMs},
@@ -228,23 +237,27 @@ struct GameConfig {
     std::string toJsonString() const { return toJson().dump(); }
 
    private:
-    static float positiveFloat(const nlohmann::json& object,
-                               const char* key, bool allowZero = false) {
+    static float positiveFloat(const nlohmann::json& object, const char* key,
+                               bool allowZero = false) {
         if (!object.contains(key) || !object.at(key).is_number())
-            throw std::runtime_error(std::string("Config missing numeric field: ") + key);
+            throw std::runtime_error(
+                std::string("Config missing numeric field: ") + key);
         const float value = object.at(key).get<float>();
         if (!std::isfinite(value) || (allowZero ? value < 0.0F : value <= 0.0F))
-            throw std::runtime_error(std::string("Config field is out of range: ") + key);
+            throw std::runtime_error(
+                std::string("Config field is out of range: ") + key);
         return value;
     }
 
     static int positiveInt(const nlohmann::json& object, const char* key,
                            bool allowZero = false) {
         if (!object.contains(key) || !object.at(key).is_number_integer())
-            throw std::runtime_error(std::string("Config missing integer field: ") + key);
+            throw std::runtime_error(
+                std::string("Config missing integer field: ") + key);
         const int value = object.at(key).get<int>();
         if (allowZero ? value < 0 : value <= 0)
-            throw std::runtime_error(std::string("Config field is out of range: ") + key);
+            throw std::runtime_error(
+                std::string("Config field is out of range: ") + key);
         return value;
     }
 
@@ -266,18 +279,37 @@ struct GameConfig {
             positiveFloat(value, "maxSlopeRadians"),
             positiveFloat(value, "stepUpHeight", true),
             positiveFloat(value, "stickToFloorDistance", true),
-            positiveFloat(value, "crouchCapsuleRadius"), positiveFloat(value, "crouchCapsuleHalfHeight"), positiveFloat(value, "crouchEyeHeight"),
-            positiveFloat(value, "proneCapsuleRadius"), positiveFloat(value, "proneCapsuleHalfHeight"), positiveFloat(value, "proneEyeHeight"),
-            positiveFloat(value, "slideDuration"), positiveFloat(value, "slideStartSpeed"), positiveFloat(value, "slideEndSpeed"),
-            positiveFloat(value, "slideSteerRadiansPerSecond"), positiveFloat(value, "slideCooldown"), positiveFloat(value, "slideJumpCommitment"),
-            positiveFloat(value, "dashSpeed"), positiveFloat(value, "dashDuration"), positiveFloat(value, "dashCooldown"),
-            positiveFloat(value, "mantleMinHeight"), positiveFloat(value, "mantleMaxHeight"), positiveFloat(value, "mantleReach"), positiveFloat(value, "mantleDuration"),
-            positiveFloat(value, "sprintToFireDelay"), positiveFloat(value, "slideSpreadMultiplier"),
-            boolean(value, "sprintEnabled"), boolean(value, "crouchEnabled"), boolean(value, "proneEnabled"), boolean(value, "slideEnabled"), boolean(value, "dashEnabled"), boolean(value, "mantleEnabled")};
+            positiveFloat(value, "crouchCapsuleRadius"),
+            positiveFloat(value, "crouchCapsuleHalfHeight"),
+            positiveFloat(value, "crouchEyeHeight"),
+            positiveFloat(value, "proneCapsuleRadius"),
+            positiveFloat(value, "proneCapsuleHalfHeight"),
+            positiveFloat(value, "proneEyeHeight"),
+            positiveFloat(value, "slideDuration"),
+            positiveFloat(value, "slideStartSpeed"),
+            positiveFloat(value, "slideEndSpeed"),
+            positiveFloat(value, "slideSteerRadiansPerSecond"),
+            positiveFloat(value, "slideCooldown"),
+            positiveFloat(value, "slideJumpCommitment"),
+            positiveFloat(value, "dashSpeed"),
+            positiveFloat(value, "dashDuration"),
+            positiveFloat(value, "dashCooldown"),
+            positiveFloat(value, "mantleMinHeight"),
+            positiveFloat(value, "mantleMaxHeight"),
+            positiveFloat(value, "mantleReach"),
+            positiveFloat(value, "mantleDuration"),
+            positiveFloat(value, "sprintToFireDelay"),
+            positiveFloat(value, "slideSpreadMultiplier"),
+            boolean(value, "sprintEnabled"),
+            boolean(value, "crouchEnabled"),
+            boolean(value, "proneEnabled"),
+            boolean(value, "slideEnabled"),
+            boolean(value, "dashEnabled"),
+            boolean(value, "mantleEnabled")};
         if (config.airControl > 1.0F ||
             config.maxSlopeRadians >= 1.57079632679F ||
-            config.eyeHeight > 2.0F *
-                                   (config.capsuleHalfHeight + config.capsuleRadius) ||
+            config.eyeHeight >
+                2.0F * (config.capsuleHalfHeight + config.capsuleRadius) ||
             config.groundSpeed > config.sprintSpeed ||
             config.slideJumpCommitment >= config.slideDuration ||
             config.mantleMinHeight >= config.mantleMaxHeight)
@@ -287,7 +319,8 @@ struct GameConfig {
 
     static bool boolean(const nlohmann::json& object, const char* key) {
         if (!object.contains(key) || !object.at(key).is_boolean())
-            throw std::runtime_error(std::string("Config missing boolean field: ") + key);
+            throw std::runtime_error(
+                std::string("Config missing boolean field: ") + key);
         return object.at(key).get<bool>();
     }
 
@@ -349,40 +382,65 @@ struct GameConfig {
         config.reloadTime = j.at("reloadTime").get<float>();
         config.damage = j.at("damage").get<float>();
         config.range = j.at("range").get<float>();
+        config.muzzleVelocity = j.value("muzzleVelocity", 0.F);
+        config.projectileGravity = j.value("projectileGravity", 9.81F);
+        if (!std::isfinite(config.muzzleVelocity) ||
+            config.muzzleVelocity < 0 || config.muzzleVelocity > 2000 ||
+            !std::isfinite(config.projectileGravity) ||
+            config.projectileGravity < 0 || config.projectileGravity > 100)
+            throw std::runtime_error("Invalid ballistics tuning");
         config.spread = j.at("spread").get<float>();
         config.pellets = j.at("pellets").get<int>();
         config.barrelLength = j.at("barrelLength").get<float>();
         config.automatic = j.at("automatic").get<bool>();
         const auto& aim = j.at("aim");
-        config.aim = {
-            positiveFloat(aim, "aimInSeconds"), positiveFloat(aim, "aimOutSeconds"),
-            positiveFloat(aim, "adsFovRadians"), positiveFloat(aim, "adsMoveMultiplier"),
-            positiveFloat(aim, "hipSpreadRadians", true), positiveFloat(aim, "adsSpreadRadians", true),
-            positiveFloat(aim, "hipMoveSpreadRadians", true), positiveFloat(aim, "adsMoveSpreadRadians", true),
-            positiveFloat(aim, "airborneSpreadRadians", true), positiveFloat(aim, "crouchMultiplier"),
-            positiveFloat(aim, "proneMultiplier"), positiveFloat(aim, "bloomPerShotRadians", true),
-            positiveFloat(aim, "bloomMaxRadians", true), positiveFloat(aim, "bloomDelaySeconds", true),
-            positiveFloat(aim, "bloomRecoveryRadiansPerSecond"), positiveFloat(aim, "recoilResetSeconds"),
-            positiveFloat(aim, "recoilRecoveryDelaySeconds", true), positiveFloat(aim, "recoilRecoveryRate"),
-            positiveFloat(aim, "adsRecoilMultiplier"), aim.at("recoilPitchDegrees").get<std::vector<float>>(),
-            aim.at("recoilYawDegrees").get<std::vector<float>>(), positiveFloat(aim, "recoilVariationPitchDegrees", true),
-            positiveFloat(aim, "recoilVariationYawDegrees", true), positiveFloat(aim, "reticleArmLengthPx"),
-            positiveFloat(aim, "reticleMinGapPx")};
+        config.aim = {positiveFloat(aim, "aimInSeconds"),
+                      positiveFloat(aim, "aimOutSeconds"),
+                      positiveFloat(aim, "adsFovRadians"),
+                      positiveFloat(aim, "adsMoveMultiplier"),
+                      positiveFloat(aim, "hipSpreadRadians", true),
+                      positiveFloat(aim, "adsSpreadRadians", true),
+                      positiveFloat(aim, "hipMoveSpreadRadians", true),
+                      positiveFloat(aim, "adsMoveSpreadRadians", true),
+                      positiveFloat(aim, "airborneSpreadRadians", true),
+                      positiveFloat(aim, "crouchMultiplier"),
+                      positiveFloat(aim, "proneMultiplier"),
+                      positiveFloat(aim, "bloomPerShotRadians", true),
+                      positiveFloat(aim, "bloomMaxRadians", true),
+                      positiveFloat(aim, "bloomDelaySeconds", true),
+                      positiveFloat(aim, "bloomRecoveryRadiansPerSecond"),
+                      positiveFloat(aim, "recoilResetSeconds"),
+                      positiveFloat(aim, "recoilRecoveryDelaySeconds", true),
+                      positiveFloat(aim, "recoilRecoveryRate"),
+                      positiveFloat(aim, "adsRecoilMultiplier"),
+                      aim.at("recoilPitchDegrees").get<std::vector<float>>(),
+                      aim.at("recoilYawDegrees").get<std::vector<float>>(),
+                      positiveFloat(aim, "recoilVariationPitchDegrees", true),
+                      positiveFloat(aim, "recoilVariationYawDegrees", true),
+                      positiveFloat(aim, "reticleArmLengthPx"),
+                      positiveFloat(aim, "reticleMinGapPx")};
         if (config.magazineSize <= 0 || config.ammoPerShot <= 0 ||
-            config.ammoPerShot > config.magazineSize || config.fireRate <= 0.0F ||
-            config.reloadTime < 0.0F || config.damage < 0.0F ||
-            config.range <= 0.0F || config.spread < 0.0F ||
-            config.spread > 0.5F || config.pellets <= 0 ||
-            config.pellets > 32 ||
-            config.fireMode != GunFireMode::FIRE_HITSCAN ||
+            config.ammoPerShot > config.magazineSize ||
+            config.fireRate <= 0.0F || config.reloadTime < 0.0F ||
+            config.damage < 0.0F || config.range <= 0.0F ||
+            config.spread < 0.0F || config.spread > 0.5F ||
+            config.pellets <= 0 || config.pellets > 32 ||
+            (config.fireMode == GunFireMode::FIRE_PROJECTILE &&
+             config.muzzleVelocity <= 0) ||
+            (config.fireMode == GunFireMode::FIRE_HITSCAN &&
+             config.muzzleVelocity > 0) ||
             config.aim.aimInSeconds > 2.0F || config.aim.aimOutSeconds > 2.0F ||
-            config.aim.adsFovRadians < 0.4F || config.aim.adsFovRadians > 1.8F ||
-            config.aim.adsMoveMultiplier > 1.0F || config.aim.hipSpreadRadians > 0.5F ||
+            config.aim.adsFovRadians < 0.4F ||
+            config.aim.adsFovRadians > 1.8F ||
+            config.aim.adsMoveMultiplier > 1.0F ||
+            config.aim.hipSpreadRadians > 0.5F ||
             config.aim.adsSpreadRadians > config.aim.hipSpreadRadians ||
             config.aim.bloomPerShotRadians > config.aim.bloomMaxRadians ||
-            config.aim.crouchMultiplier > 1.0F || config.aim.proneMultiplier > 1.0F ||
+            config.aim.crouchMultiplier > 1.0F ||
+            config.aim.proneMultiplier > 1.0F ||
             config.aim.adsRecoilMultiplier > 1.0F ||
-            config.aim.recoilPitchDegrees.empty() || config.aim.recoilYawDegrees.empty())
+            config.aim.recoilPitchDegrees.empty() ||
+            config.aim.recoilYawDegrees.empty())
             throw std::runtime_error("Invalid weapon configuration: " + key);
         const auto finiteDegrees = [](const std::vector<float>& values) {
             return std::all_of(values.begin(), values.end(), [](float value) {
@@ -405,23 +463,40 @@ struct GameConfig {
         j["reloadTime"] = weapon.reloadTime;
         j["damage"] = weapon.damage;
         j["range"] = weapon.range;
+        j["muzzleVelocity"] = weapon.muzzleVelocity;
+        j["projectileGravity"] = weapon.projectileGravity;
         j["spread"] = weapon.spread;
         j["pellets"] = weapon.pellets;
         j["barrelLength"] = weapon.barrelLength;
         j["automatic"] = weapon.automatic;
         j["aim"] = {
-            {"aimInSeconds", weapon.aim.aimInSeconds}, {"aimOutSeconds", weapon.aim.aimOutSeconds},
-            {"adsFovRadians", weapon.aim.adsFovRadians}, {"adsMoveMultiplier", weapon.aim.adsMoveMultiplier},
-            {"hipSpreadRadians", weapon.aim.hipSpreadRadians}, {"adsSpreadRadians", weapon.aim.adsSpreadRadians},
-            {"hipMoveSpreadRadians", weapon.aim.hipMoveSpreadRadians}, {"adsMoveSpreadRadians", weapon.aim.adsMoveSpreadRadians},
-            {"airborneSpreadRadians", weapon.aim.airborneSpreadRadians}, {"crouchMultiplier", weapon.aim.crouchMultiplier},
-            {"proneMultiplier", weapon.aim.proneMultiplier}, {"bloomPerShotRadians", weapon.aim.bloomPerShotRadians},
-            {"bloomMaxRadians", weapon.aim.bloomMaxRadians}, {"bloomDelaySeconds", weapon.aim.bloomDelaySeconds},
-            {"bloomRecoveryRadiansPerSecond", weapon.aim.bloomRecoveryRadiansPerSecond}, {"recoilResetSeconds", weapon.aim.recoilResetSeconds},
-            {"recoilRecoveryDelaySeconds", weapon.aim.recoilRecoveryDelaySeconds}, {"recoilRecoveryRate", weapon.aim.recoilRecoveryRate},
-            {"adsRecoilMultiplier", weapon.aim.adsRecoilMultiplier}, {"recoilPitchDegrees", weapon.aim.recoilPitchDegrees},
-            {"recoilYawDegrees", weapon.aim.recoilYawDegrees}, {"recoilVariationPitchDegrees", weapon.aim.recoilVariationPitchDegrees},
-            {"recoilVariationYawDegrees", weapon.aim.recoilVariationYawDegrees}, {"reticleArmLengthPx", weapon.aim.reticleArmLengthPx},
+            {"aimInSeconds", weapon.aim.aimInSeconds},
+            {"aimOutSeconds", weapon.aim.aimOutSeconds},
+            {"adsFovRadians", weapon.aim.adsFovRadians},
+            {"adsMoveMultiplier", weapon.aim.adsMoveMultiplier},
+            {"hipSpreadRadians", weapon.aim.hipSpreadRadians},
+            {"adsSpreadRadians", weapon.aim.adsSpreadRadians},
+            {"hipMoveSpreadRadians", weapon.aim.hipMoveSpreadRadians},
+            {"adsMoveSpreadRadians", weapon.aim.adsMoveSpreadRadians},
+            {"airborneSpreadRadians", weapon.aim.airborneSpreadRadians},
+            {"crouchMultiplier", weapon.aim.crouchMultiplier},
+            {"proneMultiplier", weapon.aim.proneMultiplier},
+            {"bloomPerShotRadians", weapon.aim.bloomPerShotRadians},
+            {"bloomMaxRadians", weapon.aim.bloomMaxRadians},
+            {"bloomDelaySeconds", weapon.aim.bloomDelaySeconds},
+            {"bloomRecoveryRadiansPerSecond",
+             weapon.aim.bloomRecoveryRadiansPerSecond},
+            {"recoilResetSeconds", weapon.aim.recoilResetSeconds},
+            {"recoilRecoveryDelaySeconds",
+             weapon.aim.recoilRecoveryDelaySeconds},
+            {"recoilRecoveryRate", weapon.aim.recoilRecoveryRate},
+            {"adsRecoilMultiplier", weapon.aim.adsRecoilMultiplier},
+            {"recoilPitchDegrees", weapon.aim.recoilPitchDegrees},
+            {"recoilYawDegrees", weapon.aim.recoilYawDegrees},
+            {"recoilVariationPitchDegrees",
+             weapon.aim.recoilVariationPitchDegrees},
+            {"recoilVariationYawDegrees", weapon.aim.recoilVariationYawDegrees},
+            {"reticleArmLengthPx", weapon.aim.reticleArmLengthPx},
             {"reticleMinGapPx", weapon.aim.reticleMinGapPx}};
         return j;
     }

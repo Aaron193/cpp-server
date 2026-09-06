@@ -32,6 +32,8 @@ struct Limits {
     static constexpr std::size_t MaxSnapshotCreated = 512U;
     static constexpr std::size_t MaxSnapshotUpdated = 512U;
     static constexpr std::size_t MaxSnapshotRemoved = 512U;
+    static constexpr std::size_t MaxObjectives = 8U;
+    static constexpr std::size_t MaxTeamMembers = 128U;
 };
 
 class ProtocolError : public std::runtime_error {
@@ -60,6 +62,8 @@ enum class MessageType : std::uint8_t {
     Pong = 18,
     SnapshotDelta = 19,
     ActionResult = 20,
+    ConquestState = 21,
+    Deploy = 22,
 };
 
 enum class RejectReason : std::uint8_t {
@@ -273,6 +277,19 @@ struct EntityRecord {
     Weapon equippedWeapon{};
 };
 
+struct ObjectiveState {
+    std::string id{};
+    std::uint8_t owner{};
+    std::uint8_t capturing{};
+    float progress{};
+    bool contested{};
+};
+
+struct TeamMember {
+    std::uint32_t playerId{};
+    std::uint8_t team{};
+};
+
 struct Hello {
     std::uint16_t protocolVersion{};
     std::string clientBuildId{};
@@ -426,6 +443,21 @@ struct ActionResult {
     Weapon weapon{};
     std::uint16_t authoritativeMagazineAmmo{};
     std::uint16_t authoritativeReserveAmmo{};
+};
+
+struct ConquestState {
+    std::uint32_t serverTick{};
+    std::uint16_t westTickets{};
+    std::uint16_t eastTickets{};
+    std::uint8_t localTeam{};
+    bool deployReady{};
+    std::vector<ObjectiveState> objectives{};
+    std::vector<TeamMember> roster{};
+};
+
+struct Deploy {
+    std::string spawnId{};
+    Weapon weapon{};
 };
 
 namespace detail {
@@ -982,6 +1014,34 @@ inline EntityRecord readEntityRecord(Reader& reader) {
     return value;
 }
 
+inline void writeObjectiveState(Writer& writer, const ObjectiveState& value) {
+    writer.writeString(value.id, Limits::MaxMapIdBytes);
+    writer.writeU8(value.owner);
+    writer.writeU8(value.capturing);
+    writer.writeF32(value.progress);
+    writer.writeBool(value.contested);
+}
+inline ObjectiveState readObjectiveState(Reader& reader) {
+    ObjectiveState value{};
+    value.id = reader.readString(Limits::MaxMapIdBytes);
+    value.owner = reader.readU8();
+    value.capturing = reader.readU8();
+    value.progress = reader.readF32();
+    value.contested = reader.readBool();
+    return value;
+}
+
+inline void writeTeamMember(Writer& writer, const TeamMember& value) {
+    writer.writeU32(value.playerId);
+    writer.writeU8(value.team);
+}
+inline TeamMember readTeamMember(Reader& reader) {
+    TeamMember value{};
+    value.playerId = reader.readU32();
+    value.team = reader.readU8();
+    return value;
+}
+
 inline void writeHello(Writer& writer, const Hello& value) {
     writer.writeU16(value.protocolVersion);
     writer.writeString(value.clientBuildId, Limits::MaxBuildIdBytes);
@@ -1429,9 +1489,65 @@ inline ActionResult readActionResult(Reader& reader) {
     return value;
 }
 
+inline void writeConquestState(Writer& writer, const ConquestState& value) {
+    writer.writeU32(value.serverTick);
+    writer.writeU16(value.westTickets);
+    writer.writeU16(value.eastTickets);
+    writer.writeU8(value.localTeam);
+    writer.writeBool(value.deployReady);
+    writer.writeLength(value.objectives.size(), 0, Limits::MaxObjectives);
+    for (const auto& item : value.objectives) {
+        writeObjectiveState(writer, item);
+    }
+    writer.writeLength(value.roster.size(), 0, Limits::MaxTeamMembers);
+    for (const auto& item : value.roster) {
+        writeTeamMember(writer, item);
+    }
+}
+inline ConquestState readConquestState(Reader& reader) {
+    ConquestState value{};
+    value.serverTick = reader.readU32();
+    value.westTickets = reader.readU16();
+    value.eastTickets = reader.readU16();
+    value.localTeam = reader.readU8();
+    value.deployReady = reader.readBool();
+    {
+        const auto count = reader.readLength(0, Limits::MaxObjectives);
+        value.objectives.clear();
+        value.objectives.reserve(count);
+        for (std::size_t index = 0; index < count; ++index) {
+            ObjectiveState decodedValue{};
+            decodedValue = readObjectiveState(reader);
+            value.objectives.push_back(std::move(decodedValue));
+        }
+    }
+    {
+        const auto count = reader.readLength(0, Limits::MaxTeamMembers);
+        value.roster.clear();
+        value.roster.reserve(count);
+        for (std::size_t index = 0; index < count; ++index) {
+            TeamMember decodedValue{};
+            decodedValue = readTeamMember(reader);
+            value.roster.push_back(std::move(decodedValue));
+        }
+    }
+    return value;
+}
+
+inline void writeDeploy(Writer& writer, const Deploy& value) {
+    writer.writeString(value.spawnId, Limits::MaxMapIdBytes);
+    writeWeapon(writer, value.weapon);
+}
+inline Deploy readDeploy(Reader& reader) {
+    Deploy value{};
+    value.spawnId = reader.readString(Limits::MaxMapIdBytes);
+    value.weapon = readWeapon(reader);
+    return value;
+}
+
 }  // namespace detail
 
-using MessagePayload = std::variant<std::monostate, Hello, Welcome, Reject, InputBatch, Snapshot, Spawn, Remove, ShotConfirmed, Impact, Damage, Death, Respawn, ScoreChange, RoundTransition, Chat, Configuration, Ping, Pong, SnapshotDelta, ActionResult>;
+using MessagePayload = std::variant<std::monostate, Hello, Welcome, Reject, InputBatch, Snapshot, Spawn, Remove, ShotConfirmed, Impact, Damage, Death, Respawn, ScoreChange, RoundTransition, Chat, Configuration, Ping, Pong, SnapshotDelta, ActionResult, ConquestState, Deploy>;
 
 struct DecodedEnvelope {
     std::uint8_t messageType{};
@@ -1561,6 +1677,18 @@ inline std::vector<std::uint8_t> encode(const ActionResult& message) {
     detail::Writer envelope; envelope.writeU8(static_cast<std::uint8_t>(MessageType::ActionResult)); envelope.writeU16(static_cast<std::uint16_t>(payload.bytes().size()));
     std::vector<std::uint8_t> result = envelope.bytes(); result.insert(result.end(), payload.bytes().begin(), payload.bytes().end()); return result;
 }
+inline std::vector<std::uint8_t> encode(const ConquestState& message) {
+    detail::Writer payload; detail::writeConquestState(payload, message);
+    if (payload.bytes().size() > Limits::MaxPayloadBytes) throw ProtocolError("payload exceeds maximum");
+    detail::Writer envelope; envelope.writeU8(static_cast<std::uint8_t>(MessageType::ConquestState)); envelope.writeU16(static_cast<std::uint16_t>(payload.bytes().size()));
+    std::vector<std::uint8_t> result = envelope.bytes(); result.insert(result.end(), payload.bytes().begin(), payload.bytes().end()); return result;
+}
+inline std::vector<std::uint8_t> encode(const Deploy& message) {
+    detail::Writer payload; detail::writeDeploy(payload, message);
+    if (payload.bytes().size() > Limits::MaxPayloadBytes) throw ProtocolError("payload exceeds maximum");
+    detail::Writer envelope; envelope.writeU8(static_cast<std::uint8_t>(MessageType::Deploy)); envelope.writeU16(static_cast<std::uint16_t>(payload.bytes().size()));
+    std::vector<std::uint8_t> result = envelope.bytes(); result.insert(result.end(), payload.bytes().begin(), payload.bytes().end()); return result;
+}
 
 inline DecodedEnvelope decodeEnvelope(const std::uint8_t* data, std::size_t size, std::size_t offset = 0) {
     if (offset > size || size - offset < 3U) throw ProtocolError("truncated envelope");
@@ -1594,6 +1722,8 @@ inline DecodedEnvelope decodeEnvelope(const std::uint8_t* data, std::size_t size
         case 18: payload = detail::readPong(reader); break;
         case 19: payload = detail::readSnapshotDelta(reader); break;
         case 20: payload = detail::readActionResult(reader); break;
+        case 21: payload = detail::readConquestState(reader); break;
+        case 22: payload = detail::readDeploy(reader); break;
         default: known = false; break;
     }
     if (known && reader.remaining() != 0U) throw ProtocolError("payload has trailing bytes");

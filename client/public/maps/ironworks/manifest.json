@@ -1,0 +1,58 @@
+{
+  "format": "cpp-server-map",
+  "formatVersion": 2,
+  "mapId": "ironworks",
+  "coordinateSystem": {
+    "handedness": "right",
+    "upAxis": "Y",
+    "units": "meters"
+  },
+  "worldBounds": {
+    "min": [
+      -224,
+      -5,
+      -168
+    ],
+    "max": [
+      224,
+      40,
+      168
+    ]
+  },
+  "assets": {
+    "render": "scene.glb",
+    "collision": "collision.bin",
+    "gameplay": "gameplay.json",
+    "navigation": "navigation.json",
+    "radar": "radar.svg",
+    "debug": "debug-report.json"
+  },
+  "assetHashes": {
+    "collision.bin": "sha256:c211a251e1d4ac714f79d52fdbde20b6d39fa327a680331e7fb8a04821bd3355",
+    "debug-report.json": "sha256:28347d9d2421a7ad3b4c24de6d1f29deb8a3e1d780e5531f4dce37a167e4227e",
+    "gameplay.json": "sha256:28d530332522c73f0aca57353ecefc9dbb599610a77fa4df48b88ff976756834",
+    "navigation.json": "sha256:475e31a939898871df7c90f03987fd5b560d4aeb7b11df25eebd035c4bb270a3",
+    "radar.svg": "sha256:08f3ba88f14bd13211c8f900f69b57efaa909c847a11af8ffb60f6fa1ef98d2a",
+    "scene.glb": "sha256:07b172d9a562f61207a1d1fc65bf98025b4147703ffc858c9122a35ba91025d8"
+  },
+  "environment": {
+    "clearColor": [
+      0.43,
+      0.51,
+      0.54
+    ],
+    "exposure": 1.1,
+    "sunDirection": [
+      -0.55,
+      -0.72,
+      0.36
+    ],
+    "shadowDistance": 140
+  },
+  "policy": {
+    "stepSmoothingMax": 0.42,
+    "audioDistanceScale": 2,
+    "radarNorthYaw": 0
+  },
+  "contentHash": "sha256:f08e3cebd116079d5bfe9ebd84eed09af44766b47770a6d7642d5a92c2765053"
+}

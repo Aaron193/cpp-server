@@ -6,6 +6,12 @@ export default defineConfig(({ mode }) => {
 
     return {
         base: './',
+        cacheDir: process.env.PLAYWRIGHT_TEST
+            ? 'node_modules/.vite-e2e'
+            : 'node_modules/.vite',
+        optimizeDeps: {
+            entries: ['src/index.ts', 'src/foundation/FoundationClient.ts'],
+        },
         server: {
             port: Number.isInteger(configuredPort) ? configuredPort : 3001,
         },

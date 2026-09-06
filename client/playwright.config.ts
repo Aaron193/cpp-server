@@ -25,9 +25,10 @@ export default defineConfig({
             url: 'http://127.0.0.1:5175',
             reuseExistingServer: false,
             timeout: 30_000,
+            env: { VITE_OFFLINE_MAP_ID: 'graybox-arena', PLAYWRIGHT_TEST: '1' },
         },
         {
-            command: './server/.build/3d/jolt-validation/server',
+            command: './server/.build/3d/release/server',
             cwd: repositoryRoot,
             url: 'http://127.0.0.1:9002',
             reuseExistingServer: false,
@@ -39,9 +40,41 @@ export default defineConfig({
                 SERVER_MODE: 'ffa',
                 SERVER_ID: 'playwright',
                 SERVER_WEBSOCKET_URL: 'ws://127.0.0.1:9002',
-                JOIN_TICKET_SECRET: 'playwright-join-ticket-secret-32-bytes-minimum',
+                JOIN_TICKET_SECRET:
+                    'playwright-join-ticket-secret-32-bytes-minimum',
                 JOIN_TICKET_AUDIENCE: 'arena-game-server',
-                MAP_PACKAGE_DIR: resolve(repositoryRoot, 'client/public/maps/graybox-arena'),
+                MAP_PACKAGE_DIR: resolve(
+                    repositoryRoot,
+                    'client/public/maps/graybox-arena'
+                ),
+                WEB_API_URL: '',
+                SERVER_SHARED_SECRET: '',
+            },
+        },
+        {
+            command: './server/.build/3d/release/server',
+            cwd: repositoryRoot,
+            url: 'http://127.0.0.1:9003',
+            reuseExistingServer: false,
+            timeout: 30_000,
+            env: {
+                ...process.env,
+                SERVER_PORT: '9003',
+                SERVER_BUILD_ID: 'dev',
+                SERVER_MODE: 'conquest',
+                SERVER_ID: 'ironworks-e2e',
+                SERVER_WEBSOCKET_URL: 'ws://127.0.0.1:9003',
+                JOIN_TICKET_SECRET:
+                    'playwright-join-ticket-secret-32-bytes-minimum',
+                JOIN_TICKET_AUDIENCE: 'arena-game-server',
+                MAP_PACKAGE_DIR: resolve(
+                    repositoryRoot,
+                    'client/public/maps/ironworks'
+                ),
+                GAME_CONFIG_PATH: resolve(
+                    repositoryRoot,
+                    'server/infantry_config.json'
+                ),
                 WEB_API_URL: '',
                 SERVER_SHARED_SECRET: '',
             },

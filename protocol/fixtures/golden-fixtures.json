@@ -2,17 +2,43 @@
   {
     "name": "hello-with-token",
     "message": "Hello",
-    "value": { "protocolVersion": 10, "clientBuildId": "web-3d-a1", "supportedMapFormat": 1, "accessToken": "token-✓" }
+    "value": {
+      "protocolVersion": 11,
+      "clientBuildId": "web-3d-a1",
+      "supportedMapFormat": 1,
+      "accessToken": "token-\u2713"
+    }
   },
   {
     "name": "version-mismatch-reject",
     "message": "Reject",
-    "value": { "serverBuildId": "server-a1", "reason": 1, "detail": "protocol 65535 is unsupported", "expectedProtocolVersion": 10, "expectedMapFormat": 2 }
+    "value": {
+      "serverBuildId": "server-a1",
+      "reason": 1,
+      "detail": "protocol 65535 is unsupported",
+      "expectedProtocolVersion": 11,
+      "expectedMapFormat": 2
+    }
   },
   {
     "name": "input-wrap-values",
     "message": "InputBatch",
-    "value": { "commands": [{ "sequence": 4294967295, "clientTick": 4294967294, "moveX": -1, "moveY": 0.5, "buttonFlags": 65535, "fireActionId": 4294967293, "reloadActionId": 4294967292, "yaw": 3.1415927410125732, "pitch": -1.25, "selectedWeapon": 2 }] }
+    "value": {
+      "commands": [
+        {
+          "sequence": 4294967295,
+          "clientTick": 4294967294,
+          "moveX": -1,
+          "moveY": 0.5,
+          "buttonFlags": 65535,
+          "fireActionId": 4294967293,
+          "reloadActionId": 4294967292,
+          "yaw": 3.1415927410125732,
+          "pitch": -1.25,
+          "selectedWeapon": 2
+        }
+      ]
+    }
   },
   {
     "name": "snapshot-entity",
@@ -20,88 +46,362 @@
     "value": {
       "serverTick": 4294967295,
       "lastProcessedInputSequence": 0,
-      "match": { "phase": 2, "roundNumber": 7, "phaseEndsAtTick": 123456 },
-      "entities": [{
-        "entityId": 42, "kind": 1,
-        "position": { "x": 1.5, "y": -2.25, "z": 3.75 },
-        "velocity": { "x": 0, "y": 4.5, "z": -0.125 },
-        "bodyYaw": 1.25, "aimPitch": -0.5, "grounded": true, "stateFlags": 32769, "stance": 0, "movementMode": 1,
-        "equippedWeapon": 1
-      }]
+      "match": {
+        "phase": 2,
+        "roundNumber": 7,
+        "phaseEndsAtTick": 123456
+      },
+      "entities": [
+        {
+          "entityId": 42,
+          "kind": 1,
+          "position": {
+            "x": 1.5,
+            "y": -2.25,
+            "z": 3.75
+          },
+          "velocity": {
+            "x": 0,
+            "y": 4.5,
+            "z": -0.125
+          },
+          "bodyYaw": 1.25,
+          "aimPitch": -0.5,
+          "grounded": true,
+          "stateFlags": 32769,
+          "stance": 0,
+          "movementMode": 1,
+          "equippedWeapon": 1
+        }
+      ]
     }
   },
   {
     "name": "unicode-chat",
     "message": "Chat",
-    "value": { "senderId": null, "channel": 2, "text": "Ready • go!" }
+    "value": {
+      "senderId": null,
+      "channel": 2,
+      "text": "Ready \u2022 go!"
+    }
   },
   {
     "name": "authoritative-score-row",
     "message": "ScoreChange",
-    "value": { "serverTick": 77, "playerId": 42, "score": 9, "delta": -1, "kills": 9, "deaths": 4 }
+    "value": {
+      "serverTick": 77,
+      "playerId": 42,
+      "score": 9,
+      "delta": -1,
+      "kills": 9,
+      "deaths": 4
+    }
   },
   {
     "name": "shot-confirmed-shotgun",
     "message": "ShotConfirmed",
-    "value": { "serverTick": 88, "shooterId": 42, "inputSequence": 9, "actionId": 77, "shotId": 123, "weapon": 2, "origin": { "x": 1.25, "y": 2.5, "z": -3.75 }, "pelletEndPositions": [{ "x": 1.25, "y": 2.5, "z": -23.75 }, { "x": 2.0, "y": 2.25, "z": -23.5 }] }
+    "value": {
+      "serverTick": 88,
+      "shooterId": 42,
+      "inputSequence": 9,
+      "actionId": 77,
+      "shotId": 123,
+      "weapon": 2,
+      "origin": {
+        "x": 1.25,
+        "y": 2.5,
+        "z": -3.75
+      },
+      "pelletEndPositions": [
+        {
+          "x": 1.25,
+          "y": 2.5,
+          "z": -23.75
+        },
+        {
+          "x": 2.0,
+          "y": 2.25,
+          "z": -23.5
+        }
+      ]
+    }
   },
   {
     "name": "fire-action-rejected-cadence",
     "message": "ActionResult",
-    "value": { "serverTick": 91, "actionId": 78, "kind": 1, "accepted": false, "reason": 1, "weapon": 1, "authoritativeMagazineAmmo": 18, "authoritativeReserveAmmo": 80 }
+    "value": {
+      "serverTick": 91,
+      "actionId": 78,
+      "kind": 1,
+      "accepted": false,
+      "reason": 1,
+      "weapon": 1,
+      "authoritativeMagazineAmmo": 18,
+      "authoritativeReserveAmmo": 80
+    }
   },
   {
     "name": "clock-ping-wrap",
     "message": "Ping",
-    "value": { "pingId": 4294967295 }
+    "value": {
+      "pingId": 4294967295
+    }
   },
   {
     "name": "clock-pong-anchor-wrap",
     "message": "Pong",
-    "value": { "pingId": 4294967295, "serverTick": 4294967294, "serverMonotonicMs": 4294967280 }
+    "value": {
+      "pingId": 4294967295,
+      "serverTick": 4294967294,
+      "serverMonotonicMs": 4294967280
+    }
   },
   {
     "name": "snapshot-delta-reset-created",
     "message": "SnapshotDelta",
     "value": {
-      "snapshotSequence": 1, "baselineSequence": 0, "baselineRevision": 7, "baselineReset": true,
-      "serverTick": 120, "lastProcessedInputSequence": 99, "matchRevision": 3,
-      "match": { "phase": 2, "roundNumber": 1, "phaseEndsAtTick": 3600 },
-      "local": {
-        "handle": { "slot": 42, "generation": 2 },
-        "position": { "x": 1, "y": 2, "z": 3 }, "velocity": { "x": 0, "y": 0, "z": -1 },
-        "bodyYaw": 0.5, "aimPitch": -0.25, "grounded": true, "stateFlags": 0, "health": 87,
-        "movementState": { "stance": 1, "mode": 2, "modeTimeRemaining": 0.4, "dashCooldownRemaining": 0, "slideCooldownRemaining": 0.8, "weaponLockRemaining": 0, "stanceExpansionPending": false, "dashDirection": { "x": 0, "y": 0, "z": -1 }, "mantleStart": { "x": 0, "y": 0, "z": 0 }, "mantleTarget": { "x": 0, "y": 0, "z": 0 } },
-        "weaponState": { "selected": 1, "magazineAmmo": 19, "reserveAmmo": 80, "stateFlags": 0, "aimProgress": 0.5, "spreadRadians": 0.006, "recoilPitch": 0.01, "recoilYaw": -0.002, "recoilSequence": 7 }
+      "snapshotSequence": 1,
+      "baselineSequence": 0,
+      "baselineRevision": 7,
+      "baselineReset": true,
+      "serverTick": 120,
+      "lastProcessedInputSequence": 99,
+      "matchRevision": 3,
+      "match": {
+        "phase": 2,
+        "roundNumber": 1,
+        "phaseEndsAtTick": 3600
       },
-      "created": [{ "state": {
-        "handle": { "slot": 9, "generation": 4 }, "kind": 1,
-        "position": { "x": 10, "y": 0, "z": -4 }, "velocity": { "x": 1, "y": 0, "z": 0 },
-        "bodyYaw": 1, "aimPitch": 0, "grounded": true, "stateFlags": 0, "stance": 1, "movementMode": 2, "equippedWeapon": 2
-      }}],
-      "updated": [], "removed": []
+      "local": {
+        "handle": {
+          "slot": 42,
+          "generation": 2
+        },
+        "position": {
+          "x": 1,
+          "y": 2,
+          "z": 3
+        },
+        "velocity": {
+          "x": 0,
+          "y": 0,
+          "z": -1
+        },
+        "bodyYaw": 0.5,
+        "aimPitch": -0.25,
+        "grounded": true,
+        "stateFlags": 0,
+        "health": 87,
+        "movementState": {
+          "stance": 1,
+          "mode": 2,
+          "modeTimeRemaining": 0.4,
+          "dashCooldownRemaining": 0,
+          "slideCooldownRemaining": 0.8,
+          "weaponLockRemaining": 0,
+          "stanceExpansionPending": false,
+          "dashDirection": {
+            "x": 0,
+            "y": 0,
+            "z": -1
+          },
+          "mantleStart": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "mantleTarget": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          }
+        },
+        "weaponState": {
+          "selected": 1,
+          "magazineAmmo": 19,
+          "reserveAmmo": 80,
+          "stateFlags": 0,
+          "aimProgress": 0.5,
+          "spreadRadians": 0.006,
+          "recoilPitch": 0.01,
+          "recoilYaw": -0.002,
+          "recoilSequence": 7
+        }
+      },
+      "created": [
+        {
+          "state": {
+            "handle": {
+              "slot": 9,
+              "generation": 4
+            },
+            "kind": 1,
+            "position": {
+              "x": 10,
+              "y": 0,
+              "z": -4
+            },
+            "velocity": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "bodyYaw": 1,
+            "aimPitch": 0,
+            "grounded": true,
+            "stateFlags": 0,
+            "stance": 1,
+            "movementMode": 2,
+            "equippedWeapon": 2
+          }
+        }
+      ],
+      "updated": [],
+      "removed": []
     }
   },
   {
     "name": "snapshot-delta-all-update-bits",
     "message": "SnapshotDelta",
     "value": {
-      "snapshotSequence": 2, "baselineSequence": 1, "baselineRevision": 7, "baselineReset": false,
-      "serverTick": 123, "lastProcessedInputSequence": 102, "matchRevision": 3, "match": null,
+      "snapshotSequence": 2,
+      "baselineSequence": 1,
+      "baselineRevision": 7,
+      "baselineReset": false,
+      "serverTick": 123,
+      "lastProcessedInputSequence": 102,
+      "matchRevision": 3,
+      "match": null,
       "local": {
-        "handle": { "slot": 42, "generation": 2 },
-        "position": { "x": 1, "y": 2, "z": 3 }, "velocity": { "x": 0, "y": 0, "z": 0 },
-        "bodyYaw": 0.5, "aimPitch": 0, "grounded": true, "stateFlags": 0, "health": 86,
-        "movementState": { "stance": 0, "mode": 0, "modeTimeRemaining": 0, "dashCooldownRemaining": 1.2, "slideCooldownRemaining": 0, "weaponLockRemaining": 0, "stanceExpansionPending": false, "dashDirection": { "x": 1, "y": 0, "z": 0 }, "mantleStart": { "x": 0, "y": 0, "z": 0 }, "mantleTarget": { "x": 0, "y": 0, "z": 0 } },
-        "weaponState": { "selected": 1, "magazineAmmo": 18, "reserveAmmo": 80, "stateFlags": 0, "aimProgress": 1.0, "spreadRadians": 0.004, "recoilPitch": 0.02, "recoilYaw": 0.001, "recoilSequence": 8 }
+        "handle": {
+          "slot": 42,
+          "generation": 2
+        },
+        "position": {
+          "x": 1,
+          "y": 2,
+          "z": 3
+        },
+        "velocity": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "bodyYaw": 0.5,
+        "aimPitch": 0,
+        "grounded": true,
+        "stateFlags": 0,
+        "health": 86,
+        "movementState": {
+          "stance": 0,
+          "mode": 0,
+          "modeTimeRemaining": 0,
+          "dashCooldownRemaining": 1.2,
+          "slideCooldownRemaining": 0,
+          "weaponLockRemaining": 0,
+          "stanceExpansionPending": false,
+          "dashDirection": {
+            "x": 1,
+            "y": 0,
+            "z": 0
+          },
+          "mantleStart": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "mantleTarget": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          }
+        },
+        "weaponState": {
+          "selected": 1,
+          "magazineAmmo": 18,
+          "reserveAmmo": 80,
+          "stateFlags": 0,
+          "aimProgress": 1.0,
+          "spreadRadians": 0.004,
+          "recoilPitch": 0.02,
+          "recoilYaw": 0.001,
+          "recoilSequence": 8
+        }
       },
       "created": [],
-      "updated": [{
-        "handle": { "slot": 9, "generation": 4 }, "changeMask": 511,
-        "position": { "x": 11, "y": 0, "z": -4 }, "velocity": { "x": 1, "y": 0, "z": 0 },
-        "bodyYaw": 1.25, "aimPitch": 0.1, "grounded": false, "stateFlags": 1, "equippedWeapon": 1, "stance": 2, "movementMode": 3
-      }],
-      "removed": [{ "handle": { "slot": 8, "generation": 1 }, "reason": 3 }]
+      "updated": [
+        {
+          "handle": {
+            "slot": 9,
+            "generation": 4
+          },
+          "changeMask": 511,
+          "position": {
+            "x": 11,
+            "y": 0,
+            "z": -4
+          },
+          "velocity": {
+            "x": 1,
+            "y": 0,
+            "z": 0
+          },
+          "bodyYaw": 1.25,
+          "aimPitch": 0.1,
+          "grounded": false,
+          "stateFlags": 1,
+          "equippedWeapon": 1,
+          "stance": 2,
+          "movementMode": 3
+        }
+      ],
+      "removed": [
+        {
+          "handle": {
+            "slot": 8,
+            "generation": 1
+          },
+          "reason": 3
+        }
+      ]
+    }
+  },
+  {
+    "name": "conquest-neutral-contested",
+    "message": "ConquestState",
+    "value": {
+      "serverTick": 240,
+      "westTickets": 498,
+      "eastTickets": 500,
+      "localTeam": 1,
+      "deployReady": true,
+      "objectives": [
+        {
+          "id": "a-railhead",
+          "owner": 0,
+          "capturing": 2,
+          "progress": 0.5,
+          "contested": true
+        }
+      ],
+      "roster": [
+        {
+          "playerId": 42,
+          "team": 1
+        },
+        {
+          "playerId": 43,
+          "team": 2
+        }
+      ]
+    }
+  },
+  {
+    "name": "deploy-primary",
+    "message": "Deploy",
+    "value": {
+      "spawnId": "west-hq-0",
+      "weapon": 1
     }
   }
 ]

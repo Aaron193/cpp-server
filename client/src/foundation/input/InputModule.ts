@@ -1,14 +1,28 @@
+import { loadSettings } from '../../settings/GameSettings'
 import type { ClientModule, ClientModuleContext } from '../lifecycle'
 import { INPUT } from '../services'
-import { CameraAngles, type CameraAngleOptions, DEFAULT_CAMERA_ANGLES } from '../camera/CameraAngles'
-import { InputState, isGameplayInputAllowed, type InputSnapshot } from './InputState'
+import {
+    CameraAngles,
+    type CameraAngleOptions,
+    DEFAULT_CAMERA_ANGLES,
+} from '../camera/CameraAngles'
+import {
+    InputState,
+    isGameplayInputAllowed,
+    type InputSnapshot,
+} from './InputState'
 
 export class InputModule implements ClientModule {
     readonly name = 'input'
+    reloadRevision = 0
     readonly angles: CameraAngles
     readonly state = new InputState()
     private context?: ClientModuleContext
     private active = false
+    private settings = loadSettings()
+    private readonly refreshSettings = () => {
+        this.settings = loadSettings()
+    }
     private collisionDebugRequested = false
     private readonly chatMessages: string[] = []
 
@@ -23,30 +37,64 @@ export class InputModule implements ClientModule {
 
     start(): void {
         this.active = true
+        window.addEventListener('game-settings-changed', this.refreshSettings)
         window.addEventListener('keydown', this.onKeyDown)
         window.addEventListener('keyup', this.onKeyUp)
         window.addEventListener('blur', this.clear)
         document.addEventListener('pointermove', this.onPointerMove, true)
-        document.addEventListener('pointerdown', this.onPointerButtonsChanged, true)
-        document.addEventListener('pointerup', this.onPointerButtonsChanged, true)
+        document.addEventListener(
+            'pointerdown',
+            this.onPointerButtonsChanged,
+            true
+        )
+        document.addEventListener(
+            'pointerup',
+            this.onPointerButtonsChanged,
+            true
+        )
         document.addEventListener('pointerlockchange', this.onPointerLockChange)
         this.context?.canvas.addEventListener('click', this.requestPointerLock)
         this.context?.canvas.addEventListener('contextmenu', this.onContextMenu)
-        document.getElementById('chat_input')?.addEventListener('keydown', this.onChatKeyDown)
+        document
+            .getElementById('chat_input')
+            ?.addEventListener('keydown', this.onChatKeyDown)
     }
 
     stop(): void {
         this.active = false
+        window.removeEventListener(
+            'game-settings-changed',
+            this.refreshSettings
+        )
         window.removeEventListener('keydown', this.onKeyDown)
         window.removeEventListener('keyup', this.onKeyUp)
         window.removeEventListener('blur', this.clear)
         document.removeEventListener('pointermove', this.onPointerMove, true)
-        document.removeEventListener('pointerdown', this.onPointerButtonsChanged, true)
-        document.removeEventListener('pointerup', this.onPointerButtonsChanged, true)
-        document.removeEventListener('pointerlockchange', this.onPointerLockChange)
-        this.context?.canvas.removeEventListener('click', this.requestPointerLock)
-        this.context?.canvas.removeEventListener('contextmenu', this.onContextMenu)
-        document.getElementById('chat_input')?.removeEventListener('keydown', this.onChatKeyDown)
+        document.removeEventListener(
+            'pointerdown',
+            this.onPointerButtonsChanged,
+            true
+        )
+        document.removeEventListener(
+            'pointerup',
+            this.onPointerButtonsChanged,
+            true
+        )
+        document.removeEventListener(
+            'pointerlockchange',
+            this.onPointerLockChange
+        )
+        this.context?.canvas.removeEventListener(
+            'click',
+            this.requestPointerLock
+        )
+        this.context?.canvas.removeEventListener(
+            'contextmenu',
+            this.onContextMenu
+        )
+        document
+            .getElementById('chat_input')
+            ?.removeEventListener('keydown', this.onChatKeyDown)
         this.state.clear()
     }
 
@@ -60,18 +108,31 @@ export class InputModule implements ClientModule {
     }
 
     get hasPointerLock(): boolean {
-        return this.context !== undefined && document.pointerLockElement === this.context.canvas
+        return (
+            this.context !== undefined &&
+            document.pointerLockElement === this.context.canvas
+        )
     }
 
     snapshot(): InputSnapshot {
         return this.state.snapshot(this.isAllowed())
     }
 
-    consumeChatMessages(): readonly string[] { return this.chatMessages.splice(0) }
-    get showScoreboard(): boolean { return this.state.scoreboardVisible }
-    get firing(): boolean { return this.isAllowed() && this.state.firingHeld }
-    get aiming(): boolean { return this.isAllowed() && this.state.aiming }
-    get selectedWeapon(): 1 | 2 { return this.state.selectedWeapon }
+    consumeChatMessages(): readonly string[] {
+        return this.chatMessages.splice(0)
+    }
+    get showScoreboard(): boolean {
+        return this.state.scoreboardVisible
+    }
+    get firing(): boolean {
+        return this.isAllowed() && this.state.firingHeld
+    }
+    get aiming(): boolean {
+        return this.isAllowed() && this.state.aiming
+    }
+    get selectedWeapon(): 1 | 2 {
+        return this.state.selectedWeapon
+    }
 
     consumeCollisionDebugToggle(): boolean {
         const value = this.collisionDebugRequested
@@ -80,12 +141,26 @@ export class InputModule implements ClientModule {
     }
 
     private isAllowed(): boolean {
-        return this.active && this.context !== undefined && isGameplayInputAllowed(document, this.context.canvas)
+        return (
+            this.active &&
+            this.context !== undefined &&
+            isGameplayInputAllowed(document, this.context.canvas)
+        )
     }
 
     private readonly requestPointerLock = (): void => {
-        if (!this.active || !this.context || document.pointerLockElement === this.context.canvas) return
-        if (document.querySelector('.modal-overlay:not(.hidden), [data-gameplay-input-blocking="true"]:not(.hidden)')) return
+        if (
+            !this.active ||
+            !this.context ||
+            document.pointerLockElement === this.context.canvas
+        )
+            return
+        if (
+            document.querySelector(
+                '.modal-overlay:not(.hidden), [data-gameplay-input-blocking="true"]:not(.hidden):not([hidden])'
+            )
+        )
+            return
         void this.context.canvas.requestPointerLock()
     }
 
@@ -99,7 +174,16 @@ export class InputModule implements ClientModule {
             this.state.pointerButtons(event.buttons, this.isAllowed())
             return
         }
-        if (this.isAllowed()) this.angles.applyMouseDelta(event.movementX, event.movementY)
+        if (this.isAllowed())
+            this.angles.applyMouseDelta(
+                event.movementX *
+                    this.settings.sensitivity *
+                    (this.aiming ? this.settings.adsSensitivity / 0.65 : 1),
+                event.movementY *
+                    this.settings.sensitivity *
+                    (this.settings.invertY ? -1 : 1) *
+                    (this.aiming ? this.settings.adsSensitivity / 0.65 : 1)
+            )
     }
     private readonly onPointerButtonsChanged = (event: PointerEvent): void => {
         this.state.pointerButtons(event.buttons, this.isAllowed())
@@ -112,7 +196,9 @@ export class InputModule implements ClientModule {
             return
         }
         if (event.code === 'Enter' && this.hasPointerLock && !event.repeat) {
-            const chat = document.getElementById('chat_input') as HTMLInputElement | null
+            const chat = document.getElementById(
+                'chat_input'
+            ) as HTMLInputElement | null
             if (chat) {
                 event.preventDefault()
                 this.state.clear()
@@ -122,22 +208,29 @@ export class InputModule implements ClientModule {
             }
             return
         }
-        if (this.state.keyDown(event.code, this.isAllowed(), event.repeat)) event.preventDefault()
+        if (event.code === 'KeyR' && this.isAllowed() && !event.repeat)
+            this.reloadRevision++
+        if (this.state.keyDown(event.code, this.isAllowed(), event.repeat))
+            event.preventDefault()
     }
 
     private readonly onKeyUp = (event: KeyboardEvent): void => {
-        if (this.state.keyUp(event.code) && this.hasPointerLock) event.preventDefault()
+        if (this.state.keyUp(event.code) && this.hasPointerLock)
+            event.preventDefault()
     }
 
     private readonly onPointerLockChange = (): void => {
         if (!this.hasPointerLock) this.state.clear()
     }
 
-    private readonly onContextMenu = (event: Event): void => { if (this.hasPointerLock) event.preventDefault() }
+    private readonly onContextMenu = (event: Event): void => {
+        if (this.hasPointerLock) event.preventDefault()
+    }
 
     private readonly onChatKeyDown = (event: Event): void => {
         const keyboardEvent = event as KeyboardEvent
-        if (keyboardEvent.code !== 'Enter' && keyboardEvent.code !== 'Escape') return
+        if (keyboardEvent.code !== 'Enter' && keyboardEvent.code !== 'Escape')
+            return
         const chat = keyboardEvent.currentTarget as HTMLInputElement
         keyboardEvent.preventDefault()
         const message = chat.value

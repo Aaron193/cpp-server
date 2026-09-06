@@ -1,21 +1,21 @@
 #pragma once
 
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
-#include <vector>
-#include <optional>
-#include <deque>
 #include <variant>
-
-#include "combat/CombatGeometry.hpp"
+#include <vector>
 
 #include "GameConfig.hpp"
 #include "ServerRegistration.hpp"
+#include "combat/CombatGeometry.hpp"
+#include "combat/Conquest.hpp"
 #include "ecs/EntityManager.hpp"
 #include "ecs/components.hpp"
 #include "maps/MapPackage.hpp"
@@ -26,10 +26,10 @@
 
 class Client;
 
-using ReliableGameEvent = std::variant<
-    protocol::ShotConfirmed, protocol::Impact, protocol::Damage,
-    protocol::Death, protocol::Respawn, protocol::ScoreChange,
-    protocol::RoundTransition, protocol::ActionResult>;
+using ReliableGameEvent =
+    std::variant<protocol::ShotConfirmed, protocol::Impact, protocol::Damage,
+                 protocol::Death, protocol::Respawn, protocol::ScoreChange,
+                 protocol::RoundTransition, protocol::ActionResult>;
 
 struct CombatMetrics {
     std::uint64_t shotsFired = 0;
@@ -47,13 +47,15 @@ struct CombatMetrics {
 };
 
 struct SessionConfiguration {
-    static constexpr std::uint16_t ProtocolVersion = 10;
+    static constexpr std::uint16_t ProtocolVersion = 11;
     std::string buildId = "dev";
     std::string mode = "ffa";
     std::size_t maxPlayers = 12;
     bool requireExactBuild = true;
     std::function<bool(const std::optional<std::string>&)> authenticate =
-        [](const std::optional<std::string>& token) { return !token.has_value(); };
+        [](const std::optional<std::string>& token) {
+            return !token.has_value();
+        };
 };
 
 class GameServer {
@@ -81,6 +83,15 @@ class GameServer {
     double m_heartbeatTimer = 0.0;
     const double m_heartbeatInterval = 5.0;
 
+    bool isConquest() const {
+        return m_sessionConfiguration.mode == "conquest";
+    }
+    std::uint8_t assignTeam() const;
+    std::uint8_t playerTeam(entt::entity player) const;
+    protocol::ConquestState conquestState(entt::entity recipient) const;
+    void requestDeploy(entt::entity player, const protocol::Deploy& request);
+    bool canDeployAt(entt::entity player, const MapSpawnPoint& spawn) const;
+    void updateConquest(float delta);
     void run();
     std::size_t advanceSimulation(double elapsedSeconds);
     void simulateOneTick();
@@ -93,10 +104,11 @@ class GameServer {
                              const Components::PlayerInput& input,
                              std::uint32_t sequence);
     std::size_t welcomedClientCount() const;
-    protocol::EntityRecord makeEntityRecord(
-        entt::entity entity, entt::entity recipient) const;
+    protocol::EntityRecord makeEntityRecord(entt::entity entity,
+                                            entt::entity recipient) const;
     protocol::EntityHandle makeEntityHandle(entt::entity entity) const;
-    protocol::PublicEntityState makePublicEntityState(entt::entity entity) const;
+    protocol::PublicEntityState makePublicEntityState(
+        entt::entity entity) const;
     protocol::LocalAuthoritativeState makeLocalAuthoritativeState(
         entt::entity entity) const;
     void broadcastPlayerSpawn(entt::entity entity);
@@ -114,8 +126,9 @@ class GameServer {
     std::uint32_t acceptedHistoryTick(std::uint32_t requested) const;
     void setSnapshotHook(std::function<void(std::uint64_t)> hook);
     void setNetworkFlushHook(std::function<void()> hook);
-    void setReliableEventHook(std::function<void(
-        std::optional<entt::entity>, const ReliableGameEvent&)> hook);
+    void setReliableEventHook(std::function<void(std::optional<entt::entity>,
+                                                 const ReliableGameEvent&)>
+                                  hook);
     const CombatMetrics& combatMetrics() const { return combatMetrics_; }
     ServerMetricsSnapshot observabilityMetrics() const;
     std::string observabilityJson() const;
@@ -131,6 +144,18 @@ class GameServer {
     void recordCoalescedSnapshot();
 
    private:
+    struct Projectile {
+        bool active = false;
+        entt::entity shooter = entt::null;
+        glm::vec3 position{}, velocity{};
+        float gravity = 9.81F, range = 0, traveled = 0, damage = 0;
+        ItemType weapon = ItemType::ITEM_NONE;
+        std::uint32_t shotId = 0;
+        std::uint8_t pellet = 0;
+    };
+    std::array<Projectile, 1024> projectiles_{};
+    void updateProjectiles(float delta);
+    Conquest::Rules conquest_;
     PhysicsWorld::BodyId mapBody_ = 0;
     FixedStepAccumulator accumulator_;
     struct QueuedInput {
@@ -142,8 +167,8 @@ class GameServer {
     std::deque<QueuedInput> queuedInputs_;
     std::function<void(std::uint64_t)> snapshotHook_;
     std::function<void()> networkFlushHook_;
-    std::function<void(std::optional<entt::entity>,
-                       const ReliableGameEvent&)> reliableEventHook_;
+    std::function<void(std::optional<entt::entity>, const ReliableGameEvent&)>
+        reliableEventHook_;
     struct HistoricalPlayer {
         entt::entity entity = entt::null;
         glm::vec3 position{0.0F};

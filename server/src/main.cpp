@@ -26,13 +26,15 @@ int main() {
     std::string webApiUrl = getEnvVar("WEB_API_URL", "localhost:3000");
     std::string sharedSecret = getEnvVar("SERVER_SHARED_SECRET", "");
     std::string buildId = getEnvVar("SERVER_BUILD_ID", "dev");
-    std::string mode = getEnvVar("SERVER_MODE", "ffa");
-    std::string websocketUrl = getEnvVar(
-        "SERVER_WEBSOCKET_URL",
-        "ws://" + serverHost + ":" + std::to_string(serverPort));
+    if (maxPlayers < 2 || maxPlayers > 128)
+        throw std::runtime_error("MAX_PLAYERS must be between 2 and 128");
+    std::string mode = getEnvVar("SERVER_MODE", "conquest");
+    std::string websocketUrl =
+        getEnvVar("SERVER_WEBSOCKET_URL",
+                  "ws://" + serverHost + ":" + std::to_string(serverPort));
     std::string joinTicketSecret = getEnvVar("JOIN_TICKET_SECRET", "");
-    std::string joinTicketAudience = getEnvVar(
-        "JOIN_TICKET_AUDIENCE", "arena-game-server");
+    std::string joinTicketAudience =
+        getEnvVar("JOIN_TICKET_AUDIENCE", "arena-game-server");
 
     std::cout << "[Config] Server ID: " << serverId << std::endl;
     std::cout << "[Config] Host: " << serverHost << ":" << serverPort
@@ -43,7 +45,43 @@ int main() {
     std::cout << "[Config] Shared Secret: "
               << (sharedSecret.empty() ? "<not set>" : "<set>") << std::endl;
 
+    if (mode == "conquest" && !std::getenv("GAME_CONFIG_PATH"))
+        setenv(
+            "GAME_CONFIG_PATH",
+            (std::filesystem::path(GameServer::resolveGameConfigPath(nullptr))
+                 .parent_path() /
+             "infantry_config.json")
+                .c_str(),
+            0);
+    if (mode == "conquest" && !std::getenv("MAP_PACKAGE_DIR") &&
+        !std::getenv("MAP_PACKAGE_ROOT"))
+        setenv(
+            "MAP_PACKAGE_DIR",
+            (std::filesystem::path(GameServer::resolveGameConfigPath(nullptr))
+                 .parent_path() /
+             "../client/public/maps/ironworks")
+                .c_str(),
+            0);
     GameServer gameServer;
+    if (mode == "conquest") {
+        const auto& zones = gameServer.m_mapPackage.manifest.zones;
+        const auto count =
+            std::count_if(zones.begin(), zones.end(),
+                          [](const auto& z) { return z.type == "objective"; });
+        if (count < 3 || count > 8)
+            throw std::runtime_error("Conquest requires 3–8 objective zones");
+        for (const std::string team : {"west", "east"})
+            if (std::none_of(
+                    gameServer.m_mapPackage.manifest.spawnPoints.begin(),
+                    gameServer.m_mapPackage.manifest.spawnPoints.end(),
+                    [&](const auto& spawn) {
+                        return spawn.team == team &&
+                               std::find(spawn.modes.begin(), spawn.modes.end(),
+                                         "conquest") != spawn.modes.end();
+                    }))
+                throw std::runtime_error(
+                    "Conquest requires deployment spawns for both teams");
+    }
     gameServer.m_sessionConfiguration.buildId = buildId;
     gameServer.m_sessionConfiguration.mode = mode;
     gameServer.m_sessionConfiguration.maxPlayers =
@@ -56,10 +94,12 @@ int main() {
             [ticketValidator](const std::optional<std::string>& ticket) {
                 return ticket && ticketValidator->validate(*ticket);
             };
-        std::cout << "[Security] Short-lived server-scoped join tickets required"
-                  << std::endl;
+        std::cout
+            << "[Security] Short-lived server-scoped join tickets required"
+            << std::endl;
     } else {
-        std::cout << "[Security] JOIN_TICKET_SECRET not set; only tokenless local joins are accepted"
+        std::cout << "[Security] JOIN_TICKET_SECRET not set; only tokenless "
+                     "local joins are accepted"
                   << std::endl;
     }
     SocketServer socketServer(gameServer, serverPort);

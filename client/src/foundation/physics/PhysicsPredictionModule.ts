@@ -7,7 +7,12 @@ import type {
 } from '../lifecycle'
 import { INPUT, PHYSICS } from '../services'
 import { JoltCharacterWorld, type PhysicsPosition } from './JoltCharacterWorld'
-import { DEFAULT_MOVEMENT_TUNING, FixedStepAccumulator, createMovementState, type MovementTuning } from './Movement'
+import {
+    DEFAULT_MOVEMENT_TUNING,
+    FixedStepAccumulator,
+    createMovementState,
+    type MovementTuning,
+} from './Movement'
 import type { MovementCommand } from './Movement'
 import { MovementMode, type MovementState } from '../../protocol/generated'
 import { ProfileStats } from '../performance/ProfileStats'
@@ -20,7 +25,9 @@ export class PhysicsPredictionModule implements ClientModule {
     private currentTuning: MovementTuning
     private context?: ClientModuleContext
     private runtimePromise?: Promise<JoltRuntime>
-    private readonly accumulator = new FixedStepAccumulator(this.fixedStepSeconds)
+    private readonly accumulator = new FixedStepAccumulator(
+        this.fixedStepSeconds
+    )
     private world?: JoltCharacterWorld
     private collision?: CollisionMeshData
     private externallyDriven = false
@@ -30,7 +37,10 @@ export class PhysicsPredictionModule implements ClientModule {
     private readonly zero = { x: 0, y: 0, z: 0 }
 
     constructor(tuning: Partial<MovementTuning> = {}) {
-        this.currentTuning = Object.freeze({ ...DEFAULT_MOVEMENT_TUNING, ...tuning })
+        this.currentTuning = Object.freeze({
+            ...DEFAULT_MOVEMENT_TUNING,
+            ...tuning,
+        })
     }
 
     initialize(context: ClientModuleContext): void {
@@ -46,10 +56,18 @@ export class PhysicsPredictionModule implements ClientModule {
         return this.runtimePromise
     }
 
-    async createWorld(collision: CollisionMeshData, spawn: PhysicsPosition): Promise<void> {
+    async createWorld(
+        collision: CollisionMeshData,
+        spawn: PhysicsPosition
+    ): Promise<void> {
         this.world?.dispose()
         this.collision = collision
-        this.world = new JoltCharacterWorld(await this.ensureRuntime(), collision, spawn, this.currentTuning)
+        this.world = new JoltCharacterWorld(
+            await this.ensureRuntime(),
+            collision,
+            spawn,
+            this.currentTuning
+        )
         this.accumulator.reset()
         this.simulatedSteps = 0
     }
@@ -69,7 +87,11 @@ export class PhysicsPredictionModule implements ClientModule {
         if (this.world) this.simulatedSteps++
     }
 
-    setAuthoritativeState(position: PhysicsPosition, velocity: PhysicsPosition, movementState?: MovementState): void {
+    setAuthoritativeState(
+        position: PhysicsPosition,
+        velocity: PhysicsPosition,
+        movementState?: MovementState
+    ): void {
         this.world?.setState(position, velocity, movementState)
     }
 
@@ -79,7 +101,12 @@ export class PhysicsPredictionModule implements ClientModule {
         const position = this.world.position
         const velocity = this.world.velocity
         this.world.dispose()
-        this.world = new JoltCharacterWorld(await this.ensureRuntime(), this.collision, position, this.currentTuning)
+        this.world = new JoltCharacterWorld(
+            await this.ensureRuntime(),
+            this.collision,
+            position,
+            this.currentTuning
+        )
         this.world.setState(position, velocity)
     }
 
@@ -88,25 +115,61 @@ export class PhysicsPredictionModule implements ClientModule {
         this.accumulator.reset()
     }
 
-    get position(): PhysicsPosition { return this.world?.position ?? this.zero }
-    get velocity(): PhysicsPosition { return this.world?.velocity ?? this.zero }
-    get grounded(): boolean { return this.world?.grounded ?? false }
-    get movementState(): MovementState { return this.world?.movementState ?? createMovementState() }
+    probeStatic(
+        origin: PhysicsPosition,
+        displacement: PhysicsPosition
+    ): number | undefined {
+        return this.world?.probeStatic(origin, displacement)
+    }
+    get position(): PhysicsPosition {
+        return this.world?.position ?? this.zero
+    }
+    get velocity(): PhysicsPosition {
+        return this.world?.velocity ?? this.zero
+    }
+    get grounded(): boolean {
+        return this.world?.grounded ?? false
+    }
+    get movementState(): MovementState {
+        return this.world?.movementState ?? createMovementState()
+    }
     get canFire(): boolean {
         const movement = this.movementState
-        return movement.weaponLockRemaining <= 0 && movement.mode !== MovementMode.Sprinting &&
-            movement.mode !== MovementMode.Dashing && movement.mode !== MovementMode.Mantling
+        return (
+            movement.weaponLockRemaining <= 0 &&
+            movement.mode !== MovementMode.Sprinting &&
+            movement.mode !== MovementMode.Dashing &&
+            movement.mode !== MovementMode.Mantling
+        )
     }
-    get tuning(): MovementTuning { return this.currentTuning }
-    get stepCount(): number { return this.simulatedSteps }
-    get droppedSimulationTimeMs(): number { return this.accumulator.totalDroppedSeconds * 1000 }
-    get isWorldReady(): boolean { return this.world !== undefined }
-    setProfilingEnabled(enabled: boolean): void { this.profilingEnabled = enabled; if (!enabled) this.stepTimes.clear() }
-    get predictionStepP95Ms(): number { return this.stepTimes.snapshot().p95 }
+    get tuning(): MovementTuning {
+        return this.currentTuning
+    }
+    get stepCount(): number {
+        return this.simulatedSteps
+    }
+    get droppedSimulationTimeMs(): number {
+        return this.accumulator.totalDroppedSeconds * 1000
+    }
+    get isWorldReady(): boolean {
+        return this.world !== undefined
+    }
+    setProfilingEnabled(enabled: boolean): void {
+        this.profilingEnabled = enabled
+        if (!enabled) this.stepTimes.clear()
+    }
+    get predictionStepP95Ms(): number {
+        return this.stepTimes.snapshot().p95
+    }
 
     private profileStep(command: MovementCommand, dt: number): void {
-        if (!this.profilingEnabled) { this.world?.step(command, dt); return }
-        const started = performance.now(); this.world?.step(command, dt); this.stepTimes.add(performance.now() - started)
+        if (!this.profilingEnabled) {
+            this.world?.step(command, dt)
+            return
+        }
+        const started = performance.now()
+        this.world?.step(command, dt)
+        this.stepTimes.add(performance.now() - started)
     }
 
     dispose(): void {

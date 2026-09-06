@@ -1,0 +1,1108 @@
+@font-face {
+    font-family: Barlow;
+    src: url('/fonts/Barlow-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Barlow Condensed';
+    src: url('/fonts/BarlowCondensed-SemiBold.ttf') format('truetype');
+    font-weight: 600;
+    font-display: swap;
+}
+:root {
+    --field-accent: #e8ad64;
+    --field-blue: #80c9de;
+    --field-red: #ec806b;
+    --field-white: #e4e9e5;
+    --field-muted: #96a5a4;
+}
+body {
+    background: #101a1c;
+    color: var(--field-white);
+    font-family: Barlow, Arial, sans-serif;
+}
+button,
+input,
+select {
+    font: inherit;
+}
+button {
+    cursor: pointer;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+    outline: 2px solid var(--field-accent);
+    outline-offset: 5px;
+}
+button:disabled {
+    cursor: default;
+    opacity: 0.4;
+}
+#home-screen {
+    display: flex;
+    overflow: auto;
+    align-items: stretch;
+    justify-content: center;
+    background:
+        linear-gradient(
+            90deg,
+            rgba(8, 17, 20, 0.96),
+            rgba(9, 18, 20, 0.65) 52%,
+            rgba(12, 20, 23, 0.35)
+        ),
+        url('/images/ironworks-keyart.png') center/cover fixed;
+    min-height: 100vh;
+}
+.front-atmosphere {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(ellipse at 72% 20%, #acbaac18, transparent 65%),
+        repeating-linear-gradient(0deg, transparent 0 3px, #0000000a 3px 4px);
+    z-index: 0;
+}
+.home-content.military-front {
+    width: 100%;
+    max-width: 1800px;
+    padding: 0 5.5vw;
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 0 6vw;
+    margin: 0;
+    text-align: left;
+}
+.front-header {
+    grid-column: 1/-1;
+    display: flex;
+    align-items: center;
+    gap: 40px;
+    border-bottom: 1px solid #ffffff20;
+    min-height: 88px;
+}
+.front-brand {
+    font:
+        700 27px 'Barlow Condensed',
+        sans-serif;
+    letter-spacing: 5px;
+    color: #edf0e9;
+    text-decoration: none;
+}
+.front-build {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: #b3beb9;
+}
+.front-build i {
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    background: #b9ccaa;
+    margin: 0 7px 0 18px;
+}
+.front-header .auth-buttons {
+    margin-left: auto;
+}
+.front-header .btn {
+    font-size: 11px;
+    padding: 8px 16px;
+    background: transparent;
+    border: 1px solid #ffffff25;
+    border-radius: 0;
+}
+.front-nav {
+    grid-column: 1/-1;
+    display: flex;
+    gap: 36px;
+    padding: 27px 0;
+}
+.front-nav button {
+    border: 0;
+    border-radius: 0;
+    padding: 8px 0 14px;
+    background: transparent;
+    color: #aab8b7;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 2px;
+}
+.front-nav button.active {
+    color: white;
+    border-bottom: 2px solid var(--field-accent);
+}
+.front-nav button:hover {
+    color: var(--field-accent);
+}
+.front-main {
+    padding: 30px 0 42px;
+}
+.front-eyebrow {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: #bac5be;
+}
+.front-eyebrow span {
+    display: inline-block;
+    border: 1px solid #8c9d9755;
+    padding: 6px 9px;
+    margin-right: 12px;
+    color: var(--field-accent);
+}
+.military-front .game-title {
+    font:
+        800 clamp(68px, 8vw, 126px) / 0.9 'Barlow Condensed',
+        'Arial Narrow',
+        sans-serif;
+    letter-spacing: -1px;
+    margin: 32px 0 26px;
+    text-shadow: none;
+    color: #edf0e8;
+}
+.game-title em {
+    font-style: normal;
+    color: var(--field-accent);
+}
+.front-description {
+    font-size: 15px;
+    line-height: 1.8;
+    color: #b7c2be;
+    letter-spacing: 0.2px;
+    margin-bottom: 32px;
+}
+.front-operation {
+    border-left: 2px solid var(--field-accent);
+    padding: 0 0 0 20px;
+}
+.front-operation small,
+.front-brief small {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: #acb7b0;
+}
+.front-operation h2 {
+    font: 600 32px 'Barlow Condensed';
+    letter-spacing: 3px;
+    margin: 5px 0;
+}
+.front-operation p {
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: #a0afab;
+    margin: 0 0 18px;
+}
+.front-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.military-front .btn {
+    border-radius: 0;
+    box-shadow: none;
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    font-weight: 600;
+}
+.front-actions .btn-success {
+    background: var(--field-accent);
+    color: #192224;
+    border: 0;
+    min-width: 240px;
+    padding: 17px 22px;
+    text-align: left;
+}
+.front-actions .btn-success span {
+    float: right;
+}
+.front-actions .btn-ghost {
+    border: 1px solid #ffffff30;
+    background: #16212360;
+    color: #d3dcd4;
+    padding: 17px 20px;
+}
+.front-actions button:hover {
+    filter: brightness(1.15);
+    transform: none;
+}
+.military-front .player-section {
+    background: none;
+    border: none;
+    border-radius: 0;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 0;
+    margin: 28px 0 0;
+}
+.player-section label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: #a6b5ae;
+}
+.player-section #player-name {
+    width: 185px;
+    padding: 8px 0;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid #ffffff30;
+    border-radius: 0;
+    color: #dce3db;
+    font-size: 12px;
+}
+.front-brief {
+    align-self: center;
+    padding: 22px 0;
+    border-top: 1px solid #ffffff30;
+    border-bottom: 1px solid #ffffff30;
+    color: #bcc7c1;
+}
+.front-map-preview {
+    height: 205px;
+    margin: 22px 0;
+    background:
+        linear-gradient(#11202333, #11202333),
+        url('/maps/ironworks/radar.svg') center/cover;
+    opacity: 0.8;
+    border: 1px solid #c0d0c030;
+}
+.front-brief h3 {
+    font: 500 21px 'Barlow Condensed';
+    letter-spacing: 2px;
+}
+.front-brief p {
+    font-size: 12px;
+    line-height: 1.9;
+    margin: 12px 0 24px;
+    color: #a5b4ad;
+}
+.front-brief > span {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: #748982;
+}
+.military-front .server-section {
+    grid-column: 1/-1;
+    margin: 0;
+    padding: 22px 0;
+    border-top: 1px solid #ffffff25;
+    background: none;
+    border-radius: 0;
+}
+.military-front .section-title {
+    font-size: 11px;
+    letter-spacing: 2px;
+}
+.military-front .section-header {
+    margin-bottom: 12px;
+}
+.military-front .server-list {
+    gap: 0;
+    max-height: 220px;
+}
+.military-front .server-card {
+    border-radius: 0;
+    border: 0;
+    border-bottom: 1px solid #ffffff12;
+    background: #12202375;
+    padding: 15px 20px;
+    box-shadow: none;
+    transition: background 0.2s;
+}
+.military-front .server-card:hover {
+    background: #22312e;
+    transform: none;
+}
+.military-front .server-name {
+    font-size: 14px;
+}
+.military-front .server-host {
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: #829992;
+}
+.military-front .server-action {
+    font-size: 10px;
+    color: var(--field-accent);
+}
+.military-front .error-message,
+.military-front .no-servers {
+    padding: 16px;
+    color: #a9b8b0;
+    font-size: 12px;
+    background: none;
+    border: 0;
+    text-align: left;
+}
+.military-front .home-footer {
+    grid-column: 1/-1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 22px 0;
+    margin: 0;
+    color: #7b9088;
+    border-top: 1px solid #ffffff20;
+    font-size: 9px;
+    letter-spacing: 1.4px;
+}
+.home-footer button {
+    font-size: 9px;
+    letter-spacing: 1px;
+    background: none;
+    border: none;
+    color: #b9c5bd;
+    margin: 0 12px;
+}
+.home-footer button:hover {
+    color: var(--field-accent);
+}
+.modal-overlay {
+    backdrop-filter: blur(12px);
+}
+.modal-content {
+    border-radius: 0 !important;
+    border: 1px solid #788f8255 !important;
+    background: #132023 !important;
+    color: #d9e2da;
+}
+.modal-content h2,
+.modal-content h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    letter-spacing: 2px;
+}
+.modal-content p {
+    line-height: 1.9;
+}
+.modal-content .btn {
+    border-radius: 0;
+}
+.military-settings {
+    width: min(760px, 90vw);
+    max-height: 90vh;
+    background: #132023;
+    color: #dae2dc;
+    border: 1px solid #697d7255;
+    padding: 28px 34px;
+    box-shadow: 0 30px 140px #0009;
+}
+.military-settings::backdrop {
+    background: #050d12b8;
+    backdrop-filter: blur(14px);
+}
+.military-settings header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.military-settings small {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--field-accent);
+}
+.military-settings h2 {
+    font: 600 36px 'Barlow Condensed';
+    margin: 8px 0 20px;
+    letter-spacing: 3px;
+}
+.military-settings button {
+    border: 1px solid #ffffff25;
+    background: transparent;
+    padding: 10px 18px;
+    color: inherit;
+    font-size: 11px;
+    letter-spacing: 1px;
+}
+.military-settings nav {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 22px;
+}
+.military-settings nav button {
+    border: none;
+    border-bottom: 2px solid transparent;
+}
+.military-settings nav button[aria-selected='true'] {
+    border-color: var(--field-accent);
+    color: var(--field-accent);
+}
+.military-settings label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 17px 0;
+    border-bottom: 1px solid #ffffff14;
+    font-size: 13px;
+    gap: 20px;
+}
+.military-settings label > span {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+.military-settings input[type='range'] {
+    width: 180px;
+    accent-color: var(--field-accent);
+}
+.military-settings input[type='checkbox'] {
+    accent-color: var(--field-accent);
+    width: 18px;
+    height: 18px;
+}
+.military-settings select {
+    background: #23312e;
+    border: 1px solid #ffffff30;
+    padding: 8px 18px;
+    color: inherit;
+}
+.military-settings output {
+    width: 40px;
+    color: var(--field-accent);
+    font-variant-numeric: tabular-nums;
+}
+.military-settings p {
+    font-size: 11px;
+    color: #93a79c;
+    line-height: 2;
+    margin: 24px 0;
+}
+.military-settings footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 24px;
+    font-size: 10px;
+    color: #9daea3;
+}
+.settings-scroll {
+    max-height: 55vh;
+    overflow: auto;
+}
+/* Tactical HUD: peripheral information, a quiet centre, no opaque combat dashboard. */
+.fps-vitals {
+    right: 34px !important;
+    bottom: 35px !important;
+    left: auto !important;
+    background: linear-gradient(90deg, transparent, #0a172680) !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    gap: 24px !important;
+    padding: 16px !important;
+}
+.fps-vitals strong {
+    font:
+        600 38px 'Barlow Condensed',
+        sans-serif !important;
+}
+.fps-label {
+    font-size: 9px !important;
+    letter-spacing: 2px !important;
+    color: #c3d3d4 !important;
+}
+.fps-vitals #fps-dash-panel {
+    display: none;
+}
+.fps-radar {
+    left: 30px !important;
+    bottom: 34px !important;
+    width: 220px !important;
+    border: 1px solid #c7d5d155 !important;
+    border-radius: 0 !important;
+    box-shadow: 0 8px 24px #0005 !important;
+    background: #152421 !important;
+    overflow: hidden;
+}
+.fps-radar img {
+    opacity: 0.88 !important;
+}
+.fps-radar-local {
+    filter: drop-shadow(0 1px 3px #000);
+}
+.fps-chat-log {
+    bottom: 225px !important;
+    left: 30px !important;
+    font-size: 11px !important;
+}
+.fps-kill-feed {
+    top: 35px !important;
+    right: 30px !important;
+    font:
+        12px Barlow,
+        sans-serif !important;
+}
+.fps-kill-feed > div {
+    background: #0b182650 !important;
+    border: 0 !important;
+    padding: 6px 12px !important;
+}
+.fps-connection-quality {
+    right: 32px !important;
+    bottom: 12px !important;
+    top: auto !important;
+    font-size: 9px !important;
+    opacity: 0.65;
+}
+.fps-pointer-prompt {
+    background: #101d2480 !important;
+    border: 1px solid #ffffff30 !important;
+    border-radius: 0 !important;
+    font-size: 12px !important;
+    letter-spacing: 2px !important;
+}
+.fps-scoreboard {
+    border-radius: 0 !important;
+    background: #0c1b22e8 !important;
+    backdrop-filter: blur(14px);
+    border: 1px solid #ffffff30 !important;
+}
+.fps-scoreboard h2 {
+    font: 600 26px 'Barlow Condensed';
+    letter-spacing: 3px;
+}
+.fps-crosshair {
+    opacity: 0.8;
+}
+.fps-damage {
+    z-index: -1;
+}
+.fps-confirmation {
+    position: absolute;
+    left: 50%;
+    top: 61%;
+    transform: translateX(-50%);
+    color: #f2d8a5;
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-shadow: 0 2px 5px #000;
+    pointer-events: none;
+}
+.fps-low-health {
+    --trauma: 0;
+    --impact-pulse: 0;
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    opacity: 1;
+    pointer-events: none;
+    z-index: -2;
+}
+.fps-low-health > i {
+    position: absolute;
+    inset: 0;
+    display: block;
+    pointer-events: none;
+}
+.fps-low-health .wound-vignette {
+    opacity: min(1, calc(var(--trauma) * 0.92 + var(--impact-pulse) * 0.26));
+    background:
+        radial-gradient(
+            ellipse at center,
+            transparent 38%,
+            #3000001f 59%,
+            #410500a8 100%
+        ),
+        linear-gradient(90deg, #4a050047, transparent 15% 85%, #4a050047);
+    box-shadow: inset 0 0 calc(80px + var(--trauma) * 150px) #390300;
+    mix-blend-mode: multiply;
+    transition: opacity 180ms ease-out;
+}
+.fps-low-health .wound-blood {
+    background-repeat: no-repeat;
+    mix-blend-mode: multiply;
+    filter: blur(0.35px) saturate(1.18);
+    transition: opacity 260ms ease-out;
+}
+.fps-low-health .blood-a {
+    opacity: max(0, calc((var(--trauma) - 0.12) * 1.25));
+    background-image:
+        radial-gradient(
+            ellipse at 2% 19%,
+            #651006 0 1.2%,
+            #411009bb 1.4% 2.2%,
+            transparent 2.5%
+        ),
+        radial-gradient(
+            ellipse at 97% 74%,
+            #7e170c 0 0.7%,
+            #4b0b08aa 1% 2.3%,
+            transparent 2.7%
+        ),
+        radial-gradient(ellipse at 9% 91%, #55120bbd 0 2.2%, transparent 5.5%),
+        radial-gradient(ellipse at 89% 5%, #611005a6 0 1.7%, transparent 4.4%);
+}
+.fps-low-health .blood-b {
+    opacity: max(0, calc((var(--trauma) - 0.38) * 1.65));
+    background-image:
+        radial-gradient(
+            ellipse at 0 56%,
+            #4e0700 0 3%,
+            #541109af 3.4% 7%,
+            transparent 10%
+        ),
+        radial-gradient(
+            ellipse at 100% 31%,
+            #641005 0 2.5%,
+            #3c0805c2 3% 8%,
+            transparent 11%
+        ),
+        radial-gradient(ellipse at 25% 103%, #5e0b04 0 4%, transparent 11%),
+        radial-gradient(ellipse at 73% -4%, #4b0803 0 3%, transparent 9%);
+}
+.fps-low-health .blood-c {
+    opacity: max(0, calc((var(--trauma) - 0.62) * 2.25));
+    background:
+        radial-gradient(
+            ellipse at center,
+            transparent 26%,
+            #2301005c 73%,
+            #260100c7 100%
+        ),
+        repeating-radial-gradient(
+            ellipse at 14% 20%,
+            #4b090698 0 1px,
+            transparent 2px 17px
+        );
+}
+.fps-low-health .wound-desaturation {
+    opacity: calc(var(--trauma) * 0.45);
+    backdrop-filter: saturate(calc(1 - var(--trauma) * 0.68))
+        contrast(calc(1 + var(--trauma) * 0.12));
+    transition: opacity 220ms ease-out;
+}
+.conquest-strip {
+    position: absolute;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    text-shadow: 0 2px 5px #000;
+    font: 600 24px 'Barlow Condensed';
+    pointer-events: none;
+}
+.conquest-strip .tickets {
+    min-width: 70px;
+    border-top: 2px solid var(--field-blue);
+    padding-top: 5px;
+    color: var(--field-blue);
+}
+.conquest-strip .tickets.enemy {
+    border-color: var(--field-red);
+    color: var(--field-red);
+    text-align: right;
+}
+.objective-row {
+    display: flex;
+    gap: 11px;
+}
+.objective-icon {
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    border: 1px solid #d5dfda99;
+    color: #e3e7de;
+    background: #1a252b88;
+    font: 600 17px 'Barlow Condensed';
+    position: relative;
+}
+.objective-icon[data-owner='1'] {
+    color: var(--field-blue);
+    border-color: var(--field-blue);
+}
+.objective-icon[data-owner='2'] {
+    color: var(--field-red);
+    border-color: var(--field-red);
+}
+.objective-icon[data-contested='true'] {
+    animation: contested 1s infinite alternate;
+}
+.objective-icon i {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 2px;
+    background: currentColor;
+}
+.radar-objective {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    font-size: 12px;
+    width: 18px;
+    height: 18px;
+}
+.radar-ally {
+    position: absolute;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #8bd9e4;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 3px #000;
+}
+.objective-world {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    text-shadow: 0 2px 4px #000;
+    pointer-events: none;
+    font-size: 10px;
+    color: #dce7df;
+}
+.objective-world .objective-icon {
+    width: 24px;
+    height: 24px;
+    background: #0b1e2b40;
+}
+.deployment {
+    position: absolute;
+    inset: 0;
+    pointer-events: auto;
+    background: linear-gradient(120deg, #0b1924f5, #132226ee);
+    backdrop-filter: blur(15px);
+    padding: 32px 4vw;
+    display: grid;
+    grid-template-columns: 1fr 270px;
+    grid-template-rows: auto 1fr auto;
+    gap: 24px;
+    z-index: 40;
+    color: #dce6df;
+}
+.deployment[hidden] {
+    display: none;
+}
+.deploy-header {
+    grid-column: 1/-1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #ffffff25;
+    padding-bottom: 20px;
+}
+.deploy-header h1 {
+    font: 600 32px 'Barlow Condensed';
+    letter-spacing: 3px;
+    margin: 3px 0;
+}
+.deploy-header small {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--field-accent);
+}
+.deploy-map-wrap {
+    display: grid;
+    place-items: center;
+    min-height: 0;
+    overflow: hidden;
+}
+.deploy-map {
+    width: 100%;
+    max-height: 100%;
+    aspect-ratio: 4/3;
+    position: relative;
+    background: #26382f;
+    outline: 1px solid #71857b77;
+    box-shadow: 0 10px 50px #0005;
+}
+.deploy-map > img {
+    width: 100%;
+    height: 100%;
+    opacity: 0.85;
+    object-fit: fill;
+}
+.deploy-grid {
+    position: absolute;
+    inset: 0;
+    background:
+        repeating-linear-gradient(
+            0deg,
+            transparent 0 calc(12.5% - 1px),
+            #ced8cc12 calc(12.5% - 1px) 12.5%
+        ),
+        repeating-linear-gradient(
+            90deg,
+            transparent 0 calc(12.5% - 1px),
+            #ced8cc12 calc(12.5% - 1px) 12.5%
+        );
+    pointer-events: none;
+}
+.deploy-spawn {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    width: 26px;
+    height: 26px;
+    border: 1px solid #8cd6e8;
+    background: #164058b0;
+    color: #d7f5ff;
+    font: 600 13px 'Barlow Condensed';
+}
+.deploy-spawn[aria-pressed='true'] {
+    outline: 2px solid #f0c282;
+    outline-offset: 4px;
+    background: #cd9c57;
+    color: #13212c;
+}
+.deploy-spawn:hover {
+    background: #6495a1;
+}
+.deploy-side {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 22px 0 10px 22px;
+    border-left: 1px solid #ffffff20;
+}
+.deploy-side small {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: #91a79c;
+}
+.deploy-side h2 {
+    font: 600 26px 'Barlow Condensed';
+    letter-spacing: 1px;
+    margin: 6px 0;
+}
+.deploy-side p {
+    font-size: 12px;
+    line-height: 1.8;
+    color: #aabbb1;
+}
+.deploy-side select {
+    background: #21332f;
+    border: 1px solid #667d7155;
+    padding: 14px;
+    color: #dfe8df;
+    width: 100%;
+    margin-top: 12px;
+}
+.deploy-status {
+    font-size: 11px;
+    color: #ecbd82;
+    min-height: 30px;
+}
+.deploy-button {
+    margin-top: auto;
+    background: var(--field-accent);
+    border: 0;
+    padding: 19px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: #192630;
+}
+.deploy-footer {
+    grid-column: 1/-1;
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: #849d90;
+    border-top: 1px solid #ffffff20;
+    padding-top: 17px;
+}
+.deploy-header button {
+    background: transparent;
+    border: 1px solid #ffffff25;
+    padding: 10px 15px;
+    color: #dce6df;
+    font-size: 10px;
+    letter-spacing: 1px;
+}
+@keyframes contested {
+    to {
+        opacity: 0.4;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation: none !important;
+        scroll-behavior: auto !important;
+        transition: none !important;
+    }
+}
+@media (max-width: 950px) {
+    .home-content.military-front {
+        grid-template-columns: 1fr;
+        padding: 0 6vw;
+    }
+    .front-brief {
+        display: none;
+    }
+    .front-build {
+        display: none;
+    }
+    .front-nav {
+        gap: 28px;
+    }
+    .front-header {
+        gap: 20px;
+    }
+    .military-front .game-title {
+        font-size: 90px;
+    }
+    .deployment {
+        grid-template-columns: 1fr 220px;
+        padding: 22px;
+        gap: 16px;
+    }
+    .deploy-side {
+        padding-left: 12px;
+    }
+    .fps-radar {
+        width: 170px !important;
+    }
+    .military-front .home-footer > span:last-child {
+        display: none;
+    }
+}
+@media (max-width: 600px) {
+    .front-header {
+        min-height: 70px;
+    }
+    .front-brand {
+        font-size: 22px;
+    }
+    .front-nav {
+        gap: 24px;
+    }
+    .front-nav button {
+        font-size: 10px;
+    }
+    .front-main {
+        padding-top: 10px;
+    }
+    .military-front .game-title {
+        font-size: 72px;
+    }
+    .front-eyebrow {
+        font-size: 8px;
+    }
+    .front-actions {
+        display: grid;
+    }
+    .front-actions .btn {
+        width: 100%;
+    }
+    .military-front .home-footer {
+        align-items: flex-start;
+        gap: 20px;
+    }
+    .home-footer div {
+        display: grid;
+        gap: 12px;
+    }
+    .deployment {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr auto;
+        padding: 15px;
+    }
+    .deploy-side {
+        border: 0;
+        padding: 0;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+    .deploy-side > p,
+    .deploy-footer {
+        display: none;
+    }
+    .deploy-button {
+        margin: 0;
+    }
+    .deploy-side h2 {
+        font-size: 18px;
+    }
+    .deploy-header h1 {
+        font-size: 22px;
+    }
+    .military-settings {
+        padding: 18px;
+    }
+    .military-settings input[type='range'] {
+        width: 100px;
+    }
+    .fps-vitals {
+        right: 8px !important;
+        bottom: 20px !important;
+        gap: 15px !important;
+    }
+    .fps-vitals strong {
+        font-size: 25px !important;
+    }
+    .fps-radar {
+        left: 10px !important;
+        bottom: 20px !important;
+        width: 130px !important;
+    }
+    .conquest-strip {
+        gap: 8px;
+    }
+    .objective-row {
+        gap: 6px;
+    }
+    .objective-icon {
+        width: 24px;
+        height: 24px;
+    }
+    .conquest-strip .tickets {
+        min-width: 35px;
+    }
+    .front-header .auth-buttons .btn {
+        font-size: 9px;
+        padding: 6px;
+    }
+}
+
+.military-front .game-title {
+    background: none;
+    -webkit-text-fill-color: initial;
+    background-clip: initial;
+}
+.military-front .game-title em {
+    -webkit-text-fill-color: var(--field-accent);
+}
+.conquest-strip[hidden] {
+    display: none;
+}
+.deployment .objective-icon {
+    pointer-events: none;
+}
+
+.fps-vitals > div {
+    background: none !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+}
+.fps-vitals #fps-ammo {
+    font-size: 46px !important;
+}
+.front-header .btn {
+    font-family: Barlow, sans-serif;
+}
+@media (min-height: 760px) {
+    .front-main {
+        padding-top: 12px;
+        padding-bottom: 28px;
+    }
+    .military-front .game-title {
+        margin-top: 20px;
+        margin-bottom: 20px;
+        font-size: clamp(68px, 7vw, 110px);
+    }
+    .front-description {
+        margin-bottom: 24px;
+    }
+    .front-nav {
+        padding-top: 18px;
+        padding-bottom: 18px;
+    }
+}
