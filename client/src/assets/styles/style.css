@@ -1040,10 +1040,10 @@ body {
 }
 #fps-hitmarker {
     position: absolute;
-    width: 50px;
-    height: 50px;
-    left: -25px;
-    top: -25px;
+    width: 40px;
+    height: 40px;
+    left: -20px;
+    top: -20px;
     opacity: 0;
     transform: scale(1.42);
     transition:
@@ -1054,8 +1054,8 @@ body {
     position: absolute;
     display: block;
     width: 2px;
-    height: 11px;
-    border-radius: 1px;
+    height: 8px;
+    border-radius: 0.5px;
     background: #f4f7f5;
     box-shadow: 0 0 1px #fff;
 }
@@ -1080,8 +1080,8 @@ body {
     transform: rotate(45deg);
 }
 #fps-hitmarker.active {
-    opacity: 1;
-    transform: scale(1);
+    opacity: var(--hit-opacity, 1);
+    transform: scale(var(--hit-scale, 1));
 }
 #fps-hitmarker.kill i {
     background: #f16e5e;
@@ -1089,8 +1089,8 @@ body {
 }
 #fps-hit-damage {
     position: absolute;
-    left: 30px;
-    top: -12px;
+    left: 28px;
+    top: -7px;
     color: #f4f7f5;
     font:
         600 15px/1 'Barlow Condensed',
@@ -1104,7 +1104,7 @@ body {
         transform 100ms ease-out;
 }
 #fps-hit-damage.active {
-    opacity: 0.95;
+    opacity: var(--number-opacity, 0.95);
     transform: translateX(0);
 }
 #fps-hit-damage.kill {
@@ -1128,7 +1128,7 @@ body {
     position: absolute;
     left: 50%;
     top: 50%;
-    width: min(34vmin, 330px);
+    width: min(30vmin, 280px);
     aspect-ratio: 1;
     opacity: 0;
     transform: translate(-50%, -50%) rotate(var(--damage-angle));
@@ -1136,7 +1136,7 @@ body {
         from -26deg,
         transparent 0deg,
         rgba(123, 0, 0, 0.12) 8deg,
-        rgba(255, 63, 42, calc(var(--damage-strength) * 0.94)) 21deg,
+        rgba(255, 63, 42, calc(var(--damage-strength) * 0.94)) 26deg,
         rgba(123, 0, 0, 0.12) 39deg,
         transparent 52deg
     );

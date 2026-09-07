@@ -15,6 +15,7 @@ import {
     NETWORKING,
     PERFORMANCE,
     PHYSICS,
+    SIMULATION_AIM,
 } from '../services'
 import type {
     CombatEvent,
@@ -80,6 +81,7 @@ interface DamageArc {
     readonly element: HTMLElement
     startedAt: number
     expiresAt: number
+    worldYaw: number
 }
 
 /** DOM HUD with cached references and revision-driven list updates. */
@@ -92,6 +94,9 @@ export class HudModule implements ClientModule {
     private hitMarkerUntil = 0
     private damageUntil = 0
     private hitDamage = 0
+    private hitNumberUntil = 0
+    private lastHitTarget: number | null = null
+    private displayedTrauma = 0
     private lastHitAt = -Infinity
     private lastDamageAt = -Infinity
     private readonly damageArcs: DamageArc[] = []
@@ -171,6 +176,7 @@ export class HudModule implements ClientModule {
                 element,
                 startedAt: 0,
                 expiresAt: 0,
+                worldYaw: 0,
             }))
         )
         const svg = context.hudRoot.querySelector<SVGSVGElement>(
@@ -269,7 +275,32 @@ export class HudModule implements ClientModule {
         this.previousAmmo = local.magazineAmmo
         const hitActive = now < this.hitMarkerUntil
         this.refs.get('fps-hitmarker')?.classList.toggle('active', hitActive)
-        this.refs.get('fps-hit-damage')?.classList.toggle('active', hitActive)
+        this.refs
+            .get('fps-hit-damage')
+            ?.classList.toggle('active', now < this.hitNumberUntil)
+        const hitAge = Math.max(0, now - this.lastHitAt)
+        this.refs
+            .get('fps-hitmarker')
+            ?.style.setProperty(
+                '--hit-scale',
+                String(1 + 0.28 * Math.exp(-hitAge / 42))
+            )
+        this.refs
+            .get('fps-hitmarker')
+            ?.style.setProperty(
+                '--hit-opacity',
+                String(
+                    Math.min(1, Math.max(0, (this.hitMarkerUntil - now) / 100))
+                )
+            )
+        this.refs
+            .get('fps-hit-damage')
+            ?.style.setProperty(
+                '--number-opacity',
+                String(
+                    Math.min(1, Math.max(0, (this.hitNumberUntil - now) / 250))
+                )
+            )
         this.updateDamageIndicators(now)
         this.updateReticle(frame.deltaSeconds, now)
         this.refs
@@ -316,7 +347,27 @@ export class HudModule implements ClientModule {
         this.refs
             .get('fps-confirmation')
             ?.style.setProperty('opacity', String(feel.killOpacity))
-        const trauma = local.dead ? 0 : healthTrauma(local.health)
+        const targetTrauma = local.dead ? 0 : healthTrauma(local.health)
+        this.displayedTrauma +=
+            (targetTrauma - this.displayedTrauma) *
+            (1 -
+                Math.exp(
+                    -frame.deltaSeconds *
+                        (targetTrauma > this.displayedTrauma ? 12 : 3)
+                ))
+        const trauma = this.displayedTrauma
+        const critical = Math.max(0, (30 - (local.health ?? 100)) / 30)
+        this.refs
+            .get('fps-low-health')
+            ?.style.setProperty(
+                '--heartbeat',
+                String(
+                    local.dead
+                        ? 0
+                        : critical *
+                              Math.pow(Math.max(0, Math.sin(now / 145)), 6)
+                )
+            )
         const impactPulse =
             now < this.damageUntil
                 ? Math.max(
@@ -473,16 +524,33 @@ export class HudModule implements ClientModule {
     private readonly processCombatEvent = (event: CombatEvent): void => {
         const now = performance.now()
         this.combatCursor = event.id
+        if (
+            event.kind === 'round' ||
+            (event.kind === 'respawn' &&
+                event.value.playerId ===
+                    this.context?.services.get(NETWORKING).combat.localPlayer
+                        .playerId)
+        ) {
+            this.hitMarkerUntil = this.hitNumberUntil = this.damageUntil = 0
+            this.hitDamage = this.displayedTrauma = 0
+            this.lastHitTarget = null
+            this.lastHitAt = this.lastDamageAt = -Infinity
+            for (const arc of this.damageArcs) arc.expiresAt = 0
+            this.feel.reset()
+        }
         if (event.kind === 'damage' && event.localHit) {
             this.hitDamage =
-                now - this.lastHitAt <= 240
+                event.value.targetId === this.lastHitTarget &&
+                now - this.lastHitAt <= 1000
                     ? this.hitDamage + event.value.amount
                     : event.value.amount
+            this.lastHitTarget = event.value.targetId
             this.lastHitAt = now
-            this.hitMarkerUntil = now + 190
+            this.hitMarkerUntil = now + 230
+            this.hitNumberUntil = now + 1100
             setTextIfChanged(
                 this.refs.get('fps-hit-damage'),
-                `+${this.hitDamage}`
+                `${Math.round(this.hitDamage)}`
             )
             this.refs.get('fps-hitmarker')?.classList.remove('kill')
             this.refs.get('fps-hit-damage')?.classList.remove('kill')
@@ -499,7 +567,9 @@ export class HudModule implements ClientModule {
                     .playerId
         ) {
             this.feel.kill(now)
-            this.hitMarkerUntil = Math.max(this.hitMarkerUntil, now + 300)
+            this.lastHitAt = now
+            this.hitNumberUntil = Math.max(this.hitNumberUntil, now + 1400)
+            this.hitMarkerUntil = Math.max(this.hitMarkerUntil, now + 420)
             this.refs.get('fps-hitmarker')?.classList.add('kill')
             this.refs.get('fps-hit-damage')?.classList.add('kill')
         }
@@ -581,6 +651,9 @@ export class HudModule implements ClientModule {
                 candidate.expiresAt < oldest.expiresAt ? candidate : oldest
             )
         if (!arc) return
+        arc.worldYaw =
+            relativeYaw +
+            (this.context?.services.get(SIMULATION_AIM).angles.yaw ?? 0)
         arc.startedAt = now
         arc.expiresAt = now + duration
         arc.element.style.setProperty('--damage-angle', `${relativeYaw}rad`)
@@ -596,6 +669,11 @@ export class HudModule implements ClientModule {
                 arc.startedAt,
                 arc.expiresAt
             )
+            if (opacity > 0)
+                arc.element.style.setProperty(
+                    '--damage-angle',
+                    `${arc.worldYaw - (this.context?.services.get(SIMULATION_AIM).angles.yaw ?? 0)}rad`
+                )
             arc.element.style.opacity = String(opacity)
             arc.element.classList.toggle('active', opacity > 0)
         }

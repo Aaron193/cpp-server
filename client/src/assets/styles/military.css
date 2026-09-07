@@ -612,59 +612,24 @@ button:disabled {
 .fps-low-health .wound-blood {
     background-repeat: no-repeat;
     mix-blend-mode: multiply;
-    filter: blur(0.35px) saturate(1.18);
+    filter: blur(2.5px) saturate(0.65) contrast(0.75);
     transition: opacity 260ms ease-out;
 }
 .fps-low-health .blood-a {
-    opacity: max(0, calc((var(--trauma) - 0.12) * 1.25));
-    background-image:
-        radial-gradient(
-            ellipse at 2% 19%,
-            #651006 0 1.2%,
-            #411009bb 1.4% 2.2%,
-            transparent 2.5%
-        ),
-        radial-gradient(
-            ellipse at 97% 74%,
-            #7e170c 0 0.7%,
-            #4b0b08aa 1% 2.3%,
-            transparent 2.7%
-        ),
-        radial-gradient(ellipse at 9% 91%, #55120bbd 0 2.2%, transparent 5.5%),
-        radial-gradient(ellipse at 89% 5%, #611005a6 0 1.7%, transparent 4.4%);
+    opacity: max(0, calc((var(--trauma) - 0.08) * 0.9 + var(--impact-pulse) * 0.1));
+    background: url('/effects/trauma.png') center / 100% 100% no-repeat;
 }
 .fps-low-health .blood-b {
-    opacity: max(0, calc((var(--trauma) - 0.38) * 1.65));
-    background-image:
-        radial-gradient(
-            ellipse at 0 56%,
-            #4e0700 0 3%,
-            #541109af 3.4% 7%,
-            transparent 10%
-        ),
-        radial-gradient(
-            ellipse at 100% 31%,
-            #641005 0 2.5%,
-            #3c0805c2 3% 8%,
-            transparent 11%
-        ),
-        radial-gradient(ellipse at 25% 103%, #5e0b04 0 4%, transparent 11%),
-        radial-gradient(ellipse at 73% -4%, #4b0803 0 3%, transparent 9%);
+    opacity: max(0, calc((var(--trauma) - 0.4) * 0.85));
+    background: url('/effects/trauma.png') center / 110% 115% no-repeat;
+    transform: rotate(180deg);
 }
 .fps-low-health .blood-c {
-    opacity: max(0, calc((var(--trauma) - 0.62) * 2.25));
-    background:
-        radial-gradient(
-            ellipse at center,
-            transparent 26%,
-            #2301005c 73%,
-            #260100c7 100%
-        ),
-        repeating-radial-gradient(
-            ellipse at 14% 20%,
-            #4b090698 0 1px,
-            transparent 2px 17px
-        );
+    opacity: max(0, calc((var(--trauma) - 0.6) * 1.7 + var(--heartbeat, 0) * 0.12));
+    background: radial-gradient(ellipse at center, transparent 38%, #26010044 73%, #260100cc 100%);
+}
+@media (prefers-reduced-motion: reduce) {
+    .fps-low-health .blood-c { opacity: max(0, calc((var(--trauma) - 0.6) * 1.7)); }
 }
 .fps-low-health .wound-desaturation {
     opacity: calc(var(--trauma) * 0.45);

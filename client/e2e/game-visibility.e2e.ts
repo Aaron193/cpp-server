@@ -421,3 +421,66 @@ test('renders both players, stance-correct remote movement, weapons, and shot fe
     await firstContext.close()
     await secondContext.close()
 })
+
+test('receives remote muzzle flashes and tracers during two-player gunfire', async ({
+    browser,
+}, testInfo) => {
+    const observerContext = await browser.newContext(),
+        shooterContext = await browser.newContext()
+    try {
+        const observer = await openPlayer(observerContext),
+            shooter = await openPlayer(shooterContext)
+        await expect
+            .poll(
+                async () =>
+                    (await observer.evaluate(() => window.__gameDebug?.()))
+                        ?.remotePlayers
+            )
+            .toBe(1)
+        await shooter.bringToFront()
+        await shooter.locator('#game_canvas').click()
+        // Aim upward so the round has room to travel instead of colliding with nearby cover.
+        await shooter.mouse.move(640, 200, { steps: 3 })
+        await shooter.mouse.down()
+        await expect
+            .poll(
+                async () =>
+                    (
+                        await observer.evaluate(() => window.__gameDebug?.())
+                    )?.meshes.some(
+                        (mesh) =>
+                            mesh.name.startsWith('tracer/') && mesh.enabled
+                    ),
+                { intervals: [16, 32, 50, 100] }
+            )
+            .toBe(true)
+        await expect
+            .poll(
+                async () =>
+                    (
+                        await observer.evaluate(() => window.__gameDebug?.())
+                    )?.meshes.some(
+                        (mesh) =>
+                            mesh.name.startsWith('muzzle/') && mesh.enabled
+                    ),
+                { intervals: [16, 32, 50, 100] }
+            )
+            .toBe(true)
+        await shooter.screenshot({
+            path: testInfo.outputPath('networked-gunfire.png'),
+        })
+        await shooter.mouse.up()
+        await expect
+            .poll(async () =>
+                (
+                    await observer.evaluate(() => window.__gameDebug?.())
+                )?.meshes.some(
+                    (mesh) => mesh.name.startsWith('tracer/') && mesh.enabled
+                )
+            )
+            .toBe(false)
+    } finally {
+        await observerContext.close()
+        await shooterContext.close()
+    }
+})

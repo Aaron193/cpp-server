@@ -1,12 +1,13 @@
-import { Color3 } from '@babylonjs/core/Maths/math.color.js'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js'
-import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js'
-import { Material } from '@babylonjs/core/Materials/material.js'
-import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder.js'
-import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder.js'
+import { Ray } from '@babylonjs/core/Culling/ray.js'
 import type { Mesh } from '@babylonjs/core/Meshes/mesh.js'
-import { PointLight } from '@babylonjs/core/Lights/pointLight.js'
-import { ImpactMaterial, Weapon, type Vec3 } from '../../protocol/generated'
+import type { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js'
+import {
+    ImpactMaterial,
+    Weapon,
+    type Vec3,
+    type Impact,
+} from '../../protocol/generated'
 import type {
     ClientModule,
     ClientModuleContext,
@@ -25,230 +26,140 @@ import {
     SCENE,
     SIMULATION_AIM,
 } from '../services'
-import {
-    BoundedEffectFamily,
-    DecalBudget,
-    type EffectSlot,
-} from './BoundedEffects'
+import { BoundedEffectFamily, type EffectSlot } from './BoundedEffects'
 import {
     sampleTracerMotion,
     tracerTravelDurationMs,
-    TRACER_FADE_MS,
+    shotAgeMs,
+    tracerRibbonWidth,
+    tracerInitialAgeMs,
+    impactTravelDurationMs,
 } from './TracerMotion'
+import {
+    createRibbon,
+    effectBillboard,
+    effectMaterial,
+    positionRibbon,
+    type Ribbon,
+} from './CombatEffectVisuals'
+import { WorldImpactEffects, isWorldSurface } from './WorldImpactEffects'
 import { ViewmodelController } from './ViewmodelController'
 
-interface TimedMesh extends EffectSlot {
-    readonly mesh: Mesh
-    expiresAt: number
-    actionId: number
-}
-interface TimedLight extends EffectSlot {
-    readonly light: PointLight
-    expiresAt: number
-}
-interface ScheduledImpact {
-    readonly position: Vec3
-    readonly player: boolean
-    readonly dueAt: number
-}
-interface TracerSlot extends TimedMesh {
-    readonly core: Mesh
-    readonly head: Mesh
-    readonly start: Vector3
-    readonly direction: Vector3
+interface TracerSlot extends EffectSlot {
+    ribbon: Ribbon
+    tip: Mesh
+    start: Vector3
+    direction: Vector3
+    muzzleOffset: Vector3
+    previousHead: Vector3
     distance: number
     travelMs: number
+    gravity: number
     weapon: Weapon
+    actionId: number
+    local: boolean
     shotId: number | null
     pelletIndex: number
+    terminal: Impact | null
+    impactPresented: boolean
+}
+interface PendingImpact {
+    value: Impact
+    dueAt: number
 }
 
-function material(
-    name: string,
-    color: Color3,
-    context: ClientModuleContext
-): StandardMaterial {
-    const value = new StandardMaterial(name, context.services.get(SCENE))
-    value.diffuseColor = color
-    value.specularColor.set(0.1, 0.1, 0.1)
-    return value
-}
-
-/** Action-correlated, bounded presentation. It never changes authoritative ammo/health. */
+/** Cosmetic flights follow authoritative launch vectors; only Damage confirms a hit. */
 export class CombatPresentationModule implements ClientModule {
-    private nextClearanceCheck = 0
-    private wallTuck = 0
     readonly name = 'combat-presentation'
     private context?: ClientModuleContext
     private viewmodel?: ViewmodelController
-    private muzzlePool?: BoundedEffectFamily<TimedMesh>
-    private impactPool?: BoundedEffectFamily<TimedMesh>
-    private tracerPool?: BoundedEffectFamily<TracerSlot>
-    private lightPool?: BoundedEffectFamily<TimedLight>
-    private readonly decals = new DecalBudget(6, 96)
-    private readonly shotTracers = new Map<string, TracerSlot>()
-    private readonly scheduledImpacts: ScheduledImpact[] = []
-    private eventCursor = 0
-    private worldImpactMaterial?: StandardMaterial
-    private playerImpactMaterial?: StandardMaterial
+    private effects?: WorldImpactEffects
     private tracerMaterial?: StandardMaterial
-    private tracerCoreMaterial?: StandardMaterial
-    private readonly fromScratch = new Vector3()
-    private readonly toScratch = new Vector3()
-    private readonly targetScratch = new Vector3()
-    private readonly tailScratch = new Vector3()
+    private tipMaterial?: StandardMaterial
+    private tracerPool?: BoundedEffectFamily<TracerSlot>
+    private readonly shotTracers = new Map<string, TracerSlot>()
+    private readonly localActions = new Map<number, number>()
+    private readonly scheduledImpacts: PendingImpact[] = []
+    private eventCursor = 0
+    private nextClearanceCheck = 0
+    private wallTuck = 0
+    private readonly head = new Vector3()
+    private readonly tail = new Vector3()
+    private readonly scratch = new Vector3()
 
     initialize(context: ClientModuleContext): void {
         this.context = context
         context.services.provide(COMBAT_PRESENTATION, this)
+        const scene = context.services.get(SCENE)
         this.viewmodel = new ViewmodelController(
             context.services.get(CAMERA),
-            context.services.get(SCENE)
+            scene
         )
-        const scene = context.services.get(SCENE)
-        const flash = material(
-            'effects/muzzle',
-            new Color3(1, 0.68, 0.12),
-            context
-        )
-        flash.emissiveColor = flash.diffuseColor
-        this.worldImpactMaterial = material(
-            'effects/impact-world',
-            new Color3(1, 0.34, 0.08),
-            context
-        )
-        this.worldImpactMaterial.emissiveColor =
-            this.worldImpactMaterial.diffuseColor
-        this.playerImpactMaterial = material(
-            'effects/impact-player',
-            new Color3(1, 0.03, 0.04),
-            context
-        )
-        this.playerImpactMaterial.emissiveColor =
-            this.playerImpactMaterial.diffuseColor
-        this.tracerMaterial = material(
-            'effects/tracer',
-            new Color3(1, 0.82, 0.24),
-            context
-        )
-        this.tracerMaterial.diffuseColor.set(0.08, 0.035, 0.002)
-        this.tracerMaterial.emissiveColor.set(1, 0.28, 0.018)
-        this.tracerMaterial.disableLighting = true
-        this.tracerMaterial.alpha = 0.72
-        this.tracerMaterial.transparencyMode = Material.MATERIAL_ALPHABLEND
-        this.tracerMaterial.backFaceCulling = false
-        this.tracerCoreMaterial = material(
-            'effects/tracer-core',
-            new Color3(1, 0.92, 0.68),
-            context
-        )
-        this.tracerCoreMaterial.diffuseColor.set(0.12, 0.07, 0.025)
-        this.tracerCoreMaterial.emissiveColor.set(1, 0.86, 0.5)
-        this.tracerCoreMaterial.disableLighting = true
-
-        const timed = (mesh: Mesh): TimedMesh => ({
-            mesh,
-            expiresAt: 0,
-            actionId: 0,
-            startedAtMs: 0,
-            priority: 0,
-        })
-        this.muzzlePool = new BoundedEffectFamily(
-            12,
-            (index) => {
-                const mesh = CreateSphere(
-                    `muzzle/${index}`,
-                    { diameter: 0.12, segments: 4 },
-                    scene
-                )
-                mesh.material = flash
-                mesh.isPickable = false
-                mesh.setEnabled(false)
-                return timed(mesh)
-            },
-            (slot) => slot.mesh.setEnabled(false)
-        )
-        this.impactPool = new BoundedEffectFamily(
-            40,
-            (index) => {
-                const mesh = CreateSphere(
-                    `impact/${index}`,
-                    { diameter: 0.085, segments: 4 },
-                    scene
-                )
-                mesh.material = this.worldImpactMaterial!
-                mesh.isPickable = false
-                mesh.setEnabled(false)
-                return timed(mesh)
-            },
-            (slot) => slot.mesh.setEnabled(false)
-        )
+        this.effects = new WorldImpactEffects(scene)
+        this.tracerMaterial = effectMaterial(scene, 'tracer')
+        this.tipMaterial = effectMaterial(scene, 'spark')
         this.tracerPool = new BoundedEffectFamily<TracerSlot>(
-            28,
-            (index) => {
-                const mesh = CreateBox(
+            96,
+            (index) => ({
+                ribbon: createRibbon(
                     `tracer/${index}`,
-                    { width: 0.07, height: 0.07, depth: 1 },
-                    scene
-                )
-                const core = CreateBox(
-                    `tracer/${index}/core`,
-                    { width: 0.012, height: 0.012, depth: 1 },
-                    scene
-                )
-                const head = CreateSphere(
-                    `tracer/${index}/head`,
-                    { diameter: 0.055, segments: 5 },
-                    scene
-                )
-                mesh.material = this.tracerMaterial!
-                core.material = this.tracerCoreMaterial!
-                head.material = this.tracerCoreMaterial!
-                mesh.isPickable = core.isPickable = head.isPickable = false
-                mesh.renderingGroupId =
-                    core.renderingGroupId =
-                    head.renderingGroupId =
-                        2
-                mesh.alphaIndex = core.alphaIndex = head.alphaIndex = 10
-                mesh.setEnabled(false)
-                core.setEnabled(false)
-                head.setEnabled(false)
-                return {
-                    mesh,
-                    core,
-                    head,
-                    start: Vector3.Zero(),
-                    direction: Vector3.Forward(),
-                    distance: 0,
-                    travelMs: 0,
-                    weapon: Weapon.None,
-                    shotId: null,
-                    pelletIndex: 0,
-                    expiresAt: 0,
-                    actionId: 0,
-                    startedAtMs: 0,
-                    priority: 0,
-                }
-            },
-            (slot) => this.resetTracer(slot)
-        )
-        this.lightPool = new BoundedEffectFamily(
-            3,
-            (index) => {
-                const light = new PointLight(
-                    `effects/transient-light/${index}`,
-                    Vector3.Zero(),
-                    scene
-                )
-                light.diffuse = new Color3(1, 0.55, 0.15)
-                light.range = 4
-                light.intensity = 0
-                return { light, expiresAt: 0, startedAtMs: 0, priority: 0 }
-            },
+                    scene,
+                    this.tracerMaterial!
+                ),
+                tip: effectBillboard(
+                    `tracer/${index}/tip`,
+                    scene,
+                    this.tipMaterial!
+                ),
+                start: new Vector3(),
+                direction: new Vector3(),
+                muzzleOffset: new Vector3(),
+                previousHead: new Vector3(),
+                distance: 0,
+                travelMs: 0,
+                gravity: 0,
+                weapon: Weapon.None,
+                actionId: 0,
+                local: false,
+                shotId: null,
+                pelletIndex: 0,
+                terminal: null,
+                impactPresented: false,
+                startedAtMs: 0,
+                priority: 0,
+            }),
             (slot) => {
-                slot.light.intensity = 0
+                if (slot.shotId !== null) {
+                    const key = `${slot.shotId}:${slot.pelletIndex}`
+                    if (this.shotTracers.get(key) === slot)
+                        this.shotTracers.delete(key)
+                }
+                // A pool replacement must not swallow a confirmed, scheduled impact.
+                if (slot.terminal && !slot.impactPresented)
+                    this.queueImpact(
+                        slot.terminal,
+                        slot.startedAtMs + slot.travelMs
+                    )
+                slot.shotId = null
+                slot.terminal = null
+                slot.ribbon.mesh.setEnabled(false)
+                slot.tip.setEnabled(false)
             }
         )
+    }
+
+    async start(): Promise<void> {
+        // Compile while joining, so the first 58 ms muzzle flash isn't consumed by shader compilation.
+        let sample: TracerSlot | undefined
+        this.tracerPool?.forEach((slot) => {
+            sample ??= slot
+        })
+        if (!sample) return
+        await Promise.all([
+            this.effects!.prepare(),
+            this.tracerMaterial!.forceCompilationAsync(sample.ribbon.mesh),
+            this.tipMaterial!.forceCompilationAsync(sample.tip),
+        ])
     }
 
     update(frame: FrameUpdate): void {
@@ -258,9 +169,8 @@ export class CombatPresentationModule implements ClientModule {
         const local = networking.combat.localPlayer
         const physics = this.context.services.get(PHYSICS)
         if (this.eventCursor > networking.combat.lastEventId) {
+            this.clear()
             this.eventCursor = 0
-            this.shotTracers.clear()
-            this.scheduledImpacts.length = 0
         }
         if (now >= this.nextClearanceCheck) {
             this.nextClearanceCheck = now + 80
@@ -298,491 +208,486 @@ export class CombatPresentationModule implements ClientModule {
             this.eventCursor = event.id
             switch (event.kind) {
                 case 'local-fire': {
-                    this.viewmodel?.fire(now)
-                    this.context?.services
-                        .get(CAMERA_RIG)
-                        .addRecoil(
-                            event.weapon === Weapon.Shotgun ? 0.012 : 0.006,
-                            (event.actionId & 1 ? 1 : -1) * 0.0015
-                        )
+                    this.viewmodel!.fire(now)
+                    this.context!.services.get(CAMERA_RIG).addRecoil(
+                        event.weapon === Weapon.Shotgun ? 0.012 : 0.006,
+                        (event.actionId & 1 ? 1 : -1) * 0.0015
+                    )
                     const muzzle =
-                        this.viewmodel?.muzzlePosition() ??
-                        this.context?.services.get(CAMERA).globalPosition
-                    const direction = this.context?.services
-                        .get(SIMULATION_AIM)
-                        .direction()
-                    if (!muzzle || !direction) break
-                    const range =
-                        networking.weaponDefinitions[
-                            event.weapon === Weapon.Shotgun
-                                ? Weapon.Shotgun
-                                : Weapon.Rifle
-                        ].range
+                        this.viewmodel!.muzzlePosition() ??
+                        this.context!.services.get(CAMERA).globalPosition
+                    const origin =
+                        this.context!.services.get(CAMERA).globalPosition
+                    const direction =
+                        this.context!.services.get(SIMULATION_AIM).direction()
+                    const definition = this.definition(event.weapon)
                     const end = {
-                        x: muzzle.x + direction.x * range,
-                        y: muzzle.y + direction.y * range,
-                        z: muzzle.z + direction.z * range,
+                        x: origin.x + direction.x * definition.range,
+                        y: origin.y + direction.y * definition.range,
+                        z: origin.z + direction.z * definition.range,
                     }
-                    this.flash(muzzle, now, event.actionId)
-                    this.tracer(muzzle, end, now, event.actionId, event.weapon)
-                    this.context?.services.get(AUDIO).playWeapon(event.weapon)
+                    this.effects!.flash(
+                        muzzle,
+                        direction,
+                        now,
+                        event.actionId,
+                        true,
+                        event.weapon === Weapon.Shotgun
+                    )
+                    this.tracer(
+                        origin,
+                        end,
+                        muzzle,
+                        now,
+                        event.actionId,
+                        event.weapon,
+                        true
+                    )
+                    this.localActions.set(event.actionId, now)
+                    this.context!.services.get(AUDIO).playWeapon(event.weapon)
                     break
                 }
                 case 'local-reload':
-                    this.viewmodel?.setState('reload', now)
-                    this.context?.services.get(AUDIO).playUi('reload')
+                    this.viewmodel!.setState('reload', now)
+                    this.context!.services.get(AUDIO).playUi('reload')
                     break
                 case 'action-result':
-                    if (!event.value.accepted) {
+                    if (!event.value.accepted)
                         this.repairAction(event.value.actionId)
-                        this.viewmodel?.rejectAction()
-                        this.context?.services.get(AUDIO).playUi('reject')
-                    }
                     break
                 case 'action-timeout':
                     this.repairAction(event.actionId)
-                    this.viewmodel?.rejectAction()
-                    break
-                case 'predicted-contact':
-                    this.impact(event.position, false, now, 2)
                     break
                 case 'shot': {
-                    const remote = event.value.shooterId !== local.playerId
-                    const visualMuzzle = remote
-                        ? this.context?.services
-                              .get(ENTITY_VIEWS)
-                              .getSocket(event.value.shooterId, 'muzzle')
-                              ?.getAbsolutePosition()
-                        : (this.viewmodel?.muzzlePosition() ??
-                          this.context?.services.get(CAMERA).globalPosition)
-                    const origin = visualMuzzle ?? event.value.origin
-                    event.value.pelletEndPositions.forEach(
-                        (endPosition, pelletIndex) => {
-                            let tracer =
-                                pelletIndex === 0 && event.correlated
-                                    ? this.findTracerForAction(
-                                          event.value.actionId
-                                      )
-                                    : undefined
-                            if (tracer)
-                                this.correctTracerPath(
-                                    tracer,
-                                    endPosition,
-                                    now,
-                                    false
-                                )
-                            else
-                                tracer = this.tracer(
-                                    origin,
-                                    endPosition,
-                                    now,
-                                    event.value.actionId,
-                                    event.value.weapon
-                                )
-                            if (tracer)
-                                this.bindShot(
-                                    event.value.shotId,
-                                    pelletIndex,
-                                    tracer
-                                )
-                        }
+                    const value = event.value,
+                        remote = value.shooterId !== local.playerId
+                    const muzzle = remote
+                        ? (this.context!.services.get(ENTITY_VIEWS)
+                              .getSocket(value.shooterId, 'muzzle')
+                              ?.getAbsolutePosition() ?? value.origin)
+                        : (this.viewmodel!.muzzlePosition() ?? value.origin)
+                    const age = Math.max(
+                        0,
+                        shotAgeMs(
+                            value.serverTick,
+                            networking.serverTickNow,
+                            networking.tickRate
+                        ) - 50
                     )
-                    if (remote) {
-                        this.flash(origin, now, event.value.actionId)
-                        this.context?.services
-                            .get(ENTITY_VIEWS)
-                            .triggerOneShot(
-                                event.value.shooterId,
-                                'recoil',
-                                now
+                    value.pelletEndPositions.forEach((end, pellet) => {
+                        let slot: TracerSlot | undefined
+                        if (!remote && pellet === 0)
+                            this.tracerPool!.forEachActive((candidate) => {
+                                if (
+                                    candidate.local &&
+                                    candidate.actionId === value.actionId &&
+                                    candidate.shotId === null
+                                )
+                                    slot = candidate
+                            })
+                        if (slot) {
+                            // Preserve the elapsed flight; confirmation never restarts a predicted shot.
+                            slot.start.copyFromFloats(
+                                value.origin.x,
+                                value.origin.y,
+                                value.origin.z
                             )
-                        this.context?.services
-                            .get(AUDIO)
-                            .playWeapon(event.value.weapon, origin)
+                            this.configure(slot, end)
+                        } else {
+                            // An already-finished predicted rifle shot must not replay on late confirmation.
+                            if (
+                                !remote &&
+                                pellet === 0 &&
+                                this.localActions.has(value.actionId)
+                            )
+                                return
+                            slot = this.tracer(
+                                value.origin,
+                                end,
+                                muzzle,
+                                now,
+                                value.actionId,
+                                value.weapon,
+                                !remote
+                            )
+                            slot.startedAtMs -= tracerInitialAgeMs(
+                                age,
+                                slot.travelMs
+                            )
+                        }
+                        slot.shotId = value.shotId
+                        slot.pelletIndex = pellet
+                        this.shotTracers.set(`${value.shotId}:${pellet}`, slot)
+                    })
+                    if (remote) {
+                        const end = value.pelletEndPositions[0]
+                        if (end)
+                            this.effects!.flash(
+                                muzzle,
+                                {
+                                    x: end.x - value.origin.x,
+                                    y: end.y - value.origin.y,
+                                    z: end.z - value.origin.z,
+                                },
+                                now,
+                                value.actionId,
+                                false,
+                                value.weapon === Weapon.Shotgun
+                            )
+                        this.context!.services.get(ENTITY_VIEWS).triggerOneShot(
+                            value.shooterId,
+                            'recoil',
+                            now
+                        )
+                        this.context!.services.get(AUDIO).playWeapon(
+                            value.weapon,
+                            muzzle
+                        )
                     }
                     break
                 }
                 case 'impact': {
-                    const tracer = this.shotTracers.get(
-                        this.shotTracerKey(
-                            event.value.shotId,
-                            event.value.pelletIndex
-                        )
+                    const slot = this.shotTracers.get(
+                        `${event.value.shotId}:${event.value.pelletIndex}`
                     )
-                    if (tracer)
-                        this.correctTracerPath(
-                            tracer,
-                            event.value.position,
-                            now,
-                            true
-                        )
-                    this.scheduleImpact(
-                        event.value.position,
-                        event.value.material === ImpactMaterial.Player,
-                        this.context!.services.get(NETWORKING)
-                            .weaponDefinitions[
-                            tracer?.weapon === Weapon.Shotgun
-                                ? Weapon.Shotgun
-                                : Weapon.Rifle
-                        ].muzzleVelocity > 0
-                            ? now
-                            : tracer
-                              ? tracer.startedAtMs + tracer.travelMs
-                              : now,
-                        now
-                    )
+                    if (slot) this.stopAtImpact(slot, event.value, now)
+                    else this.queueImpact(event.value, now)
                     break
                 }
-                case 'damage':
+                case 'damage': {
                     if (event.localHit)
-                        this.context?.services.get(AUDIO).playUi('hit')
-                    else if (event.localDamage) {
-                        this.context?.services.get(AUDIO).playUi('damage')
+                        this.context!.services.get(AUDIO).playUi('hit')
+                    if (event.localDamage) {
+                        this.context!.services.get(AUDIO).playUi('damage')
                         const source =
                             event.value.sourceId === null
                                 ? undefined
-                                : this.context?.services
-                                      .get(ENTITY_VIEWS)
-                                      .get(event.value.sourceId)
-                        const eye = this.context!.services.get(CAMERA).position,
-                            aim =
-                                this.context!.services.get(
-                                    SIMULATION_AIM
-                                ).angles
+                                : this.context!.services.get(ENTITY_VIEWS).get(
+                                      event.value.sourceId
+                                  )
+                        const eye =
+                            this.context!.services.get(CAMERA).globalPosition
+                        const yaw =
+                            this.context!.services.get(SIMULATION_AIM).angles
+                                .yaw
                         const relativeYaw = source
                             ? Math.atan2(
                                   source.position.x - eye.x,
                                   eye.z - source.position.z
-                              ) - aim.yaw
+                              ) - yaw
                             : 0
-                        this.context?.services
-                            .get(CAMERA_RIG)
-                            .addDamage(
-                                relativeYaw,
-                                Math.min(2, event.value.amount / 25)
-                            )
-                        this.context?.services
-                            .optional(HUD)
-                            ?.showDirectionalDamage(
+                        this.context!.services.get(CAMERA_RIG).addDamage(
+                            relativeYaw,
+                            Math.min(2, event.value.amount / 25)
+                        )
+                        if (source)
+                            this.context!.services.optional(
+                                HUD
+                            )?.showDirectionalDamage(
                                 relativeYaw,
                                 event.value.amount
                             )
                     } else
-                        this.context?.services
-                            .get(ENTITY_VIEWS)
-                            .triggerOneShot(event.value.targetId, 'hit', now)
+                        this.context!.services.get(ENTITY_VIEWS).triggerOneShot(
+                            event.value.targetId,
+                            'hit',
+                            now
+                        )
                     break
+                }
                 case 'death':
-                    this.context?.services
-                        .get(ENTITY_VIEWS)
-                        .triggerOneShot(event.value.victimId, 'death', now)
+                    this.context!.services.get(ENTITY_VIEWS).triggerOneShot(
+                        event.value.victimId,
+                        'death',
+                        now
+                    )
                     break
                 case 'respawn':
-                    this.context?.services
-                        .get(ENTITY_VIEWS)
-                        .triggerOneShot(event.value.playerId, 'respawn', now)
+                    this.context!.services.get(ENTITY_VIEWS).triggerOneShot(
+                        event.value.playerId,
+                        'respawn',
+                        now
+                    )
+                    if (event.value.playerId === local.playerId) this.clear()
                     break
                 case 'round':
-                    this.context?.services.get(AUDIO).playUi('round')
+                    this.clear()
+                    this.context!.services.get(AUDIO).playUi('round')
                     break
+                case 'predicted-contact':
                 case 'chat':
                     break
             }
         })
-        this.updateTracers(now)
-        this.presentScheduledImpacts(now)
-        this.releaseExpired(now)
+        this.tracerPool!.forEachActive((slot) =>
+            this.positionTracer(slot, now, frame.deltaSeconds * 1000)
+        )
+        for (let i = this.scheduledImpacts.length - 1; i >= 0; i--) {
+            const pending = this.scheduledImpacts[i]!
+            if (pending.dueAt <= now) {
+                this.presentImpact(pending.value, now)
+                this.scheduledImpacts.splice(i, 1)
+            }
+        }
+        this.effects!.update(
+            now,
+            this.context.services.get(CAMERA).globalPosition,
+            this.viewmodel.muzzlePosition()
+        )
+        for (const [action, at] of this.localActions)
+            if (now - at > 5000) this.localActions.delete(action)
     }
-
+    private definition(weapon: Weapon) {
+        return this.context!.services.get(NETWORKING).weaponDefinitions[
+            weapon === Weapon.Shotgun ? Weapon.Shotgun : Weapon.Rifle
+        ]
+    }
     private repairAction(actionId: number): void {
-        this.muzzlePool?.releaseWhere((slot) => slot.actionId === actionId)
-        this.tracerPool?.releaseWhere((slot) => slot.actionId === actionId)
+        this.effects?.reject(actionId)
+        this.tracerPool?.releaseWhere(
+            (slot) => slot.local && slot.actionId === actionId
+        )
+        this.viewmodel?.rejectAction()
     }
-
-    private releaseExpired(now: number): void {
-        for (const pool of [this.muzzlePool, this.impactPool])
-            pool?.releaseWhere((slot) => slot.expiresAt <= now)
-        this.tracerPool?.releaseWhere((slot) => slot.expiresAt <= now)
-        this.lightPool?.releaseWhere((slot) => slot.expiresAt <= now)
-    }
-
-    private flash(position: Vec3, now: number, actionId: number): void {
-        const slot = this.muzzlePool?.acquire(now, 3)
-        if (!slot) return
-        slot.actionId = actionId
-        slot.mesh.position.copyFromFloats(position.x, position.y, position.z)
-        slot.mesh.setEnabled(true)
-        slot.expiresAt = now + 45
-        const light = this.lightPool?.acquire(now, 3)
-        if (light) {
-            light.light.position.copyFromFloats(
-                position.x,
-                position.y,
-                position.z
-            )
-            light.light.intensity = 2.1
-            light.expiresAt = now + 35
-        }
-    }
-
-    private impact(
-        position: Vec3,
-        player: boolean,
-        now: number,
-        priority: number
-    ): void {
-        const slot = this.impactPool?.acquire(now, priority)
-        if (!slot) return
-        slot.mesh.material = player
-            ? this.playerImpactMaterial!
-            : this.worldImpactMaterial!
-        slot.mesh.position.copyFromFloats(position.x, position.y, position.z)
-        slot.mesh.setEnabled(true)
-        slot.expiresAt = now + 210
-        this.decals.add(position, player ? 'player' : 'world', now)
-    }
-
-    private scheduleImpact(
-        position: Vec3,
-        player: boolean,
-        dueAt: number,
-        now: number
-    ): void {
-        if (dueAt <= now) {
-            this.presentImpact(position, player, now)
-            return
-        }
-        // Keep delayed presentation bounded under sustained shotgun fire.
-        if (this.scheduledImpacts.length >= 64) this.scheduledImpacts.shift()
-        this.scheduledImpacts.push({ position: { ...position }, player, dueAt })
-    }
-
-    private presentScheduledImpacts(now: number): void {
-        for (
-            let index = this.scheduledImpacts.length - 1;
-            index >= 0;
-            index--
-        ) {
-            const pending = this.scheduledImpacts[index]!
-            if (pending.dueAt > now) continue
-            this.scheduledImpacts.splice(index, 1)
-            this.presentImpact(pending.position, pending.player, now)
-        }
-    }
-
-    private presentImpact(position: Vec3, player: boolean, now: number): void {
-        this.impact(position, player, now, 3)
-        this.context?.services.get(AUDIO).playImpact(position)
-    }
-
     private tracer(
-        from: Vec3,
-        to: Vec3,
+        origin: Vec3,
+        end: Vec3,
+        muzzle: Vec3,
         now: number,
         actionId: number,
-        weapon: Weapon
-    ): TracerSlot | undefined {
-        const slot = this.tracerPool?.acquire(now, 2)
-        if (!slot) return undefined
-        slot.actionId = actionId
+        weapon: Weapon,
+        local: boolean
+    ): TracerSlot {
+        const slot = this.tracerPool!.acquire(now, local ? 3 : 2)
+        slot.start.copyFromFloats(origin.x, origin.y, origin.z)
+        slot.muzzleOffset.copyFromFloats(
+            muzzle.x - origin.x,
+            muzzle.y - origin.y,
+            muzzle.z - origin.z
+        )
+        // Remote interpolated sockets can be displaced; don't warp an entire ballistic path to them.
+        if (slot.muzzleOffset.length() > 2) slot.muzzleOffset.setAll(0)
+        slot.previousHead.copyFrom(slot.start)
         slot.weapon = weapon
+        slot.local = local
+        slot.actionId = actionId
         slot.shotId = null
         slot.pelletIndex = 0
-        slot.start.copyFromFloats(from.x, from.y, from.z)
-        this.configureTracerPath(slot, to, now, weapon)
-        slot.mesh.setEnabled(true)
-        slot.core.setEnabled(true)
-        slot.head.setEnabled(true)
-        this.positionTracer(slot, now)
+        slot.terminal = null
+        slot.impactPresented = false
+        this.configure(slot, end)
+        slot.ribbon.mesh.setEnabled(true)
+        slot.tip.setEnabled(true)
         return slot
     }
-
-    private configureTracerPath(
-        slot: TracerSlot,
-        to: Vec3,
-        now: number,
-        weapon: Weapon
-    ): void {
-        this.toScratch.copyFromFloats(to.x, to.y, to.z)
-        this.toScratch.subtractToRef(slot.start, slot.direction)
+    private configure(slot: TracerSlot, end: Vec3): void {
+        slot.direction.copyFromFloats(
+            end.x - slot.start.x,
+            end.y - slot.start.y,
+            end.z - slot.start.z
+        )
         slot.distance = slot.direction.length()
-        if (slot.distance > 0.0001)
-            slot.direction.scaleInPlace(1 / slot.distance)
-        else slot.direction.copyFromFloats(0, 0, -1)
-        const definition =
-            this.context!.services.get(NETWORKING).weaponDefinitions[
-                weapon === Weapon.Shotgun ? Weapon.Shotgun : Weapon.Rifle
-            ]
+        slot.direction.normalize()
+        const definition = this.definition(slot.weapon)
         slot.travelMs =
             definition.muzzleVelocity > 0
                 ? (slot.distance / definition.muzzleVelocity) * 1000
-                : tracerTravelDurationMs(slot.distance, weapon)
-        slot.expiresAt = now + slot.travelMs + TRACER_FADE_MS
-    }
-
-    private correctTracerPath(
-        slot: TracerSlot,
-        to: Vec3,
-        now: number,
-        onlyIfShorter: boolean
-    ): void {
-        const definition =
-            this.context!.services.get(NETWORKING).weaponDefinitions[
-                slot.weapon === Weapon.Shotgun ? Weapon.Shotgun : Weapon.Rifle
-            ]
-        if (onlyIfShorter && definition.muzzleVelocity > 0) {
-            this.tracerPool?.releaseWhere((candidate) => candidate === slot)
-            return
-        }
-        this.toScratch.copyFromFloats(to.x, to.y, to.z)
-        const correctedDistance = Vector3.Distance(slot.start, this.toScratch)
-        if (onlyIfShorter && correctedDistance >= slot.distance) return
-        const elapsed = Math.max(0, now - slot.startedAtMs)
-        this.toScratch.subtractToRef(slot.start, slot.direction)
-        slot.distance = correctedDistance
-        if (slot.distance > 0.0001)
-            slot.direction.scaleInPlace(1 / slot.distance)
-        slot.travelMs = Math.max(
-            elapsed,
-            definition.muzzleVelocity > 0
-                ? (slot.distance / definition.muzzleVelocity) * 1000
                 : tracerTravelDurationMs(slot.distance, slot.weapon)
+        slot.gravity =
+            definition.muzzleVelocity > 0 ? definition.projectileGravity : 0
+    }
+    private stopAtImpact(slot: TracerSlot, impact: Impact, now: number): void {
+        if (slot.terminal) return
+        const speed = slot.distance / Math.max(0.001, slot.travelMs)
+        // Project onto the original launch vector. Do not aim at the gravity-displaced endpoint
+        // and then apply gravity a second time, or change speed as a correction arrives.
+        const dx = impact.position.x - slot.start.x,
+            dy = impact.position.y - slot.start.y,
+            dz = impact.position.z - slot.start.z
+        const duration = impactTravelDurationMs(
+            dx * slot.direction.x +
+                dy * slot.direction.y +
+                dz * slot.direction.z,
+            speed * 1000,
+            slot.gravity,
+            slot.direction.y
         )
-        slot.expiresAt = slot.startedAtMs + slot.travelMs + TRACER_FADE_MS
+        slot.travelMs = Math.max(0.001, Math.min(slot.travelMs, duration))
+        slot.distance = speed * slot.travelMs
+        slot.terminal = impact
+        if (now >= slot.startedAtMs + slot.travelMs) {
+            this.presentImpact(impact, now)
+            slot.impactPresented = true
+        }
     }
-
-    private updateTracers(now: number): void {
-        this.tracerPool?.forEachActive((slot) => this.positionTracer(slot, now))
+    private samplePosition(
+        slot: TracerSlot,
+        distance: number,
+        out: Vector3
+    ): void {
+        const t =
+            ((distance / Math.max(0.001, slot.distance)) * slot.travelMs) / 1000
+        out.copyFrom(slot.direction)
+            .scaleInPlace(distance)
+            .addInPlace(slot.start)
+        out.y -= slot.gravity * t * t * 0.5
+        // Short muzzle-to-ballistic transition, exhausted well before an incoming round passes the viewer.
+        const blend =
+            Math.pow(Math.max(0, 1 - distance / 8), 2) *
+            (slot.terminal
+                ? 1 - Math.min(1, distance / Math.max(0.001, slot.distance))
+                : 1)
+        out.x += slot.muzzleOffset.x * blend
+        out.y += slot.muzzleOffset.y * blend
+        out.z += slot.muzzleOffset.z * blend
+        if (slot.terminal) {
+            const endpoint = slot.terminal.position
+            const endT = slot.travelMs / 1000
+            const amount = Math.pow(
+                Math.min(1, distance / Math.max(0.001, slot.distance)),
+                4
+            )
+            out.x +=
+                (endpoint.x - slot.start.x - slot.direction.x * slot.distance) *
+                amount
+            out.y +=
+                (endpoint.y -
+                    slot.start.y -
+                    slot.direction.y * slot.distance +
+                    slot.gravity * endT * endT * 0.5) *
+                amount
+            out.z +=
+                (endpoint.z - slot.start.z - slot.direction.z * slot.distance) *
+                amount
+        }
     }
-
-    private positionTracer(slot: TracerSlot, now: number): void {
-        const sample = sampleTracerMotion(
+    private positionTracer(
+        slot: TracerSlot,
+        now: number,
+        frameMs: number
+    ): void {
+        let sample = sampleTracerMotion(
             slot.distance,
             now - slot.startedAtMs,
-            slot.travelMs
+            slot.travelMs,
+            frameMs
         )
-        slot.start.addToRef(
-            slot.direction.scaleToRef(sample.tailDistance, this.fromScratch),
-            this.tailScratch
-        )
-        slot.start.addToRef(
-            slot.direction.scaleToRef(sample.headDistance, this.targetScratch),
-            slot.head.position
-        )
-        const definition =
-            this.context!.services.get(NETWORKING).weaponDefinitions[
-                slot.weapon === Weapon.Shotgun ? Weapon.Shotgun : Weapon.Rifle
-            ]
-        if (definition.muzzleVelocity > 0) {
-            const headT =
-                slot.distance <= 0
-                    ? 0
-                    : ((sample.headDistance / slot.distance) * slot.travelMs) /
-                      1000
-            const tailT =
-                slot.distance <= 0
-                    ? 0
-                    : ((sample.tailDistance / slot.distance) * slot.travelMs) /
-                      1000
-            slot.head.position.y -=
-                0.5 * definition.projectileGravity * headT * headT
-            this.tailScratch.y -=
-                0.5 * definition.projectileGravity * tailT * tailT
+        this.samplePosition(slot, sample.headDistance, this.head)
+        if (
+            !slot.terminal &&
+            this.context!.services.get(NETWORKING).status === 'offline'
+        ) {
+            this.head.subtractToRef(slot.previousHead, this.scratch)
+            const length = this.scratch.length()
+            if (length > 0.001) {
+                const pick = this.context!.services.get(SCENE).pickWithRay(
+                    new Ray(
+                        slot.previousHead,
+                        this.scratch.scaleInPlace(1 / length),
+                        length
+                    ),
+                    isWorldSurface
+                )
+                if (pick?.hit && pick.pickedPoint) {
+                    const normal = pick.getNormal(true) ?? this.scratch.negate()
+                    this.stopAtImpact(
+                        slot,
+                        {
+                            serverTick: 0,
+                            shotId: 0,
+                            pelletIndex: 0,
+                            position: {
+                                x: pick.pickedPoint.x,
+                                y: pick.pickedPoint.y,
+                                z: pick.pickedPoint.z,
+                            },
+                            normal: { x: normal.x, y: normal.y, z: normal.z },
+                            material: ImpactMaterial.World,
+                        },
+                        now
+                    )
+                    sample = sampleTracerMotion(
+                        slot.distance,
+                        now - slot.startedAtMs,
+                        slot.travelMs,
+                        frameMs
+                    )
+                    this.samplePosition(slot, sample.headDistance, this.head)
+                }
+            }
         }
-        Vector3.LerpToRef(
-            this.tailScratch,
-            slot.head.position,
-            0.5,
-            slot.mesh.position
+        slot.previousHead.copyFrom(this.head)
+        if (
+            slot.terminal &&
+            !slot.impactPresented &&
+            now >= slot.startedAtMs + slot.travelMs
+        ) {
+            this.presentImpact(slot.terminal, now)
+            slot.impactPresented = true
+        }
+        if (sample.complete) {
+            this.tracerPool!.release(slot)
+            return
+        }
+        this.samplePosition(slot, sample.tailDistance, this.tail)
+        const eye = this.context!.services.get(CAMERA).globalPosition
+        const camera = this.context!.services.get(CAMERA)
+        const distance = Vector3.Distance(eye, this.head)
+        const width = tracerRibbonWidth(
+            distance,
+            camera.fov,
+            this.context!.services.get(SCENE).getEngine().getRenderHeight()
         )
-        slot.core.position.copyFrom(slot.mesh.position)
-        slot.head.position.subtractToRef(this.tailScratch, this.targetScratch)
-        const renderedLength = Math.max(0.001, this.targetScratch.length())
-        slot.mesh.scaling.z = renderedLength
-        slot.core.scaling.z = renderedLength * 0.86
-        slot.mesh.lookAt(slot.head.position)
-        slot.core.lookAt(slot.head.position)
-        slot.mesh.visibility = sample.bloomOpacity
-        slot.core.visibility = sample.coreOpacity
-        slot.head.visibility = sample.headOpacity
+        slot.tip.position.copyFrom(this.head)
+        slot.tip.scaling.setAll(width * 1.4)
+        slot.tip.visibility = sample.headOpacity * 0.75
+        positionRibbon(slot.ribbon, this.tail, this.head, eye, width)
+        slot.ribbon.mesh.visibility =
+            sample.opacity * (slot.weapon === Weapon.Shotgun ? 0.6 : 0.95)
     }
-
-    private findTracerForAction(actionId: number): TracerSlot | undefined {
-        let found: TracerSlot | undefined
+    private presentImpact(value: Impact, now: number): void {
+        this.effects!.impact(
+            value.position,
+            value.normal,
+            value.material === ImpactMaterial.Player,
+            now
+        )
+        this.context!.services.get(AUDIO).playImpact(value.position)
+    }
+    private queueImpact(value: Impact, dueAt: number): void {
+        if (this.scheduledImpacts.length >= 96) this.scheduledImpacts.shift()
+        this.scheduledImpacts.push({ value, dueAt })
+    }
+    private clear(): void {
         this.tracerPool?.forEachActive((slot) => {
-            if (!found && slot.actionId === actionId) found = slot
+            slot.impactPresented = true
         })
-        return found
-    }
-
-    private shotTracerKey(shotId: number, pelletIndex: number): string {
-        return `${shotId}:${pelletIndex}`
-    }
-
-    private bindShot(
-        shotId: number,
-        pelletIndex: number,
-        slot: TracerSlot
-    ): void {
-        if (slot.shotId !== null)
-            this.shotTracers.delete(
-                this.shotTracerKey(slot.shotId, slot.pelletIndex)
-            )
-        slot.shotId = shotId
-        slot.pelletIndex = pelletIndex
-        this.shotTracers.set(this.shotTracerKey(shotId, pelletIndex), slot)
-    }
-
-    private resetTracer(slot: TracerSlot): void {
-        if (slot.shotId !== null) {
-            const key = this.shotTracerKey(slot.shotId, slot.pelletIndex)
-            if (this.shotTracers.get(key) === slot) this.shotTracers.delete(key)
-        }
-        slot.shotId = null
-        slot.pelletIndex = 0
-        slot.mesh.visibility = slot.core.visibility = slot.head.visibility = 0
-        slot.mesh.setEnabled(false)
-        slot.core.setEnabled(false)
-        slot.head.setEnabled(false)
-    }
-
-    dispose(): void {
-        this.viewmodel?.dispose()
-        for (const pool of [this.muzzlePool, this.impactPool])
-            pool?.forEach((slot) => slot.mesh.dispose(false, true))
-        this.tracerPool?.forEach((slot) => {
-            slot.mesh.dispose(false, false)
-            slot.core.dispose(false, false)
-            slot.head.dispose(false, false)
-        })
-        this.lightPool?.forEach((slot) => slot.light.dispose())
-        this.tracerMaterial?.dispose()
-        this.tracerCoreMaterial?.dispose()
-        this.decals.clear()
+        this.tracerPool?.releaseWhere(() => true)
         this.shotTracers.clear()
+        this.localActions.clear()
         this.scheduledImpacts.length = 0
+        this.effects?.clear()
+    }
+    dispose(): void {
+        this.clear()
+        this.viewmodel?.dispose()
+        this.effects?.dispose()
+        this.tracerPool?.forEach((slot) => {
+            slot.ribbon.mesh.dispose()
+            slot.tip.dispose()
+        })
+        this.tipMaterial?.dispose(false, true)
+        this.tracerMaterial?.dispose(false, true)
         this.context?.services.remove(COMBAT_PRESENTATION)
         this.context = undefined
     }
-
-    get effectPoolUtilization(): {
-        readonly active: number
-        readonly capacity: number
-        readonly replacements: number
-    } {
-        const values = [
-            this.muzzlePool?.telemetry,
-            this.impactPool?.telemetry,
-            this.tracerPool?.telemetry,
-            this.lightPool?.telemetry,
-        ].filter((value) => value !== undefined)
+    get effectPoolUtilization() {
+        const a = this.tracerPool?.telemetry,
+            b = this.effects?.telemetry
         return {
-            active: values.reduce((sum, value) => sum + value.active, 0),
-            capacity: values.reduce((sum, value) => sum + value.capacity, 0),
-            replacements: values.reduce(
-                (sum, value) => sum + value.replacements,
-                0
-            ),
+            active: (a?.active ?? 0) + (b?.active ?? 0),
+            capacity: (a?.capacity ?? 0) + (b?.capacity ?? 0),
+            replacements: (a?.replacements ?? 0) + (b?.replacements ?? 0),
         }
     }
 }

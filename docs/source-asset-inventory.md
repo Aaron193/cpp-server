@@ -96,3 +96,15 @@ quarantined and cannot enter runtime packages.
 Key-art generation prompt:
 
 > Use case: stylized-concept. Asset type: original cinematic key art background for a military FPS main menu named Iron Front, no text baked in. Create an ultra-wide landscape 16:9 photorealistic abandoned Eastern European armored vehicle factory: two huge weathered brick and concrete assembly halls with shattered clerestory glass, overhead pipes, gantry cranes, rusted rail cars, wet cracked asphalt, weeds, birch trees and pine forest in distant haze. Original industrial design and layout. Camera at human height, looking toward the factory from the rail yard. Factory buildings and a striking rusted smokestack concentrated in the right two thirds of the composition, left third darker atmospheric negative space for menu text. Cool blue-grey early morning haze, oblique warm muted sun shafts, drifting dust and industrial steam, believable rich material detail and strong layered depth, subtle film grain, realistic desaturated color grade. No people, no weapons in foreground, no HUD, no text, no logos, no watermarks. Do not reproduce any existing game's exact map geometry or assets. This is menu concept artwork, not a gameplay screenshot.
+
+## Combat effects additions (2026-09-06)
+
+- `client/public/effects/trauma.png`: original blood-on-lens overlay generated
+  with the built-in imagegen tool, without reference images. Distributed in the
+  client and used by the health HUD. SHA-256:
+  `571d9dc867a3a62c43e03d6bc2f327acfa68332222be8caa6cb88b07c8c5d4a4`.
+  Copied unchanged; generation prompt and inspection facts are recorded in
+  [combat-effects-overhaul.md](combat-effects-overhaul.md#generated-texture-provenance-and-prompt).
+- Tracer, muzzle, dust, fragment and decal textures are original deterministic
+  TypeScript in `CombatEffectVisuals.ts`. No external texture inputs or
+  Battlefield assets were copied.
